@@ -1,124 +1,127 @@
-Program  ::= Shebang? SourceElement* EOF
-SourceElement
-         ::= Statement
-Statement
-         ::= FunctionDeclaration
-           | Block
-           | VariableStatement
-           | EmptyStatement
-           | ExpressionStatement
-           | IfStatement
-           | IterationStatement
-           | ContinueStatement
-           | BreakStatement
-           | ReturnStatement
-           | WithStatement
-           | LabelledStatement
-           | SwitchStatement
-           | ThrowStatement
-           | TryStatement
-           | DebuggerStatement
-Block    ::= '{' Statement* '}'
-VariableStatement
-         ::= 'var' VariableDeclarationList Semicolon
-VariableDeclarationList
-         ::= VariableDeclaration ( ',' VariableDeclaration )*
-VariableDeclaration
-         ::= Identifier Initialiser?
-Initialiser
-         ::= '=' AssignmentExpression
-AssignmentExpression
-         ::= LeftHandSideExpression AssignmentOperator AssignmentExpression
-           | ConditionalExpression
-ConditionalExpression
-         ::= LogicalORExpression ( '?' AssignmentExpression ':' AssignmentExpression )?
-LogicalORExpression
-         ::= LogicalANDExpression ( '||' LogicalANDExpression )*
-LogicalANDExpression
-         ::= BitwiseORExpression ( '&&' BitwiseORExpression )*
-BitwiseORExpression
-         ::= BitwiseXORExpression ( '|' BitwiseXORExpression )*
-BitwiseXORExpression
-         ::= BitwiseANDExpression ( '^' BitwiseANDExpression )*
-BitwiseANDExpression
-         ::= EqualityExpression ( '&' EqualityExpression )*
-EqualityExpression
-         ::= RelationalExpression ( ( '==' | '!=' | '===' | '!==' ) RelationalExpression )*
-RelationalExpression
-         ::= ShiftExpression ( ( '<' | '>' | '<=' | '>=' | 'instanceof' | 'in' ) ShiftExpression )*
-ShiftExpression
-         ::= AdditiveExpression ( ( '<<' | '>>' | '>>>' ) AdditiveExpression )*
-AdditiveExpression
-         ::= MultiplicativeExpression ( ( '+' | '-' ) MultiplicativeExpression )*
-MultiplicativeExpression
-         ::= UnaryExpression ( ( '*' | '/' | '%' ) UnaryExpression )*
-UnaryExpression
-         ::= PostfixExpression
-           | 'delete' UnaryExpression
-           | 'void' UnaryExpression
-           | 'typeof' UnaryExpression
-           | '++' UnaryExpression
-           | '--' UnaryExpression
-           | '+' UnaryExpression
-           | '-' UnaryExpression
-           | '~' UnaryExpression
-           | '!' UnaryExpression
-PostfixExpression
-         ::= LeftHandSideExpression ( '++' | '--' )?
-LeftHandSideExpression
-         ::= CallExpression
-           | NewExpression
-NewExpression
-         ::= MemberExpression
-           | 'new' NewExpression
-MemberExpression
-         ::= ( PrimaryExpression | FunctionExpression | 'new' MemberExpression Arguments ) ( '[' Expression ']' | '.' IdentifierName )*
-PrimaryExpression
-         ::= 'this'
-           | Identifier
-           | Literal
-           | ArrayLiteral
-           | ObjectLiteral
-           | '(' Expression ')'
-Literal  ::= NullLiteral
-           | BooleanLiteral
-           | NumericLiteral
-           | StringLiteral
-           | RegularExpressionLiteral
-NumericLiteral
-         ::= DecimalLiteral
-           | HexIntegerLiteral
-           | OctalIntegerLiteral
-ArrayLiteral
-         ::= '[' AssignmentExpression? ( ',' AssignmentExpression? )* ']'
-ObjectLiteral
-         ::= '{' ( PropertyAssignment ( ',' PropertyAssignment )* ','? )? '}'
-PropertyAssignment
-         ::= PropertyName ':' AssignmentExpression
-           | 'get' PropertyName '(' ')' '{' FunctionBody '}'
-           | 'set' PropertyName '(' PropertySetParameterList ')' '{' FunctionBody '}'
-PropertyName
-         ::= IdentifierName
-           | StringLiteral
-           | NumericLiteral
-FunctionBody
-         ::= SourceElement*
-PropertySetParameterList
-         ::= Identifier
-Expression
-         ::= AssignmentExpression ( ',' AssignmentExpression )*
-FunctionExpression
-         ::= 'function' Identifier? '(' FormalParameterList? ')' '{' FunctionBody '}'
-FormalParameterList
-         ::= Identifier ( ',' Identifier )*
-Arguments
-         ::= '(' ( AssignmentExpression ( ',' AssignmentExpression )* )? ')'
-CallExpression
-         ::= MemberExpression Arguments ( Arguments | '[' Expression ']' | '.' IdentifierName )*
-EmptyStatement
-         ::= ';'
-AssignmentOperator
-         ::= '='
+program ::= shebang? sourceElement* EOF
+
+sourceElement ::= statement
+                | Comment
+
+statement ::= functionDeclaration
+           | block
+           | variableStatement
+           | emptyStatement
+           | expressionStatement
+           | ifStatement
+           | iterationStatement
+           | continueStatement
+           | breakStatement
+           | returnStatement
+           | withStatement
+           | labelledStatement
+           | switchStatement
+           | throwStatement
+           | tryStatement
+           | debuggerStatement
+
+block ::= '{' statement* '}'
+
+variableStatement ::= 'var' variableDeclarationList semicolon
+
+variableDeclarationList ::= variableDeclaration ( ',' variableDeclaration )*
+
+variableDeclaration ::= identifier initializer?
+
+initializer ::= '=' assignmentExpression
+
+assignmentExpression ::= leftHandSideExpression assignmentOperator assignmentExpression
+           | conditionalExpression
+
+conditionalExpression ::= logicalORExpression ( '?' assignmentExpression ':' assignmentExpression )?
+
+logicalORExpression ::= logicalANDExpression ( '||' logicalANDExpression )*
+
+logicalANDExpression ::= bitwiseORExpression ( '&&' bitwiseORExpression )*
+
+bitwiseORExpression ::= bitwiseXORExpression ( '|' bitwiseXORExpression )*
+
+bitwiseXORExpression ::= bitwiseANDExpression ( '^' bitwiseANDExpression )*
+
+bitwiseANDExpression ::= equalityExpression ( '&' equalityExpression )*
+
+equalityExpression ::= relationalExpression ( ( '==' | '!=' | '===' | '!==' ) relationalExpression )*
+
+relationalExpression ::= shiftExpression ( ( '<' | '>' | '<=' | '>=' | 'instanceof' | 'in' ) shiftExpression )*
+
+shiftExpression ::= additiveExpression ( ( '<<' | '>>' | '>>>' ) additiveExpression )*
+
+additiveExpression ::= multiplicativeExpression ( ( '+' | '-' ) multiplicativeExpression )*
+
+multiplicativeExpression ::= unaryExpression ( ( '*' | '/' | '%' ) unaryExpression )*
+
+unaryExpression ::= postfixExpression
+           | 'delete' unaryExpression
+           | 'void' unaryExpression
+           | 'typeof' unaryExpression
+           | '++' unaryExpression
+           | '--' unaryExpression
+           | '+' unaryExpression
+           | '-' unaryExpression
+           | '~' unaryExpression
+           | '!' unaryExpression
+
+postfixExpression ::= leftHandSideExpression ( '++' | '--' )?
+
+leftHandSideExpression ::= callExpression
+           | newExpression
+
+newExpression ::= memberExpression
+           | 'new' newExpression
+
+memberExpression ::= ( primaryExpression | functionExpression | 'new' memberExpression arguments ) ( '[' expression ']' | '.' identifierName )*
+
+primaryExpression ::= 'this'
+           | identifier
+           | literal
+           | arrayLiteral
+           | objectLiteral
+           | '(' expression ')'
+
+literal ::= nullLiteral
+           | booleanLiteral
+           | numericLiteral
+           | stringLiteral
+           | regularExpressionLiteral
+
+numericLiteral ::= decimalLiteral
+           | hexIntegerLiteral
+           | octalIntegerLiteral
+
+arrayLiteral ::= '[' assignmentExpression? ( ',' assignmentExpression? )* ']'
+
+objectLiteral ::= '{' ( propertyAssignment ( ',' propertyAssignment )* ','? )? '}'
+
+propertyAssignment ::= propertyName ':' assignmentExpression
+           | 'get' propertyName '(' ')' '{' functionBody '}'
+           | 'set' propertyName '(' propertySetParameterList ')' '{' functionBody '}'
+
+propertyName ::= identifierName
+           | stringLiteral
+           | numericLiteral
+
+functionBody ::= sourceElement*
+
+propertySetParameterList ::= identifier
+
+expression ::= assignmentExpression ( ',' assignmentExpression )*
+
+functionExpression ::= 'function' identifier? '(' formalParameterList? ')' '{' functionBody '}'
+
+formalParameterList ::= identifier ( ',' identifier )*
+
+arguments ::= '(' ( assignmentExpression ( ',' assignmentExpression )* )? ')'
+
+callExpression ::= memberExpression arguments ( arguments | '[' expression ']' | '.' identifierName )*
+
+emptyStatement ::= ';'
+
+assignmentOperator ::= '='
            | '*='
            | '/='
            | '%='
@@ -130,94 +133,97 @@ AssignmentOperator
            | '&='
            | '^='
            | '|='
-ExpressionStatement
-         ::= Expression Semicolon
-IfStatement
-         ::= 'if' '(' Expression ')' Statement ( 'else' Statement )?
-IterationStatement
-         ::= 'do' Statement 'while' '(' Expression ')' Semicolon
-           | 'while' '(' Expression ')' Statement
-           | 'for' '(' ExpressionNoIn? ';' Expression? ';' Expression? ')' Statement
-           | 'for' '(' 'var' VariableDeclarationListNoIn ';' Expression? ';' Expression? ')' Statement
-           | 'for' '(' LeftHandSideExpression 'in' Expression ')' Statement
-           | 'for' '(' 'var' VariableDeclarationNoIn 'in' Expression ')' Statement
-ExpressionNoIn
-         ::= AssignmentExpressionNoIn ( ',' AssignmentExpressionNoIn )*
-AssignmentExpressionNoIn
-         ::= LeftHandSideExpression AssignmentOperator AssignmentExpressionNoIn
-           | ConditionalExpressionNoIn
-ConditionalExpressionNoIn
-         ::= LogicalORExpressionNoIn ( '?' AssignmentExpression ':' AssignmentExpressionNoIn )*
-LogicalORExpressionNoIn
-         ::= LogicalANDExpressionNoIn ( '||' LogicalANDExpressionNoIn )*
-LogicalANDExpressionNoIn
-         ::= BitwiseORExpressionNoIn ( '&&' BitwiseORExpressionNoIn )*
-BitwiseORExpressionNoIn
-         ::= BitwiseXORExpressionNoIn ( '|' BitwiseXORExpressionNoIn )*
-BitwiseXORExpressionNoIn
-         ::= BitwiseANDExpressionNoIn ( '^' BitwiseANDExpressionNoIn )*
-BitwiseANDExpressionNoIn
-         ::= EqualityExpressionNoIn ( '&' EqualityExpressionNoIn )*
-EqualityExpressionNoIn
-         ::= RelationalExpressionNoIn ( ( '==' | '!=' | '===' | '!==' ) RelationalExpressionNoIn )*
-RelationalExpressionNoIn
-         ::= ShiftExpression ( ( '<' | '>' | '<=' | '>=' | 'instanceof' ) ShiftExpression )*
-VariableDeclarationListNoIn
-         ::= VariableDeclarationNoIn ( ',' VariableDeclarationNoIn )*
-VariableDeclarationNoIn
-         ::= Identifier InitialiserNoIn?
-InitialiserNoIn
-         ::= '=' AssignmentExpressionNoIn
-ContinueStatement
-         ::= 'continue' Identifier? Semicolon
-BreakStatement
-         ::= 'break' Identifier? Semicolon
-ReturnStatement
-         ::= 'return' Expression? Semicolon
-WithStatement
-         ::= 'with' '(' Expression ')' Statement
-LabelledStatement
-         ::= Identifier ':' Statement
-SwitchStatement
-         ::= 'switch' '(' Expression ')' CaseBlock
-CaseBlock
-         ::= '{' CaseClause* ( DefaultClause CaseClause* )? '}'
-CaseClause
-         ::= 'case' Expression ':' Statement*
-DefaultClause
-         ::= 'default' ':' Statement*
-ThrowStatement
-         ::= 'throw' Expression Semicolon
-TryStatement
-         ::= 'try' Block ( Catch Finally? | Finally )
-Catch    ::= 'catch' '(' Identifier ')' Block
-Finally  ::= 'finally' Block
-DebuggerStatement
-         ::= 'debugger' Semicolon
-FunctionDeclaration
-         ::= 'function' Identifier '(' FormalParameterList? ')' '{' FunctionBody '}'
-Semicolon
-         ::= ';'
-IdentifierName
-         ::= IdentifierName^Token
+
+expressionStatement ::= expression semicolon
+
+ifStatement ::= 'if' '(' expression ')' statement ( 'else' statement )?
+
+iterationStatement ::= 'do' statement 'while' '(' expression ')' semicolon
+           | 'while' '(' expression ')' statement
+           | 'for' '(' expressionNoIn? ';' expression? ';' expression? ')' statement
+           | 'for' '(' 'var' variableDeclarationListNoIn ';' expression? ';' expression? ')' statement
+           | 'for' '(' leftHandSideExpression 'in' expression ')' statement
+           | 'for' '(' 'var' variableDeclarationNoIn 'in' expression ')' statement
+
+expressionNoIn ::= assignmentExpressionNoIn ( ',' assignmentExpressionNoIn )*
+
+assignmentExpressionNoIn ::= leftHandSideExpression assignmentOperator assignmentExpressionNoIn
+           | conditionalExpressionNoIn
+
+conditionalExpressionNoIn ::= logicalORExpressionNoIn ( '?' assignmentExpression ':' assignmentExpressionNoIn )*
+
+logicalORExpressionNoIn ::= logicalANDExpressionNoIn ( '||' logicalANDExpressionNoIn )*
+
+logicalANDExpressionNoIn ::= bitwiseORExpressionNoIn ( '&&' bitwiseORExpressionNoIn )*
+
+bitwiseORExpressionNoIn ::= bitwiseXORExpressionNoIn ( '|' bitwiseXORExpressionNoIn )*
+
+bitwiseXORExpressionNoIn ::= bitwiseANDExpressionNoIn ( '^' bitwiseANDExpressionNoIn )*
+
+bitwiseANDExpressionNoIn ::= equalityExpressionNoIn ( '&' equalityExpressionNoIn )*
+
+equalityExpressionNoIn ::= relationalExpressionNoIn ( ( '==' | '!=' | '===' | '!==' ) relationalExpressionNoIn )*
+
+relationalExpressionNoIn ::= shiftExpression ( ( '<' | '>' | '<=' | '>=' | 'instanceof' ) shiftExpression )*
+
+variableDeclarationListNoIn ::= variableDeclarationNoIn ( ',' variableDeclarationNoIn )*
+
+variableDeclarationNoIn ::= identifier initializerNoIn?
+
+initializerNoIn ::= '=' assignmentExpressionNoIn
+
+continueStatement ::= 'continue' identifier? semicolon
+
+breakStatement ::= 'break' identifier? semicolon
+
+returnStatement ::= 'return' expression? semicolon
+
+withStatement ::= 'with' '(' expression ')' statement
+
+labelledStatement ::= identifier ':' statement
+
+switchStatement ::= 'switch' '(' expression ')' caseBlock
+
+caseBlock ::= '{' caseClause* ( defaultClause caseClause* )? '}'
+
+caseClause ::= 'case' expression ':' statement*
+
+defaultClause ::= 'default' ':' statement*
+
+throwStatement ::= 'throw' expression semicolon
+
+tryStatement ::= 'try' block ( catch finally? | finally )
+
+catch ::= 'catch' '(' identifier ')' block
+
+finally ::= 'finally' block
+
+debuggerStatement ::= 'debugger' semicolon
+
+functionDeclaration ::= 'function' identifier '(' formalParameterList? ')' '{' functionBody '}'
+
+semicolon ::= ';'
+
+identifierName ::= identifierName^Token
            | 'get'
            | 'set'
-Ignore   ::= WhiteSpace
-           | Comment
+
+Ignore ::= WhiteSpace
           /* ws: definition */
 
 <?TOKENS?>
 
-Shebang  ::= '#!' ( SourceCharacter - LineTerminator )*
-EOF      ::= $
-Identifier
-         ::= IdentifierName - ReservedWord
-ReservedWord
-         ::= Keyword
+Shebang ::= '#!' ( SourceCharacter - LineTerminator )*
+EOF ::= $
+
+Identifier ::= IdentifierName - ReservedWord
+
+ReservedWord ::= Keyword
            | FutureReservedWord
            | NullLiteral
            | BooleanLiteral
-Keyword  ::= 'break'
+
+Keyword ::= 'break'
            | 'do'
            | 'instanceof'
            | 'typeof'
@@ -243,28 +249,28 @@ Keyword  ::= 'break'
            | 'delete'
            | 'in'
            | 'try'
-FutureReservedWord
-         ::= 'class'
+
+FutureReservedWord ::= 'class'
            | 'enum'
            | 'extends'
            | 'super'
            | 'const'
            | 'export'
            | 'import'
-NullLiteral
-         ::= 'null'
-BooleanLiteral
-         ::= 'true'
+
+NullLiteral ::= 'null'
+
+BooleanLiteral ::= 'true'
            | 'false'
-IdentifierName
-         ::= IdentifierStart IdentifierPart*
-IdentifierStart
-         ::= UnicodeLetter
+
+IdentifierName ::= IdentifierStart IdentifierPart*
+
+IdentifierStart ::= UnicodeLetter
            | '$'
            | '_'
            | '\' UnicodeEscapeSequence
-UnicodeLetter
-         ::= [#x0041-#x005A]
+
+UnicodeLetter ::= [#x0041-#x005A]
            | [#x0061-#x007A]
            | [#x00C0-#x00D6]
            | [#x00D8-#x00F6]
@@ -469,18 +475,19 @@ UnicodeLetter
            | [#x4E00-#x9FA5]
            | #x3007
            | [#x3021-#x3029]
-UnicodeEscapeSequence
-         ::= 'u' HexDigit HexDigit HexDigit HexDigit
+
+UnicodeEscapeSequence ::= 'u' HexDigit HexDigit HexDigit HexDigit
+
 HexDigit ::= [0-9a-fA-F]
-IdentifierPart
-         ::= IdentifierStart
+
+IdentifierPart ::= IdentifierStart
            | UnicodeCombiningMark
            | UnicodeDigit
            | UnicodeConnectorPunctuation
            | ZWNJ
            | ZWJ
-UnicodeCombiningMark
-         ::= [#x0300-#x0345]
+
+UnicodeCombiningMark ::= [#x0300-#x0345]
            | [#x0360-#x0361]
            | [#x0483-#x0486]
            | [#x0591-#x05A1]
@@ -575,8 +582,8 @@ UnicodeCombiningMark
            | [#x302A-#x302F]
            | #x3099
            | #x309A
-UnicodeDigit
-         ::= [#x0030-#x0039]
+
+UnicodeDigit ::= [#x0030-#x0039]
            | [#x0660-#x0669]
            | [#x06F0-#x06F9]
            | [#x0966-#x096F]
@@ -591,8 +598,8 @@ UnicodeDigit
            | [#x0E50-#x0E59]
            | [#x0ED0-#x0ED9]
            | [#x0F20-#x0F29]
-UnicodeConnectorPunctuation
-         ::= #x00B7
+
+UnicodeConnectorPunctuation ::= #x00B7
            | #x02D0
            | #x02D1
            | #x0387
@@ -603,117 +610,120 @@ UnicodeConnectorPunctuation
            | [#x3031-#x3035]
            | [#x309D-#x309E]
            | [#x30FC-#x30FE]
-ZWNJ     ::= #x200C
-ZWJ      ::= #x200D
-StringLiteral
-         ::= '"' DoubleStringCharacter* '"'
+
+ZWNJ ::= #x200C
+ZWJ ::= #x200D
+
+StringLiteral ::= '"' DoubleStringCharacter* '"'
            | "'" SingleStringCharacter* "'"
-DoubleStringCharacter
-         ::= . - ( '"' | '\' | LineTerminator )
+
+DoubleStringCharacter ::= . - ( '"' | '\' | LineTerminator )
            | '\' EscapeSequence
            | LineContinuation
-SingleStringCharacter
-         ::= . - ( "'" | '\' | LineTerminator )
+
+SingleStringCharacter ::= . - ( "'" | '\' | LineTerminator )
            | '\' EscapeSequence
            | LineContinuation
-LineTerminator
-         ::= #x000A
+
+LineTerminator ::= #x000A
            | #x000D
            | #x2028
            | #x2029
-EscapeSequence
-         ::= CharacterEscapeSequence
+
+EscapeSequence ::= CharacterEscapeSequence
            | OctalEscapeSequence
            | HexEscapeSequence
            | UnicodeEscapeSequence
-CharacterEscapeSequence
-         ::= SingleEscapeCharacter
+
+CharacterEscapeSequence ::= SingleEscapeCharacter
            | NonEscapeCharacter
-SingleEscapeCharacter
-         ::= ['"\bfnrtv]
-NonEscapeCharacter
-         ::= SourceCharacter - ( EscapeCharacter | LineTerminator )
-EscapeCharacter
-         ::= SingleEscapeCharacter
+
+SingleEscapeCharacter ::= ['"\bfnrtv]
+
+NonEscapeCharacter ::= SourceCharacter - ( EscapeCharacter | LineTerminator )
+
+EscapeCharacter ::= SingleEscapeCharacter
            | DecimalDigit
            | 'x'
            | 'u'
-RegularExpressionLiteral
-         ::= '/' RegularExpressionBody '/' RegularExpressionFlag*
-RegularExpressionBody
-         ::= RegularExpressionFirstChar RegularExpressionChar*
-RegularExpressionFirstChar
-         ::= RegularExpressionNonTerminator - [*\/[]
+
+RegularExpressionLiteral ::= '/' RegularExpressionBody '/' RegularExpressionFlag*
+
+RegularExpressionBody ::= RegularExpressionFirstChar RegularExpressionChar*
+
+RegularExpressionFirstChar ::= RegularExpressionNonTerminator - [*\/[]
            | RegularExpressionBackslashSequence
            | RegularExpressionClass
-RegularExpressionNonTerminator
-         ::= SourceCharacter - LineTerminator
-SourceCharacter
-         ::= .
-RegularExpressionBackslashSequence
-         ::= '\' RegularExpressionNonTerminator
-RegularExpressionClass
-         ::= '[' RegularExpressionClassChar* ']'
-RegularExpressionClassChar
-         ::= RegularExpressionNonTerminator - ( ']' | '\' )
+
+RegularExpressionNonTerminator ::= SourceCharacter - LineTerminator
+
+SourceCharacter ::= .
+
+RegularExpressionBackslashSequence ::= '\' RegularExpressionNonTerminator
+
+RegularExpressionClass ::= '[' RegularExpressionClassChar* ']'
+
+RegularExpressionClassChar ::= RegularExpressionNonTerminator - ( ']' | '\' )
            | RegularExpressionBackslashSequence
-RegularExpressionChar
-         ::= RegularExpressionNonTerminator - ( '\' | '/' | '[' )
+
+RegularExpressionChar ::= RegularExpressionNonTerminator - ( '\' | '/' | '[' )
            | RegularExpressionBackslashSequence
            | RegularExpressionClass
-RegularExpressionFlag
-         ::= IdentifierPart
-DecimalLiteral
-         ::= DecimalIntegerLiteral '.' DecimalDigit* ExponentPart?
+
+RegularExpressionFlag ::= IdentifierPart
+
+DecimalLiteral ::= DecimalIntegerLiteral '.' DecimalDigit* ExponentPart?
            | '.' DecimalDigit+ ExponentPart?
            | DecimalIntegerLiteral ExponentPart?
-DecimalIntegerLiteral
-         ::= '0'
+
+DecimalIntegerLiteral ::= '0'
            | NonZeroDigit DecimalDigit*
-DecimalDigit
-         ::= [0-9]
-NonZeroDigit
-         ::= [1-9]
-HexIntegerLiteral
-         ::= '0' [xX] HexDigit+
-OctalIntegerLiteral
-         ::= '0' OctalDigit+
-OctalEscapeSequence
-         ::= OctalDigit
+
+DecimalDigit ::= [0-9]
+
+NonZeroDigit ::= [1-9]
+
+HexIntegerLiteral ::= '0' [xX] HexDigit+
+
+OctalIntegerLiteral ::= '0' OctalDigit+
+
+OctalEscapeSequence ::= OctalDigit
            | ZeroToThree OctalDigit
            | FourToSeven OctalDigit
            | ZeroToThree OctalDigit OctalDigit
-OctalDigit
-         ::= [0-7]
-ZeroToThree
-         ::= [0-3]
-FourToSeven
-         ::= [4-7]
-HexEscapeSequence
-         ::= 'x' HexDigit HexDigit
-LineContinuation
-         ::= '\' LineTerminatorSequence
-LineTerminatorSequence
-         ::= #x000D #x000A
+
+OctalDigit ::= [0-7]
+
+ZeroToThree ::= [0-3]
+
+FourToSeven ::= [4-7]
+
+HexEscapeSequence ::= 'x' HexDigit HexDigit
+
+LineContinuation ::= '\' LineTerminatorSequence
+
+LineTerminatorSequence ::= #x000D #x000A
            | #x000A
            | #x000D
            | #x2028
            | #x2029
-ExponentPart
-         ::= ExponentIndicator SignedInteger
-ExponentIndicator
-         ::= [eE]
-SignedInteger
-         ::= [+#x2D]? DecimalDigit+
-WhiteSpace
-         ::= ( TAB | VT | FF | SP | NBSP | BOM | USP )+
-TAB      ::= #x0009
-VT       ::= #x000B
-FF       ::= #x000C
-SP       ::= #x0020
-NBSP     ::= #x00A0
-BOM      ::= #xFEFF
-USP      ::= [#x0009-#x000D]
+
+ExponentPart ::= ExponentIndicator SignedInteger
+
+ExponentIndicator ::= [eE]
+
+SignedInteger ::= [+#x2D]? DecimalDigit+
+
+WhiteSpace ::= ( TAB | VT | FF | SP | NBSP | BOM | USP )+
+
+TAB ::= #x0009
+VT ::= #x000B
+FF ::= #x000C
+SP ::= #x0020
+NBSP ::= #x00A0
+BOM ::= #xFEFF
+
+USP ::= [#x0009-#x000D]
            | #x0020
            | #x0085
            | #x00A0
@@ -725,16 +735,17 @@ USP      ::= [#x0009-#x000D]
            | #x202F
            | #x205F
            | #x3000
-Comment  ::= MultiLineComment
+
+Comment ::= MultiLineComment
            | SingleLineComment
-MultiLineComment
-         ::= '/*' ( SourceCharacter* - ( SourceCharacter* '*/' SourceCharacter* ) ) '*/'
-SingleLineComment
-         ::= '//' ( SourceCharacter - LineTerminator )*
-IdentifierName^Token
-          << 'get' 'set'
-NonNameChar
-         ::= . - IdentifierPart
+
+MultiLineComment ::= '/*' ( SourceCharacter* - ( SourceCharacter* '*/' SourceCharacter* ) ) '*/'
+
+SingleLineComment ::= '//' ( SourceCharacter - LineTerminator )*
+
+IdentifierName^Token << 'get' 'set'
+
+NonNameChar ::= . - IdentifierPart
            | $
-NonNameChar
-          \\ Identifier IdentifierName^Token 'break' 'do' 'instanceof' 'typeof' 'case' 'else' 'new' 'var' 'catch' 'finally' 'return' 'void' 'continue' 'for' 'switch' 'while' 'debugger' 'function' 'this' 'with' 'default' 'if' 'throw' 'delete' 'in' 'try' 'get' 'set' NullLiteral BooleanLiteral
+
+NonNameChar \\ Identifier IdentifierName^Token 'break' 'do' 'instanceof' 'typeof' 'case' 'else' 'new' 'var' 'catch' 'finally' 'return' 'void' 'continue' 'for' 'switch' 'while' 'debugger' 'function' 'this' 'with' 'default' 'if' 'throw' 'delete' 'in' 'try' 'get' 'set' NullLiteral BooleanLiteral
