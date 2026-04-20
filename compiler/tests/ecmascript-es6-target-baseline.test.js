@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 
-const { assertParses, assertFailsToParse } = require('./parser-test-helpers');
+const { assertParses } = require('./parser-test-helpers');
 
 // ES6 features now working (promoted from target baseline)
 const es6Supported = [
@@ -35,8 +35,8 @@ const es6Supported = [
   }
 ];
 
-// ES6 features still in development (target baseline)
-const es6Targets = [
+// ES6 features promoted from target baseline
+const es6AdditionalSupported = [
   {
     feature: 'template literals',
     cases: [
@@ -80,12 +80,12 @@ test('ES6 supported features now working', async (t) => {
   }
 });
 
-test('ES6 target baseline: parser should still reject these features before upgrade', async (t) => {
-  for (const featureSection of es6Targets) {
+test('ES6 additional features now working', async (t) => {
+  for (const featureSection of es6AdditionalSupported) {
     await t.test(featureSection.feature, async (featureTest) => {
       for (const sample of featureSection.cases) {
         await featureTest.test(sample.name, () => {
-          assertFailsToParse(sample.source, null, sample.name);
+          assertParses(sample.source, sample.name);
         });
       }
     });

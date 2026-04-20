@@ -1,9 +1,12 @@
 program ::= shebang? sourceElement* EOF
 
 sourceElement ::= statement
-                | Comment
+                | importDeclaration
+                | exportDeclaration
 
 statement ::= functionDeclaration
+           | generatorDeclaration
+           | asyncFunctionDeclaration
            | classDeclaration
            | block
            | variableStatement
@@ -31,17 +34,44 @@ letDeclaration ::= 'let' variableDeclarationList semicolon
 
 constDeclaration ::= 'const' variableDeclarationList semicolon
 
+lexicalDeclaration ::= letOrConst bindingList semicolon
+
+letOrConst ::= 'let'
+           | 'const'
+
+bindingList ::= lexicalBinding ( ',' lexicalBinding )*
+
+lexicalBinding ::= bindingIdentifier initializer?
+           | bindingPattern initializer
+
 variableDeclarationList ::= variableDeclaration ( ',' variableDeclaration )*
 
-variableDeclaration ::= identifier initializer?
+variableDeclaration ::= bindingIdentifier initializer?
+           | bindingPattern initializer?
 
 initializer ::= '=' assignmentExpression
 
 assignmentExpression ::= arrowFunction
+           | asyncArrowFunction
+           | yieldExpression
            | leftHandSideExpression assignmentOperator assignmentExpression
            | conditionalExpression
 
+yieldExpression ::= 'yield' assignmentExpression?
+           | 'yield' '*' assignmentExpression
+
 arrowFunction ::= arrowFunctionParameters '=>' arrowFunctionBody
+
+asyncArrowFunction ::= 'async' asyncArrowBindingIdentifier '=>' asyncConciseBody
+           | 'async' '(' formalParameterList? ')' '=>' asyncConciseBody
+           | coverCallExpressionAndAsyncArrowHead '=>' asyncConciseBody
+
+asyncArrowBindingIdentifier ::= bindingIdentifier
+
+coverCallExpressionAndAsyncArrowHead ::= memberExpression arguments
+
+asyncConciseBody ::= assignmentExpression
+           | '{' asyncFunctionBody '}'
 
 arrowFunctionParameters ::= identifier
            | '(' formalParameterList? ')'
@@ -69,7 +99,10 @@ shiftExpression ::= additiveExpression ( ( '<<' | '>>' | '>>>' ) additiveExpress
 
 additiveExpression ::= multiplicativeExpression ( ( '+' | '-' ) multiplicativeExpression )*
 
-multiplicativeExpression ::= unaryExpression ( ( '*' | '/' | '%' ) unaryExpression )*
+multiplicativeExpression ::= exponentiationExpression ( ( '*' | '/' | '%' ) exponentiationExpression )*
+
+exponentiationExpression ::= postfixExpression '**' exponentiationExpression
+           | unaryExpression
 
 unaryExpression ::= postfixExpression
            | 'delete' unaryExpression
@@ -81,6 +114,9 @@ unaryExpression ::= postfixExpression
            | '-' unaryExpression
            | '~' unaryExpression
            | '!' unaryExpression
+           | awaitExpression
+
+awaitExpression ::= 'await' unaryExpression
 
 postfixExpression ::= leftHandSideExpression ( '++' | '--' )?
 
@@ -90,13 +126,24 @@ leftHandSideExpression ::= callExpression
 newExpression ::= memberExpression
            | 'new' newExpression
 
-memberExpression ::= ( primaryExpression | functionExpression | 'new' memberExpression arguments ) ( '[' expression ']' | '.' identifierName )*
+memberExpression ::= ( primaryExpression
+                     | functionExpression
+                     | generatorExpression
+                     | asyncFunctionExpression
+                     | classExpression
+                     | superProperty
+                     | metaProperty
+                     | 'new' memberExpression arguments )
+                     ( '[' expression ']'
+                     | '.' identifierName
+                     | templateLiteral )*
 
 primaryExpression ::= 'this'
            | identifier
            | literal
            | arrayLiteral
            | objectLiteral
+           | templateLiteral
            | '(' expression ')'
 
 literal ::= nullLiteral
@@ -106,6 +153,7 @@ literal ::= nullLiteral
            | regularExpressionLiteral
 
 numericLiteral ::= DecimalLiteral
+           | BinaryIntegerLiteral
            | HexIntegerLiteral
            | OctalIntegerLiteral
 
@@ -113,31 +161,103 @@ stringLiteral ::= StringLiteral
 
 regularExpressionLiteral ::= RegularExpressionLiteral
 
-arrayLiteral ::= '[' assignmentExpression? ( ',' assignmentExpression? )* ']'
+arrayLiteral ::= '[' elision? ']'
+           | '[' elementList ']'
+           | '[' elementList ',' elision? ']'
+
+elementList ::= elision? assignmentExpression
+           | elision? spreadElement
+           | elementList ',' elision? assignmentExpression
+           | elementList ',' elision? spreadElement
+
+elision ::= ','+
+
+spreadElement ::= '...' assignmentExpression
 
 objectLiteral ::= '{' ( propertyAssignment ( ',' propertyAssignment )* ','? )? '}'
 
 propertyAssignment ::= propertyName ':' assignmentExpression
+           | identifierReference
+           | coverInitializedName
+           | methodDefinition
            | 'get' propertyName '(' ')' '{' functionBody '}'
            | 'set' propertyName '(' propertySetParameterList ')' '{' functionBody '}'
 
-propertyName ::= identifierName
+propertyName ::= literalPropertyName
+           | computedPropertyName
+
+literalPropertyName ::= identifier
            | stringLiteral
            | numericLiteral
 
+computedPropertyName ::= '[' assignmentExpression ']'
+
+identifierReference ::= identifier
+
+coverInitializedName ::= identifierReference initializer
+
+bindingIdentifier ::= identifier
+
+bindingPattern ::= objectBindingPattern
+           | arrayBindingPattern
+
+objectBindingPattern ::= '{' '}'
+           | '{' bindingPropertyList '}'
+           | '{' bindingPropertyList ',' '}'
+
+arrayBindingPattern ::= '[' elision? bindingRestElement? ']'
+           | '[' bindingElementList ']'
+           | '[' bindingElementList ',' elision? bindingRestElement? ']'
+
+bindingPropertyList ::= bindingProperty ( ',' bindingProperty )*
+
+bindingElementList ::= bindingElisionElement ( ',' bindingElisionElement )*
+
+bindingElisionElement ::= elision? bindingElement
+
+bindingProperty ::= singleNameBinding
+           | propertyName ':' bindingElement
+
+bindingElement ::= singleNameBinding
+           | bindingPattern initializer?
+
+singleNameBinding ::= bindingIdentifier initializer?
+
+bindingRestElement ::= '...' bindingIdentifier
+
 functionBody ::= sourceElement*
 
-propertySetParameterList ::= identifier
+propertySetParameterList ::= formalParameter
 
 expression ::= assignmentExpression ( ',' assignmentExpression )*
 
 functionExpression ::= 'function' identifier? '(' formalParameterList? ')' '{' functionBody '}'
 
-formalParameterList ::= identifier ( ',' identifier )*
+asyncFunctionExpression ::= 'async' 'function' identifier? '(' formalParameterList? ')' '{' asyncFunctionBody '}'
 
-arguments ::= '(' ( assignmentExpression ( ',' assignmentExpression )* )? ')'
+classExpression ::= 'class' identifier? classTail
 
-callExpression ::= memberExpression arguments ( arguments | '[' expression ']' | '.' identifierName )*
+formalParameterList ::= functionRestParameter
+           | formalsList
+           | formalsList ',' functionRestParameter
+
+formalsList ::= formalParameter ( ',' formalParameter )*
+
+formalParameter ::= bindingElement
+
+functionRestParameter ::= bindingRestElement
+
+arguments ::= '(' ')'
+           | '(' argumentList ')'
+           | '(' argumentList ',' ')'
+
+argumentList ::= assignmentExpression
+           | '...' assignmentExpression
+           | argumentList ',' assignmentExpression
+           | argumentList ',' '...' assignmentExpression
+
+callExpression ::= memberExpression arguments ( arguments | '[' expression ']' | '.' identifierName | templateLiteral )*
+           | superCall
 
 emptyStatement ::= ';'
 
@@ -145,6 +265,7 @@ assignmentOperator ::= '='
            | '*='
            | '/='
            | '%='
+           | '**='
            | '+='
            | '-='
            | '<<='
@@ -165,8 +286,9 @@ iterationStatement ::= 'do' statement 'while' '(' expression ')' semicolon
            | 'for' '(' leftHandSideExpression 'in' expression ')' statement
            | 'for' '(' 'var' variableDeclarationNoIn 'in' expression ')' statement
            | 'for' '(' leftHandSideExpression 'of' expression ')' statement
-           | 'for' '(' 'let' variableDeclarationNoIn 'of' expression ')' statement
-           | 'for' '(' 'const' variableDeclarationNoIn 'of' expression ')' statement
+           | 'for' '(' 'let' variableDeclarationNoIn 'of' assignmentExpression ')' statement
+           | 'for' '(' 'const' variableDeclarationNoIn 'of' assignmentExpression ')' statement
+           | 'for' '(' lexicalDeclaration expression? ';' expression? ')' statement
 
 expressionNoIn ::= assignmentExpressionNoIn ( ',' assignmentExpressionNoIn )*
 
@@ -191,7 +313,8 @@ relationalExpressionNoIn ::= shiftExpression ( ( '<' | '>' | '<=' | '>=' | 'inst
 
 variableDeclarationListNoIn ::= variableDeclarationNoIn ( ',' variableDeclarationNoIn )*
 
-variableDeclarationNoIn ::= identifier initializerNoIn?
+variableDeclarationNoIn ::= bindingIdentifier initializerNoIn?
+           | bindingPattern initializerNoIn?
 
 initializerNoIn ::= '=' assignmentExpressionNoIn
 
@@ -225,14 +348,115 @@ debuggerStatement ::= 'debugger' semicolon
 
 functionDeclaration ::= 'function' identifier '(' formalParameterList? ')' '{' functionBody '}'
 
-classDeclaration ::= 'class' identifier ( 'extends' identifier )? '{' classBody* '}'
+asyncFunctionDeclaration ::= 'async' 'function' identifier '(' formalParameterList? ')' '{' asyncFunctionBody '}'
 
-classBody ::= methodDefinition
-           | propertyDefinition
+generatorDeclaration ::= 'function' '*' identifier '(' formalParameterList? ')' '{' generatorBody '}'
 
-methodDefinition ::= identifier '(' formalParameterList? ')' '{' functionBody '}'
+generatorExpression ::= 'function' '*' identifier? '(' formalParameterList? ')' '{' generatorBody '}'
+
+generatorBody ::= functionBody
+
+asyncFunctionBody ::= functionBody
+
+classDeclaration ::= 'class' identifier classTail
+
+classTail ::= classHeritage? '{' classBody? '}'
+
+classHeritage ::= 'extends' leftHandSideExpression
+
+classBody ::= classElement+
+
+classElement ::= methodDefinition
+           | 'static' methodDefinition
+           | ';'
+
+methodDefinition ::= propertyName '(' formalParameterList? ')' '{' functionBody '}'
+           | '*' propertyName '(' formalParameterList? ')' '{' generatorBody '}'
+           | 'async' propertyName '(' formalParameterList? ')' '{' asyncFunctionBody '}'
+           | 'get' propertyName '(' ')' '{' functionBody '}'
+           | 'set' propertyName '(' propertySetParameterList ')' '{' functionBody '}'
 
 propertyDefinition ::= identifier '=' assignmentExpression ';'
+
+superProperty ::= 'super' '[' expression ']'
+           | 'super' '.' identifierName
+
+superCall ::= 'super' arguments
+
+metaProperty ::= 'new' '.' 'target'
+
+templateLiteral ::= NoSubstitutionTemplate
+           | TemplateHead expression templateSpans
+
+templateSpans ::= TemplateTail
+           | templateMiddleList TemplateTail
+
+templateMiddleList ::= TemplateMiddle expression
+           | templateMiddleList TemplateMiddle expression
+
+importDeclaration ::= 'import' importClause fromClause semicolon
+           | 'import' moduleSpecifier semicolon
+
+importClause ::= importedDefaultBinding
+           | nameSpaceImport
+           | namedImports
+           | importedDefaultBinding ',' nameSpaceImport
+           | importedDefaultBinding ',' namedImports
+
+importedDefaultBinding ::= importedBinding
+
+nameSpaceImport ::= '*' 'as' importedBinding
+
+namedImports ::= '{' '}'
+           | '{' importsList '}'
+           | '{' importsList ',' '}'
+
+fromClause ::= 'from' moduleSpecifier
+
+importsList ::= importSpecifier ( ',' importSpecifier )*
+
+importSpecifier ::= importedBinding
+           | identifier 'as' importedBinding
+
+moduleSpecifier ::= stringLiteral
+
+importedBinding ::= bindingIdentifier
+
+exportDeclaration ::= 'export' '*' fromClause semicolon
+           | 'export' exportClause fromClause semicolon
+           | 'export' exportClause semicolon
+           | 'export' variableStatement
+           | 'export' functionDeclaration
+           | 'export' generatorDeclaration
+           | 'export' asyncFunctionDeclaration
+           | 'export' classDeclaration
+           | 'export' lexicalDeclaration
+           | 'export' 'default' functionDeclaration
+           | 'export' 'default' generatorDeclaration
+           | 'export' 'default' asyncFunctionDeclaration
+           | 'export' 'default' classDeclaration
+           | 'export' 'default' assignmentExpression semicolon
+
+exportClause ::= '{' '}'
+           | '{' exportsList '}'
+           | '{' exportsList ',' '}'
+
+exportsList ::= exportSpecifier ( ',' exportSpecifier )*
+
+exportSpecifier ::= identifier
+           | identifier 'as' identifier
+
+script ::= scriptBody?
+
+scriptBody ::= sourceElement+
+
+module ::= moduleBody?
+
+moduleBody ::= moduleItem+
+
+moduleItem ::= importDeclaration
+           | exportDeclaration
+           | sourceElement
 
 semicolon ::= ';'
 
@@ -243,6 +467,7 @@ identifierName ::= identifierName^Token
 identifier ::= Identifier
 
 Ignore ::= WhiteSpace
+          | Comment
           /* ws: definition */
 
 <?TOKENS?>
@@ -258,14 +483,20 @@ ReservedWord ::= Keyword
            | BooleanLiteral
 
 Keyword ::= 'break'
+           | 'await'
            | 'do'
            | 'instanceof'
            | 'typeof'
            | 'case'
            | 'else'
+           | 'export'
            | 'new'
            | 'var'
            | 'catch'
+           | 'class'
+           | 'extends'
+           | 'super'
+           | 'const'
            | 'finally'
            | 'return'
            | 'void'
@@ -281,18 +512,14 @@ Keyword ::= 'break'
            | 'if'
            | 'throw'
            | 'delete'
+           | 'import'
            | 'in'
            | 'try'
            | 'of'
            | 'let'
+           | 'yield'
 
-FutureReservedWord ::= 'class'
-           | 'enum'
-           | 'extends'
-           | 'super'
-           | 'const'
-           | 'export'
-           | 'import'
+FutureReservedWord ::= 'enum'
 
 NullLiteral ::= 'null'
 
@@ -708,6 +935,20 @@ RegularExpressionChar ::= RegularExpressionNonTerminator - ( '\' | '/' | '[' )
 
 RegularExpressionFlag ::= IdentifierPart
 
+NoSubstitutionTemplate ::= '`' TemplateCharacter* '`'
+
+TemplateHead ::= '`' TemplateCharacter* '${'
+
+TemplateMiddle ::= '}' TemplateCharacter* '${'
+
+TemplateTail ::= '}' TemplateCharacter* '`'
+
+TemplateCharacter ::= '$' ( . - '{' )
+           | '\\' EscapeSequence
+           | LineContinuation
+           | LineTerminatorSequence
+           | ( SourceCharacter - ( '`' | '\\' | '$' | LineTerminator ) )
+
 DecimalLiteral ::= DecimalIntegerLiteral '.' DecimalDigit* ExponentPart?
            | '.' DecimalDigit+ ExponentPart?
            | DecimalIntegerLiteral ExponentPart?
@@ -721,7 +962,11 @@ NonZeroDigit ::= [1-9]
 
 HexIntegerLiteral ::= '0' [xX] HexDigit+
 
-OctalIntegerLiteral ::= '0' OctalDigit+
+BinaryIntegerLiteral ::= '0' [bB] BinaryDigit+
+
+OctalIntegerLiteral ::= '0' [oO] OctalDigit+
+
+BinaryDigit ::= [0-1]
 
 OctalEscapeSequence ::= OctalDigit
            | ZeroToThree OctalDigit
@@ -775,7 +1020,10 @@ USP ::= [#x0009-#x000D]
 Comment ::= MultiLineComment
            | SingleLineComment
 
-MultiLineComment ::= '/*' ( SourceCharacter* - ( SourceCharacter* '*/' SourceCharacter* ) ) '*/'
+MultiLineComment ::= '/*' MultiLineCommentBody* '*/'
+
+MultiLineCommentBody ::= ( SourceCharacter - '*' )
+                       | ( '*' ( SourceCharacter - '/' ) )
 
 SingleLineComment ::= '//' ( SourceCharacter - LineTerminator )*
            /* ws: explicit */
@@ -785,4 +1033,4 @@ IdentifierName^Token << 'get' 'set'
 NonNameChar ::= . - IdentifierPart
            | $
 
-NonNameChar \\ Identifier IdentifierName^Token 'break' 'do' 'instanceof' 'typeof' 'case' 'else' 'new' 'var' 'catch' 'finally' 'return' 'void' 'continue' 'for' 'switch' 'while' 'debugger' 'function' 'this' 'with' 'default' 'if' 'throw' 'delete' 'in' 'try' 'get' 'set' NullLiteral BooleanLiteral
+NonNameChar \\ Identifier IdentifierName^Token Keyword FutureReservedWord 'get' 'set' NullLiteral BooleanLiteral

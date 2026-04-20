@@ -21,10 +21,11 @@ const supportedCases = [
   { name: 'for statement with expressions', source: 'for(this;this;this){}' },
   { name: 'for in statement', source: 'for(this in this){}' },
   { name: 'switch statement', source: 'switch(this){default:;}' },
-  { name: 'line comment as sourceElement', source: '// comment\n' }
-  // TODO: multiline comment causes regex lookahead confusion in lexer
-  // { name: 'multiline comment as sourceElement', source: '/* comment */' },
-  // { name: 'mixed source elements', source: '/* a */;debugger;this;' }
+  { name: 'line comment as sourceElement', source: '// comment\n' },
+  { name: 'multiline comment as sourceElement', source: '/* comment */' },
+  { name: 'mixed source elements', source: '/* a */;debugger;this;' },
+  { name: 'object literal with properties', source: 'const obj = {a:1, b:2};' },
+  { name: 'empty object literal', source: 'const obj = {};' }
 ];
 
 test('current parser accepts known-supported grammar subset', async (t) => {

@@ -7,7 +7,8 @@ This folder contains the parser validation suite for the generated parser at ../
 - parser-test-helpers.js: shared parser/collector helpers used by all tests.
 - ecmascript-parser-supported.test.js: stable regression tests for grammar currently accepted by the generated parser.
 - ecmascript-parser-capability-matrix.test.js: documents what is currently supported and what is intentionally failing in the baseline.
-- ecmascript-es6-target-baseline.test.js: ES2015 target cases that must fail today and should be turned into passing tests as ES6 grammar support is implemented.
+- ecmascript-es6-target-baseline.test.js: ES2015 feature coverage tests; this file now tracks expanded ES2015 support beyond the initial baseline.
+- ecmascript-es8-supported.test.js: ES2017/ES8 support checks (async/await, exponentiation, and related additions).
 
 ## Run
 
@@ -21,4 +22,4 @@ node --test compiler/tests/*.test.js
 
 1. Update grammar in ../grammar/EcmaScript.ebnf.
 2. Regenerate parser with ../compiler/build.sh.
-3. Move individual ES6 cases from "expected fail" to "supported" tests once each feature starts parsing.
+3. Add or move ES2015 cases into supported sections as each feature starts parsing.
