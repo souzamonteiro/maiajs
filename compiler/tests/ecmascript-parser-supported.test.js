@@ -25,7 +25,9 @@ const supportedCases = [
   { name: 'multiline comment as sourceElement', source: '/* comment */' },
   { name: 'mixed source elements', source: '/* a */;debugger;this;' },
   { name: 'object literal with properties', source: 'const obj = {a:1, b:2};' },
-  { name: 'empty object literal', source: 'const obj = {};' }
+  { name: 'empty object literal', source: 'const obj = {};' },
+  { name: 'member call expression', source: 'x.y();' },
+  { name: 'console log call expression', source: 'console.log("hello");' }
 ];
 
 test('current parser accepts known-supported grammar subset', async (t) => {

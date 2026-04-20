@@ -239,3 +239,41 @@ This architecture complements:
 - `docs/ECMAScript_2017_Grammar.md`
 
 It defines the concrete implementation surface in this repository for the new JS compiler path.
+
+## Project Restriction: Toolchain Ownership Boundaries
+
+This project adopts a strict ownership rule for bug fixes across the Maia ecosystem.
+
+Rule:
+
+- Do not patch MaiaJS to work around defects that belong to MaiaCpp, MaiaC, MaiaWASM, or MaiaCC.
+- If transpiled output fails due to backend/toolchain behavior, fix the responsible project directly.
+
+Mandatory fix location policy:
+
+1. JS frontend/parsing/lowering bugs:
+- Fix in MaiaJS.
+
+2. C++ emission/runtime ABI bugs tied to C++ backend expectations:
+- Fix in MaiaCpp.
+
+3. C generation / webc / host glue / WAT assembly pipeline bugs:
+- Fix in MaiaC.
+
+4. WASM backend/runtime codegen bugs:
+- Fix in MaiaWASM.
+
+5. Grammar/parser-generator framework bugs affecting parser generation:
+- Fix in MaiaCC.
+
+Submodule workflow policy:
+
+- Commit and push in each altered submodule repository.
+- Update submodule pointer in MaiaJS only after submodule commits exist and are pushed.
+- Keep commit history explicit about root cause and owning layer.
+
+Rationale:
+
+- Prevent architectural drift and accidental layering violations.
+- Preserve long-term maintainability of MaiaJS and the Maia toolchain.
+- Ensure fixes are reusable by all projects depending on the same backend components.

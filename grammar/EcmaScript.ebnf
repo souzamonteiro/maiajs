@@ -135,7 +135,7 @@ memberExpression ::= ( primaryExpression
                      | metaProperty
                      | 'new' memberExpression arguments )
                      ( '[' expression ']'
-                     | '.' identifierName
+                     | '.' propertyIdentifierName
                      | templateLiteral )*
 
 primaryExpression ::= 'this'
@@ -256,7 +256,7 @@ argumentList ::= assignmentExpression
            | argumentList ',' assignmentExpression
            | argumentList ',' '...' assignmentExpression
 
-callExpression ::= memberExpression arguments ( arguments | '[' expression ']' | '.' identifierName | templateLiteral )*
+callExpression ::= memberExpression arguments ( arguments | '[' expression ']' | '.' propertyIdentifierName | templateLiteral )*
            | superCall
 
 emptyStatement ::= ';'
@@ -379,7 +379,7 @@ methodDefinition ::= propertyName '(' formalParameterList? ')' '{' functionBody 
 propertyDefinition ::= identifier '=' assignmentExpression ';'
 
 superProperty ::= 'super' '[' expression ']'
-           | 'super' '.' identifierName
+           | 'super' '.' propertyIdentifierName
 
 superCall ::= 'super' arguments
 
@@ -460,7 +460,8 @@ moduleItem ::= importDeclaration
 
 semicolon ::= ';'
 
-identifierName ::= identifierName^Token
+propertyIdentifierName ::= identifier
+           | IdentifierName^Token
            | 'get'
            | 'set'
 
