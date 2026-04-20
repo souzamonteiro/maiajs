@@ -4,8 +4,11 @@ sourceElement ::= statement
                 | Comment
 
 statement ::= functionDeclaration
+           | classDeclaration
            | block
            | variableStatement
+           | letDeclaration
+           | constDeclaration
            | emptyStatement
            | expressionStatement
            | ifStatement
@@ -24,14 +27,27 @@ block ::= '{' statement* '}'
 
 variableStatement ::= 'var' variableDeclarationList semicolon
 
+letDeclaration ::= 'let' variableDeclarationList semicolon
+
+constDeclaration ::= 'const' variableDeclarationList semicolon
+
 variableDeclarationList ::= variableDeclaration ( ',' variableDeclaration )*
 
 variableDeclaration ::= identifier initializer?
 
 initializer ::= '=' assignmentExpression
 
-assignmentExpression ::= leftHandSideExpression assignmentOperator assignmentExpression
+assignmentExpression ::= arrowFunction
+           | leftHandSideExpression assignmentOperator assignmentExpression
            | conditionalExpression
+
+arrowFunction ::= arrowFunctionParameters '=>' arrowFunctionBody
+
+arrowFunctionParameters ::= identifier
+           | '(' formalParameterList? ')'
+
+arrowFunctionBody ::= assignmentExpression
+           | '{' functionBody '}'
 
 conditionalExpression ::= logicalORExpression ( '?' assignmentExpression ':' assignmentExpression )?
 
@@ -89,9 +105,13 @@ literal ::= nullLiteral
            | stringLiteral
            | regularExpressionLiteral
 
-numericLiteral ::= decimalLiteral
-           | hexIntegerLiteral
-           | octalIntegerLiteral
+numericLiteral ::= DecimalLiteral
+           | HexIntegerLiteral
+           | OctalIntegerLiteral
+
+stringLiteral ::= StringLiteral
+
+regularExpressionLiteral ::= RegularExpressionLiteral
 
 arrayLiteral ::= '[' assignmentExpression? ( ',' assignmentExpression? )* ']'
 
@@ -144,6 +164,9 @@ iterationStatement ::= 'do' statement 'while' '(' expression ')' semicolon
            | 'for' '(' 'var' variableDeclarationListNoIn ';' expression? ';' expression? ')' statement
            | 'for' '(' leftHandSideExpression 'in' expression ')' statement
            | 'for' '(' 'var' variableDeclarationNoIn 'in' expression ')' statement
+           | 'for' '(' leftHandSideExpression 'of' expression ')' statement
+           | 'for' '(' 'let' variableDeclarationNoIn 'of' expression ')' statement
+           | 'for' '(' 'const' variableDeclarationNoIn 'of' expression ')' statement
 
 expressionNoIn ::= assignmentExpressionNoIn ( ',' assignmentExpressionNoIn )*
 
@@ -202,11 +225,22 @@ debuggerStatement ::= 'debugger' semicolon
 
 functionDeclaration ::= 'function' identifier '(' formalParameterList? ')' '{' functionBody '}'
 
+classDeclaration ::= 'class' identifier ( 'extends' identifier )? '{' classBody* '}'
+
+classBody ::= methodDefinition
+           | propertyDefinition
+
+methodDefinition ::= identifier '(' formalParameterList? ')' '{' functionBody '}'
+
+propertyDefinition ::= identifier '=' assignmentExpression ';'
+
 semicolon ::= ';'
 
 identifierName ::= identifierName^Token
            | 'get'
            | 'set'
+
+identifier ::= Identifier
 
 Ignore ::= WhiteSpace
           /* ws: definition */
@@ -249,6 +283,8 @@ Keyword ::= 'break'
            | 'delete'
            | 'in'
            | 'try'
+           | 'of'
+           | 'let'
 
 FutureReservedWord ::= 'class'
            | 'enum'
@@ -742,6 +778,7 @@ Comment ::= MultiLineComment
 MultiLineComment ::= '/*' ( SourceCharacter* - ( SourceCharacter* '*/' SourceCharacter* ) ) '*/'
 
 SingleLineComment ::= '//' ( SourceCharacter - LineTerminator )*
+           /* ws: explicit */
 
 IdentifierName^Token << 'get' 'set'
 
