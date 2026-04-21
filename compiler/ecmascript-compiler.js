@@ -205,26 +205,185 @@ function extractHostCallsFromTree(tree, hostRegistry) {
   return hostCalls;
 }
 
-function emitPlaceholderCpp(inputPath, hostCalls) {
+// ---- Expression lowering ----
+
+const EXPR_PASSTHROUGH_NODES = new Set([
+  'expression', 'assignmentExpression', 'conditionalExpression',
+  'logicalORExpression', 'logicalANDExpression', 'bitwiseORExpression',
+  'bitwiseXORExpression', 'bitwiseANDExpression', 'equalityExpression',
+  'relationalExpression', 'shiftExpression', 'additiveExpression',
+  'multiplicativeExpression', 'exponentiationExpression', 'unaryExpression',
+  'postfixExpression', 'leftHandSideExpression', 'newExpression', 'memberExpression'
+]);
+
+function inferExprType(node) {
+  if (!node || node.kind !== 'nonterminal') { return 'any'; }
+  if (EXPR_PASSTHROUGH_NODES.has(node.name)) {
+    const ntc = (node.children || []).filter((c) => c.kind === 'nonterminal');
+    return ntc.length === 1 ? inferExprType(ntc[0]) : 'any';
+  }
+  if (node.name === 'primaryExpression') {
+    const litChild = (node.children || []).find((c) => c.kind === 'nonterminal' && c.name === 'literal');
+    return litChild ? inferExprType(litChild) : 'any';
+  }
+  if (node.name === 'literal') {
+    for (const child of (node.children || [])) {
+      if (child.kind !== 'nonterminal') { continue; }
+      if (child.name === 'stringLiteral') { return 'string'; }
+      if (child.name === 'numericLiteral') { return 'number'; }
+      if (child.name === 'booleanLiteral') { return 'bool'; }
+      if (child.name === 'nullLiteral') { return 'null'; }
+    }
+  }
+  return 'any';
+}
+
+function cppArgType(jsType) {
+  const typeMap = { string: 'const char*', number: 'double', bool: 'int', null: 'void*' };
+  return typeMap[jsType] || 'void*';
+}
+
+function collectArgumentExpressions(argListNode) {
+  const result = [];
+  function collect(node) {
+    if (!node || node.name !== 'argumentList') { return; }
+    const children = node.children || [];
+    if (children[0] && children[0].kind === 'nonterminal' && children[0].name === 'argumentList') {
+      collect(children[0]);
+      const expr = children.find((c, i) => i > 0 && c.kind === 'nonterminal' && c.name === 'assignmentExpression');
+      if (expr) { result.push(expr); }
+    } else {
+      const expr = children.find((c) => c.kind === 'nonterminal' && c.name === 'assignmentExpression');
+      if (expr) { result.push(expr); }
+    }
+  }
+  collect(argListNode);
+  return result;
+}
+
+function lowerLiteralValue(node) {
+  for (const child of (node.children || [])) {
+    if (child.kind !== 'nonterminal') { continue; }
+    if (child.name === 'stringLiteral') {
+      const t = (child.children || []).find((c) => c.kind === 'terminal' && c.token === 'StringLiteral');
+      return t ? t.value : null;
+    }
+    if (child.name === 'numericLiteral') {
+      const t = (child.children || []).find((c) => c.kind === 'terminal');
+      return t ? t.value : null;
+    }
+    if (child.name === 'nullLiteral') { return 'nullptr'; }
+    if (child.name === 'booleanLiteral') {
+      const t = (child.children || []).find((c) => c.kind === 'terminal');
+      return t ? t.value : null;
+    }
+  }
+  return null;
+}
+
+function lowerExpressionValue(node, hostRegistry) {
+  if (!node || node.kind !== 'nonterminal') { return null; }
+  if (EXPR_PASSTHROUGH_NODES.has(node.name)) {
+    const ntc = (node.children || []).filter((c) => c.kind === 'nonterminal');
+    return ntc.length === 1 ? lowerExpressionValue(ntc[0], hostRegistry) : null;
+  }
+  if (node.name === 'callExpression') { return lowerCallExpressionValue(node, hostRegistry); }
+  if (node.name === 'primaryExpression') {
+    for (const child of (node.children || [])) {
+      if (child.kind === 'terminal' && child.token === 'TOKEN_this') { return 'this'; }
+      if (child.kind === 'nonterminal') {
+        if (child.name === 'literal') { return lowerLiteralValue(child); }
+        if (child.name === 'identifier') { return findFirstIdentifierValue(child); }
+      }
+    }
+  }
+  return null;
+}
+
+function lowerCallExpressionValue(node, hostRegistry) {
+  const children = node.children || [];
+  const memberExprNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'memberExpression');
+  const argsNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'arguments');
+  if (!memberExprNode || !argsNode) { return null; }
+
+  const pathSegments = extractPathFromMemberExpression(memberExprNode);
+  if (!pathSegments || pathSegments.length === 0) { return null; }
+
+  const hostSymbol = hostRegistry.resolvePath(pathSegments);
+  if (!hostSymbol) { return null; }
+
+  const argListNode = (argsNode.children || []).find((c) => c.kind === 'nonterminal' && c.name === 'argumentList');
+  const argExprs = argListNode ? collectArgumentExpressions(argListNode) : [];
+  const args = argExprs.map((expr) => {
+    const val = lowerExpressionValue(expr, hostRegistry);
+    return val !== null ? val : '/* expr */';
+  }).join(', ');
+
+  return `${hostSymbol}(${args})`;
+}
+
+function collectHostSignatures(tree, hostRegistry) {
+  const signatures = new Map();
+  walk(tree, (node) => {
+    if (!node || node.kind !== 'nonterminal' || node.name !== 'callExpression') { return; }
+    const children = node.children || [];
+    const memberExprNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'memberExpression');
+    const argsNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'arguments');
+    if (!memberExprNode || !argsNode) { return; }
+    const pathSegments = extractPathFromMemberExpression(memberExprNode);
+    if (!pathSegments) { return; }
+    const host = hostRegistry.resolvePath(pathSegments);
+    if (!host || signatures.has(host)) { return; }
+    const argListNode = (argsNode.children || []).find((c) => c.kind === 'nonterminal' && c.name === 'argumentList');
+    const argExprs = argListNode ? collectArgumentExpressions(argListNode) : [];
+    signatures.set(host, argExprs.map(inferExprType));
+  });
+  return signatures;
+}
+
+function lowerProgramToCppStatements(tree, hostRegistry) {
+  const lines = [];
+  for (const child of (tree.children || [])) {
+    if (!child || child.kind !== 'nonterminal' || child.name !== 'sourceElement') { continue; }
+    const stmtNode = (child.children || []).find((c) => c.kind === 'nonterminal' && c.name === 'statement');
+    if (!stmtNode) { continue; }
+    const exprStmtNode = (stmtNode.children || []).find((c) => c.kind === 'nonterminal' && c.name === 'expressionStatement');
+    if (!exprStmtNode) {
+      lines.push('  // [statement not yet lowered]');
+      continue;
+    }
+    const exprNode = (exprStmtNode.children || []).find((c) => c.kind === 'nonterminal' && c.name === 'expression');
+    if (!exprNode) { continue; }
+    const lowered = lowerExpressionValue(exprNode, hostRegistry);
+    lines.push(lowered !== null ? `  ${lowered};` : '  // [expression not yet lowered]');
+  }
+  return lines;
+}
+
+function generateCpp(inputPath, tree, hostCalls, hostRegistry) {
   const base = path.basename(inputPath);
-  const uniqueHostFns = Array.from(new Set(hostCalls.map((c) => c.host)));
-  const hostFnDecls = uniqueHostFns
-    .map((hostFn) => `extern void ${hostFn}(const char*);`)
+
+  const signatures = collectHostSignatures(tree, hostRegistry);
+  const hostDecls = Array.from(signatures.entries())
+    .map(([fn, argTypes]) => {
+      const cppArgs = argTypes.length === 0 ? 'void' : argTypes.map(cppArgType).join(', ');
+      return `extern void ${fn}(${cppArgs});`;
+    })
     .join('\n');
+
   const hostMapComments = hostCalls.length === 0
-    ? '// Host-call map: (none detected)\n'
-    : hostCalls.map((call) => `// Host-call map: ${call.source} -> ${call.host}`).join('\n') + '\n';
+    ? '// Host-call map: (none detected)'
+    : hostCalls.map((call) => `// Host-call map: ${call.source} -> ${call.host}`).join('\n');
+
+  const statements = lowerProgramToCppStatements(tree, hostRegistry);
+  const body = statements.length > 0 ? statements.join('\n') : '  // empty program';
 
   return `// Auto-generated by ecmascript-compiler.js\n`
     + `// Source: ${base}\n`
-    + `// NOTE: Placeholder backend. Replace with full ES->C++98 lowering.\n`
-    + `${hostMapComments}\n`
-    + `#include <stdio.h>\n\n`
-    + `${hostFnDecls}${hostFnDecls ? '\n\n' : ''}`
+    + `${hostMapComments}\n\n`
+    + `${hostDecls}${hostDecls ? '\n\n' : ''}`
     + `int main() {\n`
-    + `  puts(\"ecmascript-compiler placeholder output\");\n`
-    + `  puts(\"AST nodes captured: yes\");\n`
-    + `  puts(\"Host-call mapping stage: enabled\");\n`
+    + `${body}\n`
     + `  return 0;\n`
     + `}\n`;
 }
@@ -291,7 +450,7 @@ function main() {
 
   if (options.cppOut) {
     ensureParentDir(options.cppOut);
-    fs.writeFileSync(options.cppOut, emitPlaceholderCpp(inputPath, hostCalls));
+    fs.writeFileSync(options.cppOut, generateCpp(inputPath, tree, hostCalls, hostRegistry));
   }
 }
 
