@@ -6,7 +6,7 @@ Last updated: 2026-04-22
 
 - Overall status: Phase 3 — catch/finally routing in async checkpoints DONE
 - Estimated completion: 99%
-- Test baseline: 202 passing, 0 failing (`node --test compiler/tests/*.test.js`)
+- Test baseline: 208 passing, 0 failing (`node --test compiler/tests/*.test.js`)
 - Current focus: full closure object/runtime semantics beyond the current local capture-payload fallback MVP + runtime packaging hardening for generated dist
 
 ## Milestones
@@ -50,7 +50,7 @@ Legend:
 - [x] Array literal lowering MVP (empty + non-empty literals via arity-based runtime hooks)
 - [x] Array spread/elision lowering semantics now emit explicit builder-based runtime calls (no direct `nullptr` fallback)
 - [x] Local object/array/lambda fallback hooks deduplicated through shared runtime helper allocators, including capture-aware lambda payload allocation
-- [ ] Arrow/lambda semantics are partial: non-closure MVP plus immediate top-level/local/nested-block/enclosing-lambda capture-aware hook lowering are implemented for sync/async cases, and local fallback payloads now preserve concrete captured values; full closure objects and complete function-object behavior remain pending
+- [ ] Arrow/lambda semantics are partial: non-closure MVP plus immediate top-level/local/nested-block/enclosing-lambda capture-aware hook lowering are implemented for sync/async cases, and local fallback payloads now preserve concrete captured values including overflow sidecar storage beyond four fixed slots plus deterministic function identity metadata and explicit closure-handle/env-handle separation, with env-first capture access feeding compatibility mirror fields through a lambda-value capture accessor path, explicit env-null defensive fallbacks, out-of-range accessor guard coverage, a minimal runtime-facing capture read API (`count`/`at`) now used by internal allocator reads, explicit emitted contract documentation in the shared local fallback block, and mirror-field legacy-only labeling in contract text; full closure objects and complete function-object behavior remain pending
 - [ ] Full control-flow lowering completeness for loops/advanced statements beyond current subset
 
 ### C) Async/Await + Runtime + Dist bootstrap
@@ -88,8 +88,46 @@ Legend:
 - [x] Cover nested async lambdas capturing enclosing lambda parameters/locals with regression tests
 - [x] Preserve concrete captured values in local lambda fallback payloads instead of only storing capture counts
 - [x] Deduplicate capture-aware local lambda fallback payload allocation through a shared runtime helper
+- [x] Record explicit truncation metadata in local lambda fallback payloads when capture-aware hooks exceed four capture slots
+- [x] Preserve overflow captures beyond four fixed lambda payload slots via sidecar storage in local fallback runtime helpers
+- [x] Cover async lambda overflow-capture sidecar preservation (>4 captures) with focused regression tests
+- [x] Cover mixed sync+async overflow-capture hook emission in one source and verify shared lambda payload helper dedup remains single-emission
+- [x] Attach deterministic function identity metadata (`function_id`) to capture-aware local lambda fallback payloads (sync/async)
+- [x] Split local lambda fallback payload into explicit closure handle + separate env handle while preserving compatibility fields
+- [x] Populate lambda payload compatibility capture mirrors via shared env-first capture lookup helper
+- [x] Add explicit env-null defensive fallbacks for compatibility mirror capture fields in local lambda fallback payload allocation
+- [x] Route compatibility mirror population through shared lambda-value capture accessor that prioritizes env-backed capture reads
+- [x] Add focused regression coverage for env/value capture accessor out-of-range guards returning zero
+- [x] Add minimal runtime-facing lambda capture read API helpers (`__maia_runtime_lambda_get_capture_count`, `__maia_runtime_lambda_get_capture_at`) in shared local fallback runtime
+- [x] Add focused regression coverage that no-capture-only lambda programs do not emit capture runtime API helpers
+- [x] Emit explicit closure/env runtime contract comment block with capture-aware shared local fallback helpers
+- [x] Define runtime contract stability notes for lambda closure/env helpers and mirror-field deprecation path
+- [x] Migrate local lambda payload allocator internal capture reads to runtime-facing API helpers (`get_capture_count`/`get_capture_at`)
+- [x] Mark lambda payload mirror fields as legacy-only in emitted local fallback contract documentation (Phase C start)
+- [x] Add focused regression ensuring runtime-facing capture API helper avoids direct mirror-field reads (mirror reads remain confined to compatibility fallback accessor)
+- [x] Add lint-style regression guard that blocks new direct mirror-field read consumers beyond established compatibility fallback paths (Phase D)
 
 ## Infrastructure Status
+
+### Lambda Runtime Contract Stability (Local Fallback MVP)
+
+- Scope: applies only to emitted local fallback helpers when capture-aware lambda payload support is present.
+- Stable helper surface (current):
+  - `__maia_runtime_alloc_lambda_value(...)`
+  - `__maia_runtime_lambda_get_capture_count(void* lambda_value)`
+  - `__maia_runtime_lambda_get_capture_at(void* lambda_value, int index)`
+- Semantic guarantees (current):
+  - `function_id` is deterministic per lowered lambda hook signature.
+  - `capture_count` returned by helper APIs is canonical and env-first.
+  - capture reads by index are env-first and return `0` for invalid/out-of-range indexes.
+- Compatibility fields in `__maia_runtime_lambda_value` (`capture1..capture4`, `extra_*`):
+  - currently maintained as mirror projections for backward compatibility.
+  - should be treated as transitional, not canonical, by new runtime consumers.
+- Deprecation path (planned):
+  - Phase A: keep mirrors + env/value accessors (current).
+  - Phase B: migrate internal/runtime consumers to helper APIs only.
+  - Phase C: mark mirror fields as legacy-only in tests/docs.
+  - Phase D: remove mirror-field dependency from new features and closure object integration work.
 
 ### Distribution and Runtime Libraries
 

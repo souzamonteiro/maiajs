@@ -1324,6 +1324,10 @@ function getLambdaRuntimeHookName(arity, captureCount, isAsync) {
   return `${prefix}${arity}`;
 }
 
+function getLambdaRuntimeFunctionId(arity, captureCount, isAsync) {
+  return (isAsync ? 1000000 : 0) + (arity * 1000) + captureCount;
+}
+
 function lowerArrowFunctionValue(arrowNode, isAsync = false, compileContext = null) {
   const params = extractLambdaParameterNames(arrowNode);
   const arity = params.length;
@@ -1620,24 +1624,106 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
     '  return (void*)v;',
     '}',
     ...(hasLambdaCapturePayload ? [
-      'struct __maia_runtime_lambda_value {',
-      '  int arity;',
-      '  int is_async;',
+      '/* lambda closure/env fallback contract (local MVP)',
+      ' * - function_id is deterministic per lowered lambda hook signature.',
+      ' * - capture_count is the canonical total capture count via env/value API.',
+      ' * - __maia_runtime_lambda_get_capture_at returns capture value by index or 0 if out-of-range.',
+      ' * - mirror fields (capture1..capture4, extra_*) are legacy-only compatibility projections; env-backed accessors are canonical.',
+      ' */',
+      'struct __maia_runtime_lambda_env {',
       '  int capture_count;',
+      '  int truncated_captures;',
       '  int capture1;',
       '  int capture2;',
       '  int capture3;',
       '  int capture4;',
+      '  int extra_capture_count;',
+      '  int* extra_captures;',
       '};',
-      'static void* __maia_runtime_alloc_lambda_value(int arity, int is_async, int capture_count, int c1, int c2, int c3, int c4) {',
+      'static void* __maia_runtime_alloc_lambda_env(int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, const int* extra_captures) {',
+      '  __maia_runtime_lambda_env* env = new __maia_runtime_lambda_env();',
+      '  env->capture_count = capture_count;',
+      '  env->truncated_captures = 0;',
+      '  env->capture1 = c1;',
+      '  env->capture2 = c2;',
+      '  env->capture3 = c3;',
+      '  env->capture4 = c4;',
+      '  env->extra_capture_count = extra_capture_count;',
+      '  env->extra_captures = 0;',
+      '  if (extra_capture_count > 0 && extra_captures) {',
+      '    env->extra_captures = new int[extra_capture_count];',
+      '    for (int i = 0; i < extra_capture_count; i += 1) {',
+      '      env->extra_captures[i] = extra_captures[i];',
+      '    }',
+      '  }',
+      '  return (void*)env;',
+      '}',
+      'struct __maia_runtime_lambda_value {',
+      '  int function_id;',
+      '  int arity;',
+      '  int is_async;',
+      '  void* env;',
+      '  int capture_count;',
+      '  int truncated_captures;',
+      '  int capture1;',
+      '  int capture2;',
+      '  int capture3;',
+      '  int capture4;',
+      '  int extra_capture_count;',
+      '  int* extra_captures;',
+      '};',
+      'static int __maia_runtime_lambda_env_capture_at(__maia_runtime_lambda_env* env, int index) {',
+      '  if (!env || index < 0) { return 0; }',
+      '  if (index == 0) { return env->capture1; }',
+      '  if (index == 1) { return env->capture2; }',
+      '  if (index == 2) { return env->capture3; }',
+      '  if (index == 3) { return env->capture4; }',
+      '  int extraIndex = index - 4;',
+      '  if (extraIndex < 0 || extraIndex >= env->extra_capture_count || !env->extra_captures) { return 0; }',
+      '  return env->extra_captures[extraIndex];',
+      '}',
+      'static int __maia_runtime_lambda_value_capture_at(__maia_runtime_lambda_value* fn, int index) {',
+      '  if (!fn || index < 0) { return 0; }',
+      '  __maia_runtime_lambda_env* env = (__maia_runtime_lambda_env*)fn->env;',
+      '  if (env) { return __maia_runtime_lambda_env_capture_at(env, index); }',
+      '  if (index == 0) { return fn->capture1; }',
+      '  if (index == 1) { return fn->capture2; }',
+      '  if (index == 2) { return fn->capture3; }',
+      '  if (index == 3) { return fn->capture4; }',
+      '  int extraIndex = index - 4;',
+      '  if (extraIndex < 0 || extraIndex >= fn->extra_capture_count || !fn->extra_captures) { return 0; }',
+      '  return fn->extra_captures[extraIndex];',
+      '}',
+      'static int __maia_runtime_lambda_get_capture_count(void* lambda_value) {',
+      '  __maia_runtime_lambda_value* fn = (__maia_runtime_lambda_value*)lambda_value;',
+      '  if (!fn) { return 0; }',
+      '  __maia_runtime_lambda_env* env = (__maia_runtime_lambda_env*)fn->env;',
+      '  if (env) { return env->capture_count; }',
+      '  return fn->capture_count;',
+      '}',
+      'static int __maia_runtime_lambda_get_capture_at(void* lambda_value, int index) {',
+      '  __maia_runtime_lambda_value* fn = (__maia_runtime_lambda_value*)lambda_value;',
+      '  return __maia_runtime_lambda_value_capture_at(fn, index);',
+      '}',
+      'static void* __maia_runtime_alloc_lambda_value(int function_id, int arity, int is_async, int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, const int* extra_captures) {',
       '  __maia_runtime_lambda_value* fn = new __maia_runtime_lambda_value();',
+      '  __maia_runtime_lambda_env* env = (__maia_runtime_lambda_env*)__maia_runtime_alloc_lambda_env(capture_count, c1, c2, c3, c4, extra_capture_count, extra_captures);',
+      '  fn->function_id = function_id;',
       '  fn->arity = arity;',
       '  fn->is_async = is_async;',
-      '  fn->capture_count = capture_count;',
+      '  fn->env = (void*)env;',
+      '  fn->capture_count = __maia_runtime_lambda_get_capture_count((void*)fn);',
+      '  fn->truncated_captures = env ? env->truncated_captures : 0;',
       '  fn->capture1 = c1;',
       '  fn->capture2 = c2;',
       '  fn->capture3 = c3;',
       '  fn->capture4 = c4;',
+      '  fn->extra_capture_count = env ? env->extra_capture_count : extra_capture_count;',
+      '  fn->extra_captures = env ? env->extra_captures : 0;',
+      '  fn->capture1 = __maia_runtime_lambda_get_capture_at((void*)fn, 0);',
+      '  fn->capture2 = __maia_runtime_lambda_get_capture_at((void*)fn, 1);',
+      '  fn->capture3 = __maia_runtime_lambda_get_capture_at((void*)fn, 2);',
+      '  fn->capture4 = __maia_runtime_lambda_get_capture_at((void*)fn, 3);',
       '  return (void*)fn;',
       '}'
     ] : []),
@@ -1907,16 +1993,23 @@ function emitLambdaRuntimeFallbackCpp(tree) {
     return a.captureCount - b.captureCount;
   })) {
     const hookName = getLambdaRuntimeHookName(signature.arity, signature.captureCount, false);
+    const functionId = getLambdaRuntimeFunctionId(signature.arity, signature.captureCount, false);
     const params = [];
     for (let i = 1; i <= signature.captureCount; i += 1) {
       params.push(`int c${i}`);
     }
     lines.push(`void* ${hookName}(${params.length > 0 ? params.join(', ') : 'void'}) {`);
     if (signature.captureCount > 0) {
-      for (let i = 5; i <= signature.captureCount; i += 1) {
-        lines.push(`  (void)c${i};`);
+      if (signature.captureCount > 4) {
+        lines.push(`  int extra_captures[${signature.captureCount - 4}];`);
+        for (let i = 5; i <= signature.captureCount; i += 1) {
+          lines.push(`  extra_captures[${i - 5}] = c${i};`);
+        }
+        lines.push(`  return __maia_runtime_alloc_lambda_value(${functionId}, ${signature.arity}, 0, ${signature.captureCount}, ${signature.captureCount >= 1 ? 'c1' : '0'}, ${signature.captureCount >= 2 ? 'c2' : '0'}, ${signature.captureCount >= 3 ? 'c3' : '0'}, ${signature.captureCount >= 4 ? 'c4' : '0'}, ${signature.captureCount - 4}, extra_captures);`);
+        lines.push('}');
+        continue;
       }
-      lines.push(`  return __maia_runtime_alloc_lambda_value(${signature.arity}, 0, ${signature.captureCount}, ${signature.captureCount >= 1 ? 'c1' : '0'}, ${signature.captureCount >= 2 ? 'c2' : '0'}, ${signature.captureCount >= 3 ? 'c3' : '0'}, ${signature.captureCount >= 4 ? 'c4' : '0'});`);
+      lines.push(`  return __maia_runtime_alloc_lambda_value(${functionId}, ${signature.arity}, 0, ${signature.captureCount}, ${signature.captureCount >= 1 ? 'c1' : '0'}, ${signature.captureCount >= 2 ? 'c2' : '0'}, ${signature.captureCount >= 3 ? 'c3' : '0'}, ${signature.captureCount >= 4 ? 'c4' : '0'}, 0, 0);`);
       lines.push('}');
       continue;
     }
@@ -1934,16 +2027,23 @@ function emitLambdaRuntimeFallbackCpp(tree) {
     return a.captureCount - b.captureCount;
   })) {
     const hookName = getLambdaRuntimeHookName(signature.arity, signature.captureCount, true);
+    const functionId = getLambdaRuntimeFunctionId(signature.arity, signature.captureCount, true);
     const params = [];
     for (let i = 1; i <= signature.captureCount; i += 1) {
       params.push(`int c${i}`);
     }
     lines.push(`void* ${hookName}(${params.length > 0 ? params.join(', ') : 'void'}) {`);
     if (signature.captureCount > 0) {
-      for (let i = 5; i <= signature.captureCount; i += 1) {
-        lines.push(`  (void)c${i};`);
+      if (signature.captureCount > 4) {
+        lines.push(`  int extra_captures[${signature.captureCount - 4}];`);
+        for (let i = 5; i <= signature.captureCount; i += 1) {
+          lines.push(`  extra_captures[${i - 5}] = c${i};`);
+        }
+        lines.push(`  return __maia_runtime_alloc_lambda_value(${functionId}, ${signature.arity}, 1, ${signature.captureCount}, ${signature.captureCount >= 1 ? 'c1' : '0'}, ${signature.captureCount >= 2 ? 'c2' : '0'}, ${signature.captureCount >= 3 ? 'c3' : '0'}, ${signature.captureCount >= 4 ? 'c4' : '0'}, ${signature.captureCount - 4}, extra_captures);`);
+        lines.push('}');
+        continue;
       }
-      lines.push(`  return __maia_runtime_alloc_lambda_value(${signature.arity}, 1, ${signature.captureCount}, ${signature.captureCount >= 1 ? 'c1' : '0'}, ${signature.captureCount >= 2 ? 'c2' : '0'}, ${signature.captureCount >= 3 ? 'c3' : '0'}, ${signature.captureCount >= 4 ? 'c4' : '0'});`);
+      lines.push(`  return __maia_runtime_alloc_lambda_value(${functionId}, ${signature.arity}, 1, ${signature.captureCount}, ${signature.captureCount >= 1 ? 'c1' : '0'}, ${signature.captureCount >= 2 ? 'c2' : '0'}, ${signature.captureCount >= 3 ? 'c3' : '0'}, ${signature.captureCount >= 4 ? 'c4' : '0'}, 0, 0);`);
       lines.push('}');
       continue;
     }
