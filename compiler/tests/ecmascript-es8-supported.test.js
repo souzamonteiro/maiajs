@@ -33,7 +33,9 @@ const es8Supported = [
   {
     feature: 'arguments trailing comma',
     cases: [
-      { name: 'call with trailing comma', source: 'f(a,);' }
+      { name: 'call with trailing comma', source: 'f(a,);' },
+      { name: 'call with two positional arguments', source: 'f(a, b);' },
+      { name: 'call with numeric arguments', source: 'f(1, 2);' }
     ]
   }
 ];

@@ -43,3 +43,19 @@ test('internal host symbols can be excluded', () => {
   assert.equal(registry.resolvePath(['maia_internal', 'get_property']), null);
   assert.equal(registry.resolvePath(['console', 'log']), '__console__log');
 });
+
+test('invalid or empty path inputs must not generate host symbols', () => {
+  const registry = new HostRegistry();
+
+  assert.equal(registry.resolvePath([]), null);
+  assert.equal(registry.resolvePath(['']), null);
+  assert.equal(registry.resolvePath(['   ']), null);
+  assert.equal(registry.resolvePath(null), null);
+});
+
+test('member paths are normalized to safe symbol segments', () => {
+  const registry = new HostRegistry();
+
+  assert.equal(registry.resolvePath(['window', 'post-message']), '__window__post_message');
+  assert.equal(registry.resolvePath(['console', 'log!']), '__console__log_');
+});

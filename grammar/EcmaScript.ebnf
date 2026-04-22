@@ -161,14 +161,12 @@ stringLiteral ::= StringLiteral
 
 regularExpressionLiteral ::= RegularExpressionLiteral
 
-arrayLiteral ::= '[' elision? ']'
-           | '[' elementList ']'
-           | '[' elementList ',' elision? ']'
+arrayLiteral ::= '[' arrayElement? ( ',' arrayElement? )* ']'
 
-elementList ::= elision? assignmentExpression
-           | elision? spreadElement
-           | elementList ',' elision? assignmentExpression
-           | elementList ',' elision? spreadElement
+arrayElement ::= assignmentExpression
+           | spreadElement
+
+elementList ::= arrayElement ( ',' arrayElement )*
 
 elision ::= ','+
 
@@ -251,10 +249,10 @@ arguments ::= '(' ')'
            | '(' argumentList ')'
            | '(' argumentList ',' ')'
 
-argumentList ::= assignmentExpression
+argumentList ::= argumentItem ( ',' argumentItem )*
+
+argumentItem ::= assignmentExpression
            | '...' assignmentExpression
-           | argumentList ',' assignmentExpression
-           | argumentList ',' '...' assignmentExpression
 
 callExpression ::= memberExpression arguments ( arguments | '[' expression ']' | '.' propertyIdentifierName | templateLiteral )*
            | superCall

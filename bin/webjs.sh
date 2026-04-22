@@ -54,6 +54,99 @@ err() {
   exit 1
 }
 
+# Distribution support: copy WAT runtime libs from maiajs/lib to dist directory
+COPIED_LIB_NAMES=()
+
+copy_dist_wasm_libs() {
+  local dist_dir="$1"
+  local app_wasm_basename="$2"
+  local copied=0
+  local skipped=0
+  COPIED_LIB_NAMES=()
+
+  mkdir -p "$dist_dir"
+
+  copy_from_lib_dir() {
+    local lib_dir="$1"
+    local src
+    local base
+    local stem
+    if [[ ! -d "$lib_dir" ]]; then
+      return 0
+    fi
+    for src in "$lib_dir"/*.wasm; do
+      [[ -f "$src" ]] || continue
+      base="$(basename "$src")"
+      stem="${base%.wasm}"
+      if [[ "$base" == "$app_wasm_basename" ]]; then
+        skipped=$((skipped + 1))
+        continue
+      fi
+      if [[ -f "$dist_dir/$base" ]]; then
+        skipped=$((skipped + 1))
+        continue
+      fi
+      cp -f "$src" "$dist_dir/$base"
+      if [[ -f "$lib_dir/$stem.js" ]] && [[ ! -f "$dist_dir/$stem.js" ]]; then
+        cp -f "$lib_dir/$stem.js" "$dist_dir/$stem.js"
+      fi
+      COPIED_LIB_NAMES+=("$stem")
+      copied=$((copied + 1))
+    done
+  }
+
+  copy_from_lib_dir "$REPO_ROOT/lib"
+
+  echo "[webjs] dist libs copied: $copied (skipped: $skipped)"
+}
+
+patch_manifest_copied_libs() {
+  local dist_dir="$1"
+  local ir_json_path="$2"
+  local manifest="$dist_dir/manifest.json"
+  [[ -f "$manifest" ]] || return 0
+
+  local has_patch=0
+  if [[ ${#COPIED_LIB_NAMES[@]} -gt 0 ]]; then
+    has_patch=1
+  fi
+  if [[ -f "$ir_json_path" ]]; then
+    has_patch=1
+  fi
+  [[ $has_patch -eq 1 ]] || return 0
+
+  local names_json
+  names_json="$(printf '"%s",' "${COPIED_LIB_NAMES[@]}"; echo)"
+  names_json="[${names_json%,}"
+  names_json="${names_json%%$'\n'*}]"
+  node -e "
+    const fs = require('fs');
+    const p = process.argv[1];
+    const libs = JSON.parse(process.argv[2]);
+    const irPath = process.argv[3];
+    const m = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (libs.length > 0) {
+      m.copiedLibraries = libs;
+    }
+    if (irPath && fs.existsSync(irPath)) {
+      const ir = JSON.parse(fs.readFileSync(irPath, 'utf8'));
+      if (ir && ir.asyncRuntime && Array.isArray(ir.asyncRuntime.resumeBridges)) {
+        m.asyncRuntime = {
+          resumeBridges: ir.asyncRuntime.resumeBridges
+        };
+      }
+    }
+    fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\\n');
+  " "$manifest" "$names_json" "$ir_json_path"
+
+  if [[ ${#COPIED_LIB_NAMES[@]} -gt 0 ]]; then
+    echo "[webjs] manifest patched: copiedLibraries → ${#COPIED_LIB_NAMES[@]} lib(s)"
+  fi
+  if [[ -f "$ir_json_path" ]]; then
+    echo "[webjs] manifest patched: asyncRuntime.resumeBridges from $(basename "$ir_json_path")"
+  fi
+}
+
 INPUT_FILE=""
 OUT_DIR=""
 AST_SHOW=0
@@ -63,6 +156,7 @@ IR_JSON_OUT=""
 CPP_OUT=""
 NAME=""
 NO_WEBCPP=0
+HAS_DIST=0
 FORWARD_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -122,6 +216,9 @@ while [[ $# -gt 0 ]]; do
       done
       ;;
     -*)
+      if [[ "$1" == "--dist" ]] || [[ "$1" == "--dist-run" ]]; then
+        HAS_DIST=1
+      fi
       FORWARD_ARGS+=("$1")
       shift
       ;;
@@ -190,3 +287,17 @@ fi
 
 echo "[webjs] invoking MaiaCpp pipeline: $WEBCPP_SH"
 "$WEBCPP_SH" "$CPP_OUT" "${FORWARD_ARGS[@]}"
+
+# If distribution was requested, copy WAT runtime libs to the dist folder
+if [[ $HAS_DIST -eq 1 ]]; then
+  DIST_DIR="$OUT_DIR"
+  if [[ -z "$DIST_DIR" ]]; then
+    DIST_DIR="$PWD/dist"
+  fi
+  DIST_APP_NAME="$NAME"
+  if [[ -z "$DIST_APP_NAME" ]]; then
+    DIST_APP_NAME="$(basename "$CPP_OUT")"
+  fi
+  copy_dist_wasm_libs "$DIST_DIR" "$DIST_APP_NAME.wasm"
+  patch_manifest_copied_libs "$DIST_DIR" "$IR_JSON_OUT"
+fi

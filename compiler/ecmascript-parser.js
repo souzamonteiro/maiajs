@@ -2686,69 +2686,43 @@ class Parser {
     }
     let __ok = false;
     try {
-    const _ruleStart = this.position;
-    let _matched = false;
-    if (!_matched) {
-      const _ruleMark = this.markEventState();
-      try {
     this.consume('TOKEN__5B_');
-    // Optional: try parsing elision
+    // Optional: try parsing arrayElement
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
       try {
-        this.parseelision();
+        this.parsearrayElement();
       } catch(e) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.consume('TOKEN__5D_');
-        _matched = true;
-      } catch (e) {
-        this.position = _ruleStart;
-        this.restoreEventState(_ruleMark);
-      }
-    }
-    if (!_matched) {
-      const _ruleMark = this.markEventState();
+    // Group *
+    while (true) {
+      const _loopStart = this.position;
+      const _loopMark = this.markEventState();
       try {
-    this.consume('TOKEN__5B_');
-    this.parseelementList();
-    this.consume('TOKEN__5D_');
-        _matched = true;
-      } catch (e) {
-        this.position = _ruleStart;
-        this.restoreEventState(_ruleMark);
-      }
-    }
-    if (!_matched) {
-      const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__5B_');
-    this.parseelementList();
     this.consume('TOKEN__2C_');
-    // Optional: try parsing elision
+    // Optional: try parsing arrayElement
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
       try {
-        this.parseelision();
+        this.parsearrayElement();
       } catch(e) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.consume('TOKEN__5D_');
-        _matched = true;
       } catch (e) {
-        this.position = _ruleStart;
-        this.restoreEventState(_ruleMark);
+        this.position = _loopStart;
+        this.restoreEventState(_loopMark);
+        break;
       }
+      if (this.position === _loopStart) break;
     }
-    if (!_matched) {
-      throw new Error(`Expected one of: 3 alternatives`);
-    }
+    this.consume('TOKEN__5D_');
 
       __ok = true;
     } finally {
@@ -2762,9 +2736,9 @@ class Parser {
       }
     }
   }
-  parseelementList() {
+  parsearrayElement() {
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
-      this.eventHandler.startNonterminal('elementList', this.position);
+      this.eventHandler.startNonterminal('arrayElement', this.position);
     }
     let __ok = false;
     try {
@@ -2773,17 +2747,6 @@ class Parser {
     if (!_matched) {
       const _ruleMark = this.markEventState();
       try {
-    // Optional: try parsing elision
-    {
-      const savePos = this.position;
-      const saveMark = this.markEventState();
-      try {
-        this.parseelision();
-      } catch(e) {
-        this.position = savePos;
-        this.restoreEventState(saveMark);
-      }
-    }
     this.parseassignmentExpression();
         _matched = true;
       } catch (e) {
@@ -2794,17 +2757,6 @@ class Parser {
     if (!_matched) {
       const _ruleMark = this.markEventState();
       try {
-    // Optional: try parsing elision
-    {
-      const savePos = this.position;
-      const saveMark = this.markEventState();
-      try {
-        this.parseelision();
-      } catch(e) {
-        this.position = savePos;
-        this.restoreEventState(saveMark);
-      }
-    }
     this.parsespreadElement();
         _matched = true;
       } catch (e) {
@@ -2813,53 +2765,41 @@ class Parser {
       }
     }
     if (!_matched) {
-      const _ruleMark = this.markEventState();
+      throw new Error(`Expected one of: 2 alternatives`);
+    }
+
+      __ok = true;
+    } finally {
+      if (this.eventHandler) {
+        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+          this.eventHandler.endNonterminal('arrayElement', this.position);
+        }
+        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+          this.eventHandler.abortNonterminal('arrayElement', this.position);
+        }
+      }
+    }
+  }
+  parseelementList() {
+    if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
+      this.eventHandler.startNonterminal('elementList', this.position);
+    }
+    let __ok = false;
+    try {
+    this.parsearrayElement();
+    // Group *
+    while (true) {
+      const _loopStart = this.position;
+      const _loopMark = this.markEventState();
       try {
-    this.parseelementList();
     this.consume('TOKEN__2C_');
-    // Optional: try parsing elision
-    {
-      const savePos = this.position;
-      const saveMark = this.markEventState();
-      try {
-        this.parseelision();
-      } catch(e) {
-        this.position = savePos;
-        this.restoreEventState(saveMark);
-      }
-    }
-    this.parseassignmentExpression();
-        _matched = true;
+    this.parsearrayElement();
       } catch (e) {
-        this.position = _ruleStart;
-        this.restoreEventState(_ruleMark);
+        this.position = _loopStart;
+        this.restoreEventState(_loopMark);
+        break;
       }
-    }
-    if (!_matched) {
-      const _ruleMark = this.markEventState();
-      try {
-    this.parseelementList();
-    this.consume('TOKEN__2C_');
-    // Optional: try parsing elision
-    {
-      const savePos = this.position;
-      const saveMark = this.markEventState();
-      try {
-        this.parseelision();
-      } catch(e) {
-        this.position = savePos;
-        this.restoreEventState(saveMark);
-      }
-    }
-    this.parsespreadElement();
-        _matched = true;
-      } catch (e) {
-        this.position = _ruleStart;
-        this.restoreEventState(_ruleMark);
-      }
-    }
-    if (!_matched) {
-      throw new Error(`Expected one of: 4 alternatives`);
+      if (this.position === _loopStart) break;
     }
 
       __ok = true;
@@ -4110,6 +4050,40 @@ class Parser {
     }
     let __ok = false;
     try {
+    this.parseargumentItem();
+    // Group *
+    while (true) {
+      const _loopStart = this.position;
+      const _loopMark = this.markEventState();
+      try {
+    this.consume('TOKEN__2C_');
+    this.parseargumentItem();
+      } catch (e) {
+        this.position = _loopStart;
+        this.restoreEventState(_loopMark);
+        break;
+      }
+      if (this.position === _loopStart) break;
+    }
+
+      __ok = true;
+    } finally {
+      if (this.eventHandler) {
+        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+          this.eventHandler.endNonterminal('argumentList', this.position);
+        }
+        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+          this.eventHandler.abortNonterminal('argumentList', this.position);
+        }
+      }
+    }
+  }
+  parseargumentItem() {
+    if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
+      this.eventHandler.startNonterminal('argumentItem', this.position);
+    }
+    let __ok = false;
+    try {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
@@ -4134,42 +4108,17 @@ class Parser {
       }
     }
     if (!_matched) {
-      const _ruleMark = this.markEventState();
-      try {
-    this.parseargumentList();
-    this.consume('TOKEN__2C_');
-    this.parseassignmentExpression();
-        _matched = true;
-      } catch (e) {
-        this.position = _ruleStart;
-        this.restoreEventState(_ruleMark);
-      }
-    }
-    if (!_matched) {
-      const _ruleMark = this.markEventState();
-      try {
-    this.parseargumentList();
-    this.consume('TOKEN__2C_');
-    this.consume('TOKEN__2E__2E__2E_');
-    this.parseassignmentExpression();
-        _matched = true;
-      } catch (e) {
-        this.position = _ruleStart;
-        this.restoreEventState(_ruleMark);
-      }
-    }
-    if (!_matched) {
-      throw new Error(`Expected one of: 4 alternatives`);
+      throw new Error(`Expected one of: 2 alternatives`);
     }
 
       __ok = true;
     } finally {
       if (this.eventHandler) {
         if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('argumentList', this.position);
+          this.eventHandler.endNonterminal('argumentItem', this.position);
         }
         if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('argumentList', this.position);
+          this.eventHandler.abortNonterminal('argumentItem', this.position);
         }
       }
     }

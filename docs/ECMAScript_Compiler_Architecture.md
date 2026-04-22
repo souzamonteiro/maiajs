@@ -237,6 +237,7 @@ This architecture complements:
 
 - `docs/JS2WASM - A JavaScript to Cpp Transpiler with WebAssembly Backend.md`
 - `docs/ECMAScript_2017_Grammar.md`
+- `docs/ECMAScript_Compiler_Roadmap.md`
 
 It defines the concrete implementation surface in this repository for the new JS compiler path.
 

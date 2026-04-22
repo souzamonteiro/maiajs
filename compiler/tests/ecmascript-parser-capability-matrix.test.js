@@ -27,7 +27,9 @@ const capabilityMatrix = [
       { name: 'numeric literal expression', source: '1;' },
       { name: 'string literal expression', source: '"x";' },
       { name: 'boolean literal expression', source: 'true;' },
-      { name: 'null literal expression', source: 'null;' }
+      { name: 'null literal expression', source: 'null;' },
+      { name: 'non-empty array literal expression', source: '[1,2];' },
+      { name: 'spread array literal expression', source: '[...x];' }
     ],
     unsupported: []
   },
