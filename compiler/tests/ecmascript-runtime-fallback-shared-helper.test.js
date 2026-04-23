@@ -97,6 +97,8 @@ test('runtime fallback dedup: capture-aware lambda fallback reuses shared lambda
 
   const lambdaInvokeFunctionIdCount = (cpp.match(/static int __maia_runtime_lambda_invoke_function_id\(void\* lambda_value, int argc, int async_call\) \{/g) || []).length;
   assert.equal(lambdaInvokeFunctionIdCount, 1, 'runtime-facing lambda invocation function-id bridge helper must be emitted exactly once');
+  assert.match(cpp, /static int __maia_runtime_lambda_invoke_function_id\(void\* lambda_value, int argc, int async_call\) \{[\s\S]*int function_id = __maia_runtime_lambda_get_function_id\(lambda_value\);[\s\S]*switch \(function_id\) \{[\s\S]*default:[\s\S]*return function_id;[\s\S]*\}/,
+    'runtime-facing invocation bridge helper must expose a function-id switch dispatch scaffold');
   assert.match(cpp, /static int __maia_runtime_lambda_get_capture_at\(void\* lambda_value, int index\) \{[\s\S]*return __maia_runtime_lambda_value_capture_at\(fn, index\);[\s\S]*\}/,
     'runtime-facing lambda capture-by-index API helper must delegate to lambda-value capture accessor path');
 

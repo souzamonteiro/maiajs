@@ -119,6 +119,7 @@ Legend:
 - [x] Harden lexical-scope selector routing against shadowing so parameter/local no-capture bindings do not misroute through outer capture-aware selector paths (Phase E)
 - [x] Harden lexical-scope selector routing against hoisted local function declaration shadowing (`function f(){}`) so outer capture-aware identifiers with the same name are not misrouted (Phase E)
 - [x] Add runtime-facing invocation dispatch-stub helper (`__maia_runtime_lambda_invoke_function_id`) and route capture-aware identifier call lowering through it (Phase E)
+- [x] Evolve invocation dispatch-stub helper to explicit function-id switch scaffold with built-in invocation compatibility validation (Phase E)
 
 ## Infrastructure Status
 
@@ -147,7 +148,7 @@ Legend:
   - lexical shadowing by parameters/locals blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - hoisted local function declaration shadowing blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - selector-based call lowering propagates async-call flag from capture-aware async lambda bindings.
-  - capture-aware identifier call lowering now targets the invocation dispatch-stub helper (`invoke_function_id`), which currently delegates to selector-based function-id dispatch.
+  - capture-aware identifier call lowering targets the invocation dispatch-stub helper (`invoke_function_id`), which now validates call-shape and executes a function-id switch scaffold (default compatibility path returns `function_id`).
   - selector-routed capture-aware lambda calls are excluded from host-interop detected-call/signature emission.
 - Compatibility fields in `__maia_runtime_lambda_value` (`capture1..capture4`, `extra_*`):
   - currently maintained as mirror projections for backward compatibility.
