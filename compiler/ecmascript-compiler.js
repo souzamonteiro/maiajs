@@ -381,8 +381,8 @@ function collectTopLevelBindingNames(tree) {
   return names;
 }
 
-function collectTopLevelLambdaBindingNames(tree) {
-  const names = new Set();
+function collectTopLevelLambdaBindingInfo(tree) {
+  const bindings = new Map();
   const lambdaCompileContext = {
     tree,
     topLevelBindingNames: collectTopLevelBindingNames(tree),
@@ -410,9 +410,9 @@ function collectTopLevelLambdaBindingNames(tree) {
         continue;
       }
 
-      let hasCaptureAwareLambdaInitializer = false;
+      let captureAwareBindingInfo = null;
       walk(initializerExpr, (candidate) => {
-        if (hasCaptureAwareLambdaInitializer || !candidate || candidate.kind !== 'nonterminal') {
+        if (captureAwareBindingInfo || !candidate || candidate.kind !== 'nonterminal') {
           return;
         }
         if (candidate.name !== 'arrowFunction' && candidate.name !== 'asyncArrowFunction') {
@@ -421,17 +421,19 @@ function collectTopLevelLambdaBindingNames(tree) {
 
         const captureCount = collectLambdaCaptureNames(candidate, lambdaCompileContext).length;
         if (captureCount > 0) {
-          hasCaptureAwareLambdaInitializer = true;
+          captureAwareBindingInfo = {
+            isAsync: candidate.name === 'asyncArrowFunction'
+          };
         }
       });
 
-      if (hasCaptureAwareLambdaInitializer) {
-        names.add(variableName);
+      if (captureAwareBindingInfo) {
+        bindings.set(variableName, captureAwareBindingInfo);
       }
     }
   }
 
-  return names;
+  return bindings;
 }
 
 function findNodePath(root, target) {
@@ -564,7 +566,7 @@ function buildCompileContext(tree, hostRegistry) {
     hostRegistry,
     localFunctionNames: collectTopLevelFunctionNames(tree),
     topLevelBindingNames: collectTopLevelBindingNames(tree),
-    topLevelLambdaBindingNames: collectTopLevelLambdaBindingNames(tree),
+    topLevelLambdaBindingInfo: collectTopLevelLambdaBindingInfo(tree),
     hasLambdaCapturePayload,
     functionReturnTypes
   };
@@ -578,12 +580,15 @@ function isLocalFunctionPath(pathSegments, compileContext) {
     && compileContext.localFunctionNames.has(pathSegments[0]);
 }
 
-function isTopLevelLambdaBindingPath(pathSegments, compileContext) {
-  return Array.isArray(pathSegments)
-    && pathSegments.length === 1
-    && compileContext
-    && compileContext.topLevelLambdaBindingNames
-    && compileContext.topLevelLambdaBindingNames.has(pathSegments[0]);
+function getTopLevelLambdaBindingInfo(pathSegments, compileContext) {
+  if (!Array.isArray(pathSegments)
+    || pathSegments.length !== 1
+    || !compileContext
+    || !compileContext.topLevelLambdaBindingInfo) {
+    return null;
+  }
+
+  return compileContext.topLevelLambdaBindingInfo.get(pathSegments[0]) || null;
 }
 
 function extractHostCallsFromTree(tree, compileContext) {
@@ -2174,10 +2179,12 @@ function lowerCallExpressionValue(node, compileContext) {
     return `${pathSegments[0]}(${args})`;
   }
 
+  const lambdaBindingInfo = getTopLevelLambdaBindingInfo(pathSegments, compileContext);
   if (compileContext
     && compileContext.hasLambdaCapturePayload
-    && isTopLevelLambdaBindingPath(pathSegments, compileContext)) {
-    return `__maia_runtime_lambda_select_function_id((void*)${pathSegments[0]}, ${argExprs.length}, 0)`;
+    && lambdaBindingInfo) {
+    const asyncCallFlag = lambdaBindingInfo.isAsync ? 1 : 0;
+    return `__maia_runtime_lambda_select_function_id((void*)${pathSegments[0]}, ${argExprs.length}, ${asyncCallFlag})`;
   }
 
   const hostSymbol = compileContext.hostRegistry.resolvePath(pathSegments);

@@ -127,6 +127,12 @@ test('lambda lowering: emits capture-aware async lambda hook for simple top-leve
   assert.match(cpp, /void\* f = __maia_async_lambda1_capture1\(\(int\)\(y\)\);/, 'C++ must lower captured identifier into capture-aware async lambda helper call');
 });
 
+test('lambda lowering: capture-aware async identifier call routes through invocation selector with async flag', () => {
+  const cpp = runCompilerCpp('const y = 7;\nconst f = async x => await (x + y);\nf(1);\n');
+
+  assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 1\);/, 'C++ must route capture-aware async identifier calls through invocation selector bridge with async flag set');
+});
+
 test('lambda lowering: emits capture-aware async lambda hook for simple function-local capture', () => {
   const cpp = runCompilerCpp('function outer(y) {\n  const z = 7;\n  const f = async x => await z;\n  return 0;\n}\n');
 

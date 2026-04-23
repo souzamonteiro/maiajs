@@ -148,6 +148,13 @@ test('golden: capture-aware identifier call lowers through invocation selector b
     'capture-aware identifier call should lower to runtime invocation selector bridge');
 });
 
+test('golden: capture-aware async identifier call lowers through invocation selector bridge with async flag', () => {
+  const cpp = runCompilerCpp('const y = 7; const f = async x => await (x + y); f(1);');
+
+  assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 1\);/,
+    'capture-aware async identifier call should lower to runtime invocation selector bridge with async flag');
+});
+
 test('golden: legacy-only labels appear in allocator only', () => {
   const cpp = runCompilerCpp('const y = 7; const f = x => x + y;');
 
