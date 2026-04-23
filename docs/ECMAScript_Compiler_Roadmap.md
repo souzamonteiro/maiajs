@@ -123,6 +123,7 @@ Legend:
 - [x] Materialize known capture-aware `function_id` case labels inside invocation dispatch scaffold switch (compatibility path still returns `function_id`) (Phase E)
 - [x] Tighten invocation dispatch scaffold so unknown `function_id` values fail closed (`return 0`) while known case labels preserve deterministic `function_id` returns (Phase E)
 - [x] Add per-case metadata guards (`arity`/`is_async`) inside invocation dispatch scaffold before returning known `function_id` values (Phase E)
+- [x] Add first payload-derived known-case return behavior in invocation dispatch scaffold (`return __maia_runtime_lambda_get_capture_count(lambda_value)`) while preserving fail-closed unknown/default handling (Phase E)
 
 ## Infrastructure Status
 
@@ -151,7 +152,7 @@ Legend:
   - lexical shadowing by parameters/locals blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - hoisted local function declaration shadowing blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - selector-based call lowering propagates async-call flag from capture-aware async lambda bindings.
-  - capture-aware identifier call lowering targets the invocation dispatch-stub helper (`invoke_function_id`), which validates call-shape and executes a function-id switch scaffold with known-case labels plus per-case `arity`/`is_async` guards; unknown/default function IDs fail closed (`return 0`).
+  - capture-aware identifier call lowering targets the invocation dispatch-stub helper (`invoke_function_id`), which validates call-shape and executes a function-id switch scaffold with known-case labels plus per-case `arity`/`is_async` guards; known cases now return payload-derived `capture_count`, while unknown/default function IDs fail closed (`return 0`).
   - selector-routed capture-aware lambda calls are excluded from host-interop detected-call/signature emission.
 - Compatibility fields in `__maia_runtime_lambda_value` (`capture1..capture4`, `extra_*`):
   - currently maintained as mirror projections for backward compatibility.

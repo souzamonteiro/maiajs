@@ -2096,7 +2096,7 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
         `    case ${dispatchCase.functionId}:`,
         `      if (__maia_runtime_lambda_get_arity(lambda_value) != ${dispatchCase.arity}) { return 0; }`,
         `      if (__maia_runtime_lambda_get_is_async(lambda_value) != ${dispatchCase.isAsync}) { return 0; }`,
-        '      return function_id;'
+        '      return __maia_runtime_lambda_get_capture_count(lambda_value);'
       ]),
       '    default:',
       '      return 0;',

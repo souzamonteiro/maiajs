@@ -99,8 +99,8 @@ test('runtime fallback dedup: capture-aware lambda fallback reuses shared lambda
   assert.equal(lambdaInvokeFunctionIdCount, 1, 'runtime-facing lambda invocation function-id bridge helper must be emitted exactly once');
   assert.match(cpp, /static int __maia_runtime_lambda_invoke_function_id\(void\* lambda_value, int argc, int async_call\) \{[\s\S]*int function_id = __maia_runtime_lambda_get_function_id\(lambda_value\);[\s\S]*switch \(function_id\) \{[\s\S]*default:[\s\S]*return 0;[\s\S]*\}/,
     'runtime-facing invocation bridge helper must expose a function-id switch dispatch scaffold with strict default-fail behavior');
-  assert.match(cpp, /switch \(function_id\) \{[\s\S]*case 1001:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return function_id;/,
-    'runtime-facing invocation bridge helper should materialize known capture-aware function-id case labels with metadata guards');
+  assert.match(cpp, /switch \(function_id\) \{[\s\S]*case 1001:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return __maia_runtime_lambda_get_capture_count\(lambda_value\);/,
+    'runtime-facing invocation bridge helper should materialize known case labels with metadata guards and payload-derived return behavior');
   assert.match(cpp, /static int __maia_runtime_lambda_get_capture_at\(void\* lambda_value, int index\) \{[\s\S]*return __maia_runtime_lambda_value_capture_at\(fn, index\);[\s\S]*\}/,
     'runtime-facing lambda capture-by-index API helper must delegate to lambda-value capture accessor path');
 
