@@ -2112,6 +2112,18 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
       '      return 0;',
       '  }',
       '}',
+      'static int __maia_runtime_lambda_known_case_weighted_capture_value(void* lambda_value, int function_id) {',
+      '  switch (function_id) {',
+      ...lambdaDispatchCases.flatMap((dispatchCase) => [
+        `    case ${dispatchCase.functionId}:`,
+        dispatchCase.captureCount > 4
+          ? '      return (__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4) + __maia_runtime_lambda_get_capture_at(lambda_value, 4);'
+          : '      return (__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4);'
+      ]),
+      '    default:',
+      '      return 0;',
+      '  }',
+      '}',
       'static int __maia_runtime_lambda_invoke_function_id(void* lambda_value, int argc, int async_call) {',
       '  if (!__maia_runtime_lambda_can_invoke(lambda_value, argc, async_call)) { return 0; }',
       '  int function_id = __maia_runtime_lambda_select_function_id(lambda_value, argc, async_call);',
@@ -2120,14 +2132,13 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
       '  if (!known_case_token) { return 0; }',
       '  int known_case_polarity = __maia_runtime_lambda_known_case_polarity(function_id);',
       '  if (!known_case_polarity) { return 0; }',
+      '  int weighted_capture_value = __maia_runtime_lambda_known_case_weighted_capture_value(lambda_value, function_id);',
       '  switch (function_id) {',
       ...lambdaDispatchCases.flatMap((dispatchCase) => [
         `    case ${dispatchCase.functionId}:`,
         `      if (__maia_runtime_lambda_get_arity(lambda_value) != ${dispatchCase.arity}) { return 0; }`,
         `      if (__maia_runtime_lambda_get_is_async(lambda_value) != ${dispatchCase.isAsync}) { return 0; }`,
-        dispatchCase.captureCount > 4
-          ? `      return known_case_polarity * ((__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4) + __maia_runtime_lambda_get_capture_at(lambda_value, 4) + argc + known_case_token);`
-          : `      return known_case_polarity * ((__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4) + argc + known_case_token);`
+        '      return known_case_polarity * (weighted_capture_value + argc + known_case_token);'
       ]),
       '    default:',
       '      return 0;',

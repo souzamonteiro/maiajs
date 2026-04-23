@@ -101,10 +101,12 @@ test('runtime fallback dedup: capture-aware lambda fallback reuses shared lambda
     'runtime-facing invocation bridge helper surface should include a dedicated known-case token helper');
   assert.match(cpp, /static int __maia_runtime_lambda_known_case_polarity\(int function_id\) \{[\s\S]*case 1001:[\s\S]*return 1;[\s\S]*default:[\s\S]*return 0;[\s\S]*\}/,
     'runtime-facing invocation bridge helper surface should include a dedicated known-case polarity helper');
-  assert.match(cpp, /static int __maia_runtime_lambda_invoke_function_id\(void\* lambda_value, int argc, int async_call\) \{[\s\S]*int function_id = __maia_runtime_lambda_select_function_id\(lambda_value, argc, async_call\);[\s\S]*if \(!function_id\) \{ return 0; \}[\s\S]*int known_case_token = __maia_runtime_lambda_known_case_token\(lambda_value, function_id\);[\s\S]*if \(!known_case_token\) \{ return 0; \}[\s\S]*int known_case_polarity = __maia_runtime_lambda_known_case_polarity\(function_id\);[\s\S]*if \(!known_case_polarity\) \{ return 0; \}[\s\S]*switch \(function_id\) \{[\s\S]*default:[\s\S]*return 0;[\s\S]*\}/,
-    'runtime-facing invocation bridge helper must derive reusable known-case token and polarity before entering the switch scaffold');
-  assert.match(cpp, /switch \(function_id\) \{[\s\S]*case 1001:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(\(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ argc \+ known_case_token\);/,
-    'runtime-facing invocation bridge helper should reuse known-case polarity and token inside weighted sync return behavior');
+  assert.match(cpp, /static int __maia_runtime_lambda_known_case_weighted_capture_value\(void\* lambda_value, int function_id\) \{[\s\S]*case 1001:[\s\S]*return \(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\);[\s\S]*default:[\s\S]*return 0;[\s\S]*\}/,
+    'runtime-facing invocation bridge helper surface should include a dedicated weighted-capture helper');
+  assert.match(cpp, /static int __maia_runtime_lambda_invoke_function_id\(void\* lambda_value, int argc, int async_call\) \{[\s\S]*int function_id = __maia_runtime_lambda_select_function_id\(lambda_value, argc, async_call\);[\s\S]*if \(!function_id\) \{ return 0; \}[\s\S]*int known_case_token = __maia_runtime_lambda_known_case_token\(lambda_value, function_id\);[\s\S]*if \(!known_case_token\) \{ return 0; \}[\s\S]*int known_case_polarity = __maia_runtime_lambda_known_case_polarity\(function_id\);[\s\S]*if \(!known_case_polarity\) \{ return 0; \}[\s\S]*int weighted_capture_value = __maia_runtime_lambda_known_case_weighted_capture_value\(lambda_value, function_id\);[\s\S]*switch \(function_id\) \{[\s\S]*default:[\s\S]*return 0;[\s\S]*\}/,
+    'runtime-facing invocation bridge helper must derive reusable known-case token, polarity, and weighted-capture helper values before entering the switch scaffold');
+  assert.match(cpp, /switch \(function_id\) \{[\s\S]*case 1001:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(weighted_capture_value \+ argc \+ known_case_token\);/,
+    'runtime-facing invocation bridge helper should reuse known-case polarity, weighted-capture helper, and token inside weighted sync return behavior');
   assert.match(cpp, /static int __maia_runtime_lambda_get_capture_at\(void\* lambda_value, int index\) \{[\s\S]*return __maia_runtime_lambda_value_capture_at\(fn, index\);[\s\S]*\}/,
     'runtime-facing lambda capture-by-index API helper must delegate to lambda-value capture accessor path');
 
@@ -188,10 +190,14 @@ test('runtime fallback dedup: mixed sync and async overflow hooks reuse one shar
   assert.match(cpp, /void\* __maia_async_lambda1_capture5\(int c1, int c2, int c3, int c4, int c5\) \{[\s\S]*int extra_captures\[1\];[\s\S]*__maia_runtime_alloc_lambda_value\(1001005, 1, 1, 5, c1, c2, c3, c4, 1, extra_captures\);/,
     'async overflow hook must reuse shared lambda payload allocator');
 
-  assert.match(cpp, /case 1005:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(\(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ __maia_runtime_lambda_get_capture_at\(lambda_value, 4\) \+ argc \+ known_case_token\);/,
+  assert.match(cpp, /static int __maia_runtime_lambda_known_case_weighted_capture_value\(void\* lambda_value, int function_id\) \{[\s\S]*case 1005:[\s\S]*return \(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ __maia_runtime_lambda_get_capture_at\(lambda_value, 4\);/,
+    'weighted-capture helper should include overflow capture-index-4 for sync overflow known cases');
+  assert.match(cpp, /case 1005:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(weighted_capture_value \+ argc \+ known_case_token\);/,
     'known sync overflow function-id case should include capture-index-4 plus reusable known-case token after metadata guards');
 
-  assert.match(cpp, /case 1001005:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(\(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ __maia_runtime_lambda_get_capture_at\(lambda_value, 4\) \+ argc \+ known_case_token\);/,
+  assert.match(cpp, /static int __maia_runtime_lambda_known_case_weighted_capture_value\(void\* lambda_value, int function_id\) \{[\s\S]*case 1001005:[\s\S]*return \(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ __maia_runtime_lambda_get_capture_at\(lambda_value, 4\);/,
+    'weighted-capture helper should include overflow capture-index-4 for async overflow known cases');
+  assert.match(cpp, /case 1001005:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(weighted_capture_value \+ argc \+ known_case_token\);/,
     'known async overflow function-id case should include negated capture-index-4 plus reusable known-case token after metadata guards');
 });
 
@@ -203,10 +209,14 @@ test('runtime fallback dedup: mid-profile known cases (2..4 captures) omit captu
     'const asyncF = async x => await (x + a + b);'
   ].join('\n'));
 
-  assert.match(cpp, /case 1002:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(\(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ argc \+ known_case_token\);/,
+  assert.match(cpp, /static int __maia_runtime_lambda_known_case_weighted_capture_value\(void\* lambda_value, int function_id\) \{[\s\S]*case 1002:[\s\S]*return \(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\);/,
+    'weighted-capture helper should omit overflow capture-index-4 for sync mid-profile known cases');
+  assert.match(cpp, /case 1002:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(weighted_capture_value \+ argc \+ known_case_token\);/,
     'known sync mid-profile function-id case should omit capture-index-4 and include reusable known-case token after metadata guards');
 
-  assert.match(cpp, /case 1001002:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(\(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ argc \+ known_case_token\);/,
+  assert.match(cpp, /static int __maia_runtime_lambda_known_case_weighted_capture_value\(void\* lambda_value, int function_id\) \{[\s\S]*case 1001002:[\s\S]*return \(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\);/,
+    'weighted-capture helper should omit overflow capture-index-4 for async mid-profile known cases');
+  assert.match(cpp, /case 1001002:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(weighted_capture_value \+ argc \+ known_case_token\);/,
     'known async mid-profile function-id case should omit capture-index-4 and include negated reusable known-case token after metadata guards');
 
   assert.doesNotMatch(cpp, /case 1002:[\s\S]*__maia_runtime_lambda_get_capture_at\(lambda_value, 4\)/,
@@ -220,10 +230,10 @@ test('runtime fallback dedup: multi-arg known cases carry arity-family constant'
     'const asyncF = async (x, y) => await (x + y + z);'
   ].join('\n'));
 
-  assert.match(cpp, /case 2001:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 2\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(\(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ argc \+ known_case_token\);/,
+  assert.match(cpp, /case 2001:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 2\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(weighted_capture_value \+ argc \+ known_case_token\);/,
     'known sync multi-arg function-id case should include reusable known-case token after metadata guards');
 
-  assert.match(cpp, /case 1002001:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 2\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(\(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ argc \+ known_case_token\);/,
+  assert.match(cpp, /case 1002001:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 2\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(weighted_capture_value \+ argc \+ known_case_token\);/,
     'known async multi-arg function-id case should include negated reusable known-case token after metadata guards');
 });
 
@@ -237,10 +247,10 @@ test('runtime fallback dedup: exact capture-count term differentiates three-capt
     'const f4 = x => x + a + b + c + d;'
   ].join('\n'));
 
-  assert.match(cpp, /case 1003:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(\(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ argc \+ known_case_token\);/,
+  assert.match(cpp, /case 1003:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(weighted_capture_value \+ argc \+ known_case_token\);/,
     'known three-capture function-id case should include reusable known-case token after metadata guards');
 
-  assert.match(cpp, /case 1004:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(\(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ argc \+ known_case_token\);/,
+  assert.match(cpp, /case 1004:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return known_case_polarity \* \(weighted_capture_value \+ argc \+ known_case_token\);/,
     'known four-capture function-id case should include reusable known-case token after metadata guards');
 });
 
