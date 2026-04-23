@@ -1938,6 +1938,16 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
     ...Array.from(lambdaStats.syncSignatures.values()),
     ...Array.from(lambdaStats.asyncSignatures.values())
   ].some((signature) => signature.captureCount > 0);
+  const lambdaDispatchFunctionIds = hasLambdaCapturePayload
+    ? Array.from(new Set([
+      ...Array.from(lambdaStats.syncSignatures.values())
+        .filter((signature) => signature.captureCount > 0)
+        .map((signature) => getLambdaRuntimeFunctionId(signature.arity, signature.captureCount, false)),
+      ...Array.from(lambdaStats.asyncSignatures.values())
+        .filter((signature) => signature.captureCount > 0)
+        .map((signature) => getLambdaRuntimeFunctionId(signature.arity, signature.captureCount, true))
+    ])).sort((a, b) => a - b)
+    : [];
 
   if (!hasObjectFallback && !hasArrayFallback && !hasLambdaFallback) {
     return '';
@@ -2073,6 +2083,8 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
       '  if (!__maia_runtime_lambda_can_invoke(lambda_value, argc, async_call)) { return 0; }',
       '  int function_id = __maia_runtime_lambda_get_function_id(lambda_value);',
       '  switch (function_id) {',
+      ...lambdaDispatchFunctionIds.map((functionId) => `    case ${functionId}:`),
+      ...(lambdaDispatchFunctionIds.length > 0 ? ['      return function_id;'] : []),
       '    default:',
       '      return function_id;',
       '  }',

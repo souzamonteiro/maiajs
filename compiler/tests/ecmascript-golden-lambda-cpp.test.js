@@ -141,6 +141,8 @@ test('golden: invocation bridge helpers validate call-shape and select function 
     'invocation bridge selector should return function id only for compatible call-shapes');
   assert.match(cpp, /static int __maia_runtime_lambda_invoke_function_id\(void\* lambda_value, int argc, int async_call\) \{[\s\S]*if \(!__maia_runtime_lambda_can_invoke\(lambda_value, argc, async_call\)\) \{ return 0; \}[\s\S]*int function_id = __maia_runtime_lambda_get_function_id\(lambda_value\);[\s\S]*switch \(function_id\) \{[\s\S]*default:[\s\S]*return function_id;[\s\S]*\}[\s\S]*\}/,
     'invocation bridge dispatch stub should expose a function-id switch scaffold with compatibility validation');
+  assert.match(cpp, /switch \(function_id\) \{[\s\S]*case 1001001:[\s\S]*return function_id;/,
+    'invocation bridge dispatch scaffold should materialize known capture-aware function-id case labels');
 });
 
 test('golden: capture-aware identifier call lowers through invocation function-id bridge', () => {
