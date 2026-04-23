@@ -94,6 +94,9 @@ test('runtime fallback dedup: capture-aware lambda fallback reuses shared lambda
 
   const lambdaSelectFunctionIdCount = (cpp.match(/static int __maia_runtime_lambda_select_function_id\(void\* lambda_value, int argc, int async_call\) \{/g) || []).length;
   assert.equal(lambdaSelectFunctionIdCount, 1, 'runtime-facing lambda invocation function-id selector helper must be emitted exactly once');
+
+  const lambdaInvokeFunctionIdCount = (cpp.match(/static int __maia_runtime_lambda_invoke_function_id\(void\* lambda_value, int argc, int async_call\) \{/g) || []).length;
+  assert.equal(lambdaInvokeFunctionIdCount, 1, 'runtime-facing lambda invocation function-id bridge helper must be emitted exactly once');
   assert.match(cpp, /static int __maia_runtime_lambda_get_capture_at\(void\* lambda_value, int index\) \{[\s\S]*return __maia_runtime_lambda_value_capture_at\(fn, index\);[\s\S]*\}/,
     'runtime-facing lambda capture-by-index API helper must delegate to lambda-value capture accessor path');
 
@@ -194,6 +197,7 @@ test('runtime fallback dedup: no-capture-only lambda programs do not emit captur
   assert.doesNotMatch(cpp, /static int __maia_runtime_lambda_get_is_async\(void\* lambda_value\) \{/, 'no-capture-only programs must not emit runtime-facing is-async helper');
   assert.doesNotMatch(cpp, /static int __maia_runtime_lambda_can_invoke\(void\* lambda_value, int argc, int async_call\) \{/, 'no-capture-only programs must not emit runtime-facing invocation-compatibility helper');
   assert.doesNotMatch(cpp, /static int __maia_runtime_lambda_select_function_id\(void\* lambda_value, int argc, int async_call\) \{/, 'no-capture-only programs must not emit runtime-facing invocation function-id selector helper');
+  assert.doesNotMatch(cpp, /static int __maia_runtime_lambda_invoke_function_id\(void\* lambda_value, int argc, int async_call\) \{/, 'no-capture-only programs must not emit runtime-facing invocation function-id bridge helper');
 });
 
 test('runtime fallback dedup: runtime-facing capture API avoids direct mirror-field reads', () => {

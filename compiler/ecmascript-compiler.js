@@ -2069,6 +2069,9 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
       '  if (!__maia_runtime_lambda_can_invoke(lambda_value, argc, async_call)) { return 0; }',
       '  return __maia_runtime_lambda_get_function_id(lambda_value);',
       '}',
+      'static int __maia_runtime_lambda_invoke_function_id(void* lambda_value, int argc, int async_call) {',
+      '  return __maia_runtime_lambda_select_function_id(lambda_value, argc, async_call);',
+      '}',
       'static void* __maia_runtime_alloc_lambda_value(int function_id, int arity, int is_async, int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, const int* extra_captures) {',
       '  __maia_runtime_lambda_value* fn = new __maia_runtime_lambda_value();',
       '  __maia_runtime_lambda_env* env = (__maia_runtime_lambda_env*)__maia_runtime_alloc_lambda_env(capture_count, c1, c2, c3, c4, extra_capture_count, extra_captures);',
@@ -2450,7 +2453,7 @@ function lowerCallExpressionValue(node, compileContext) {
     && lambdaBindingState
     && lambdaBindingState.isCaptureAware) {
     const asyncCallFlag = lambdaBindingState.isAsync ? 1 : 0;
-    return `__maia_runtime_lambda_select_function_id((void*)${pathSegments[0]}, ${argExprs.length}, ${asyncCallFlag})`;
+    return `__maia_runtime_lambda_invoke_function_id((void*)${pathSegments[0]}, ${argExprs.length}, ${asyncCallFlag})`;
   }
 
   const hostSymbol = compileContext.hostRegistry.resolvePath(pathSegments);

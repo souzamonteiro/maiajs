@@ -139,27 +139,29 @@ test('golden: invocation bridge helpers validate call-shape and select function 
     'invocation bridge compatibility helper should validate null/arity/async shape before invocation');
   assert.match(cpp, /static int __maia_runtime_lambda_select_function_id\(void\* lambda_value, int argc, int async_call\) \{[\s\S]*if \(!__maia_runtime_lambda_can_invoke\(lambda_value, argc, async_call\)\) \{ return 0; \}[\s\S]*return __maia_runtime_lambda_get_function_id\(lambda_value\);[\s\S]*\}/,
     'invocation bridge selector should return function id only for compatible call-shapes');
+  assert.match(cpp, /static int __maia_runtime_lambda_invoke_function_id\(void\* lambda_value, int argc, int async_call\) \{[\s\S]*return __maia_runtime_lambda_select_function_id\(lambda_value, argc, async_call\);[\s\S]*\}/,
+    'invocation bridge dispatch stub should currently delegate to selector helper');
 });
 
-test('golden: capture-aware identifier call lowers through invocation selector bridge', () => {
+test('golden: capture-aware identifier call lowers through invocation function-id bridge', () => {
   const cpp = runCompilerCpp('const y = 7; const f = x => x + y; f(1);');
 
-  assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 0\);/,
-    'capture-aware identifier call should lower to runtime invocation selector bridge');
+  assert.match(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)f, 1, 0\);/,
+    'capture-aware identifier call should lower to runtime invocation function-id bridge');
 });
 
-test('golden: capture-aware async identifier call lowers through invocation selector bridge with async flag', () => {
+test('golden: capture-aware async identifier call lowers through invocation function-id bridge with async flag', () => {
   const cpp = runCompilerCpp('const y = 7; const f = async x => await (x + y); f(1);');
 
-  assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 1\);/,
-    'capture-aware async identifier call should lower to runtime invocation selector bridge with async flag');
+  assert.match(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)f, 1, 1\);/,
+    'capture-aware async identifier call should lower to runtime invocation function-id bridge with async flag');
 });
 
-test('golden: assignment-defined capture-aware identifier call lowers through invocation selector bridge', () => {
+test('golden: assignment-defined capture-aware identifier call lowers through invocation function-id bridge', () => {
   const cpp = runCompilerCpp('let f; const y = 7; f = x => x + y; f(1);');
 
-  assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 0\);/,
-    'assignment-defined capture-aware identifier call should lower to runtime invocation selector bridge');
+  assert.match(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)f, 1, 0\);/,
+    'assignment-defined capture-aware identifier call should lower to runtime invocation function-id bridge');
 });
 
 test('golden: legacy-only labels appear in allocator only', () => {
