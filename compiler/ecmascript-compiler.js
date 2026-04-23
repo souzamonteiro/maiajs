@@ -495,6 +495,177 @@ function collectTopLevelLambdaBindingInfo(tree) {
   return bindings;
 }
 
+function extractCaptureAwareLambdaBindingInfoFromExpression(exprNode, lambdaCompileContext) {
+  if (!exprNode) {
+    return null;
+  }
+
+  let captureAwareBindingInfo = null;
+  walk(exprNode, (candidate) => {
+    if (captureAwareBindingInfo || !candidate || candidate.kind !== 'nonterminal') {
+      return;
+    }
+    if (candidate.name !== 'arrowFunction' && candidate.name !== 'asyncArrowFunction') {
+      return;
+    }
+
+    const captureCount = collectLambdaCaptureNames(candidate, lambdaCompileContext).length;
+    if (captureCount > 0) {
+      captureAwareBindingInfo = {
+        isAsync: candidate.name === 'asyncArrowFunction'
+      };
+    }
+  });
+
+  return captureAwareBindingInfo;
+}
+
+function collectVisibleLambdaBindingStatesAtNode(targetNode, compileContext) {
+  const states = new Map();
+  if (!targetNode || !compileContext || !compileContext.tree) {
+    return states;
+  }
+
+  const path = findNodePath(compileContext.tree, targetNode);
+  if (path.length === 0) {
+    return states;
+  }
+
+  const scopeContainers = [compileContext.tree];
+  for (const node of path) {
+    if (!node || node === compileContext.tree || node.kind !== 'nonterminal') {
+      continue;
+    }
+    if (node.name === 'functionBody' || node.name === 'asyncFunctionBody' || node.name === 'block') {
+      scopeContainers.push(node);
+    }
+  }
+
+  const lambdaCompileContext = {
+    tree: compileContext.tree,
+    topLevelBindingNames: compileContext.topLevelBindingNames || new Set(),
+    localFunctionNames: compileContext.localFunctionNames || new Set()
+  };
+
+  function applyBindingState(name, valueExprNode) {
+    if (!name) {
+      return;
+    }
+    const captureAwareInfo = extractCaptureAwareLambdaBindingInfoFromExpression(valueExprNode, lambdaCompileContext);
+    if (captureAwareInfo) {
+      states.set(name, {
+        isCaptureAware: true,
+        isAsync: captureAwareInfo.isAsync
+      });
+      return;
+    }
+
+    states.set(name, {
+      isCaptureAware: false,
+      isAsync: false
+    });
+  }
+
+  function processStatement(statementNode) {
+    const declarationNode = (statementNode.children || []).find(
+      (child) => child
+        && child.kind === 'nonterminal'
+        && (child.name === 'variableStatement' || child.name === 'letDeclaration' || child.name === 'constDeclaration')
+    );
+    if (declarationNode) {
+      const variableDeclarationList = (declarationNode.children || []).find(
+        (child) => child && child.kind === 'nonterminal' && child.name === 'variableDeclarationList'
+      );
+      const declarations = extractVariableDeclarations(variableDeclarationList);
+      for (const declaration of declarations) {
+        const bindingName = extractVariableDeclarationName(declaration);
+        const initializerExpr = extractVariableDeclarationInitializer(declaration);
+        applyBindingState(bindingName, initializerExpr);
+      }
+    }
+
+    const expressionStatementNode = (statementNode.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'expressionStatement'
+    );
+    if (!expressionStatementNode) {
+      return;
+    }
+
+    const expressionNode = (expressionStatementNode.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'expression'
+    );
+    const assignmentExpressionNode = expressionNode ? (expressionNode.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'assignmentExpression'
+    ) : null;
+    if (!assignmentExpressionNode) {
+      return;
+    }
+
+    const assignmentChildren = assignmentExpressionNode.children || [];
+    if (assignmentChildren.length !== 3
+      || !assignmentChildren[0]
+      || assignmentChildren[0].kind !== 'nonterminal'
+      || assignmentChildren[0].name !== 'leftHandSideExpression'
+      || !assignmentChildren[1]
+      || assignmentChildren[1].kind !== 'nonterminal'
+      || assignmentChildren[1].name !== 'assignmentOperator'
+      || !assignmentChildren[2]
+      || assignmentChildren[2].kind !== 'nonterminal'
+      || assignmentChildren[2].name !== 'assignmentExpression') {
+      return;
+    }
+
+    const operatorToken = (assignmentChildren[1].children || []).find(
+      (child) => child && child.kind === 'terminal'
+    );
+    if (!operatorToken || operatorToken.value !== '=') {
+      return;
+    }
+
+    const lhsIdentifier = lowerIdentifierFromLeftHandSideExpression(assignmentChildren[0]);
+    applyBindingState(lhsIdentifier, assignmentChildren[2]);
+  }
+
+  for (const scopeContainer of scopeContainers) {
+    const scopeStatements = scopeContainer === compileContext.tree
+      ? extractTopLevelStatementNodes(compileContext.tree)
+      : extractStatementsFromScopeContainer(scopeContainer);
+
+    for (const statementNode of scopeStatements) {
+      if (!statementNode) {
+        continue;
+      }
+
+      if (nodeContainsTarget(statementNode, targetNode)) {
+        break;
+      }
+
+      processStatement(statementNode);
+    }
+  }
+
+  return states;
+}
+
+function getCaptureAwareLambdaBindingInfoAtCallNode(callNode, pathSegments, compileContext) {
+  if (!Array.isArray(pathSegments)
+    || pathSegments.length !== 1
+    || !compileContext
+    || !callNode) {
+    return null;
+  }
+
+  const visibleStates = collectVisibleLambdaBindingStatesAtNode(callNode, compileContext);
+  const bindingState = visibleStates.get(pathSegments[0]);
+  if (!bindingState || !bindingState.isCaptureAware) {
+    return null;
+  }
+
+  return {
+    isAsync: !!bindingState.isAsync
+  };
+}
+
 function findNodePath(root, target) {
   const path = [];
 
@@ -674,7 +845,7 @@ function extractHostCallsFromTree(tree, compileContext) {
       return;
     }
 
-    if (getTopLevelLambdaBindingInfo(pathSegments, compileContext)) {
+    if (getCaptureAwareLambdaBindingInfoAtCallNode(node, pathSegments, compileContext)) {
       return;
     }
 
@@ -2245,8 +2416,9 @@ function lowerCallExpressionValue(node, compileContext) {
   const lambdaBindingInfo = getTopLevelLambdaBindingInfo(pathSegments, compileContext);
   if (compileContext
     && compileContext.hasLambdaCapturePayload
-    && lambdaBindingInfo) {
-    const asyncCallFlag = lambdaBindingInfo.isAsync ? 1 : 0;
+    && (lambdaBindingInfo || getCaptureAwareLambdaBindingInfoAtCallNode(node, pathSegments, compileContext))) {
+    const resolvedBindingInfo = lambdaBindingInfo || getCaptureAwareLambdaBindingInfoAtCallNode(node, pathSegments, compileContext);
+    const asyncCallFlag = resolvedBindingInfo && resolvedBindingInfo.isAsync ? 1 : 0;
     return `__maia_runtime_lambda_select_function_id((void*)${pathSegments[0]}, ${argExprs.length}, ${asyncCallFlag})`;
   }
 
@@ -2271,7 +2443,7 @@ function collectHostSignatures(tree, compileContext) {
       return;
     }
 
-    if (getTopLevelLambdaBindingInfo(pathSegments, compileContext)) {
+    if (getCaptureAwareLambdaBindingInfoAtCallNode(node, pathSegments, compileContext)) {
       return;
     }
 

@@ -6,7 +6,7 @@ Last updated: 2026-04-23
 
 - Overall status: Phase 3 — catch/finally routing in async checkpoints DONE
 - Estimated completion: 99%
-- Test baseline: 228 passing, 0 failing (`node --test compiler/tests/*.test.js`)
+- Test baseline: 232 passing, 0 failing (`node --test compiler/tests/*.test.js`)
 - Current focus: full closure object/runtime semantics beyond the current local capture-payload fallback MVP + runtime packaging hardening for generated dist
 
 ## Milestones
@@ -115,6 +115,7 @@ Legend:
 - [x] Route capture-aware async top-level identifier calls through invocation selector bridge with async-call flag propagation (`async_call=1`) (Phase E)
 - [x] Extend selector-based call lowering eligibility to top-level bindings that become capture-aware lambdas via assignment expressions (`f = x => ...` / `f = async x => ...`) (Phase E)
 - [x] Exclude selector-routed capture-aware lambda identifier calls from host-interop classification/signature emission (avoid redundant `__f` host externs for local lambda bindings) (Phase E)
+- [x] Resolve selector-based call lowering eligibility with lexical-scope binding state so function/block-local capture-aware lambda identifiers route through selector bridge (and stay excluded from host interop) (Phase E)
 
 ## Infrastructure Status
 
@@ -137,6 +138,7 @@ Legend:
   - function-object metadata helpers return `0` for null payload pointers.
   - invocation bridge helpers return `0` for invalid call-shapes (null payload, arity mismatch, async mismatch).
   - capture-aware top-level identifier calls are lowered through the invocation selector bridge, including bindings that become capture-aware via top-level assignment.
+  - function/block-local capture-aware lambda identifier calls are lowered through the invocation selector bridge using lexical-scope binding resolution.
   - selector-based call lowering excludes no-capture lambda bindings.
   - selector-based call lowering propagates async-call flag from capture-aware async lambda bindings.
   - selector-routed capture-aware lambda calls are excluded from host-interop detected-call/signature emission.

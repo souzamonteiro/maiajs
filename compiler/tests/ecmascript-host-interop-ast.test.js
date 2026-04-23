@@ -81,6 +81,14 @@ test('AST-first host interop does not classify capture-aware lambda selector cal
   assert.equal(calls.length, 0, 'capture-aware lambda invocation should be handled by selector bridge, not host interop');
 });
 
+test('AST-first host interop does not classify function-local capture-aware lambda selector calls as host', () => {
+  const ir = runCompiler('function outer(y){ const f = x => x + y; f(1); return 0; }\n');
+  const calls = ir.hostInterop.detectedCalls;
+
+  assert.ok(Array.isArray(calls), 'detectedCalls must be an array');
+  assert.equal(calls.length, 0, 'function-local capture-aware lambda invocation should stay out of host interop');
+});
+
 test('C++ lowering emits actual host call statement for console.log string arg', () => {
   const cpp = runCompilerCpp('console.log("hello");\n');
 

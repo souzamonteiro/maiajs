@@ -127,6 +127,12 @@ test('lambda lowering: top-level assignment to capture-aware sync lambda partici
   assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 0\);/, 'C++ must route assignment-defined capture-aware sync lambda calls through invocation selector bridge');
 });
 
+test('lambda lowering: function-local capture-aware sync lambda call routes through invocation selector', () => {
+  const cpp = runCompilerCpp('function outer(y) {\n  const f = x => x + y;\n  f(1);\n  return 0;\n}\n');
+
+  assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 0\);/, 'C++ must route function-local capture-aware sync lambda calls through invocation selector bridge');
+});
+
 test('lambda lowering: emits capture-aware async lambda hook for simple top-level identifier capture', () => {
   const cpp = runCompilerCpp('const y = 7;\nconst f = async x => await y;\n');
 
@@ -144,6 +150,18 @@ test('lambda lowering: top-level assignment to capture-aware async lambda partic
   const cpp = runCompilerCpp('let f;\nconst y = 7;\nf = async x => await (x + y);\nf(1);\n');
 
   assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 1\);/, 'C++ must route assignment-defined capture-aware async lambda calls through invocation selector bridge with async flag set');
+});
+
+test('lambda lowering: function-local capture-aware async lambda call routes through invocation selector with async flag', () => {
+  const cpp = runCompilerCpp('function outer(y) {\n  const f = async x => await (x + y);\n  f(1);\n  return 0;\n}\n');
+
+  assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 1\);/, 'C++ must route function-local capture-aware async lambda calls through invocation selector bridge with async flag set');
+});
+
+test('lambda lowering: function-local no-capture lambda call is not misrouted through invocation selector', () => {
+  const cpp = runCompilerCpp('function outer() {\n  const g = x => x;\n  g(1);\n  return 0;\n}\n');
+
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)g, 1, 0\);/, 'function-local no-capture lambda call must not be routed through capture-aware invocation selector bridge');
 });
 
 test('lambda lowering: emits capture-aware async lambda hook for simple function-local capture', () => {
