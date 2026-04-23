@@ -6,7 +6,7 @@ Last updated: 2026-04-23
 
 - Overall status: Phase 3 — catch/finally routing in async checkpoints DONE
 - Estimated completion: 99%
-- Test baseline: 235 passing, 0 failing (`node --test compiler/tests/*.test.js`)
+- Test baseline: 237 passing, 0 failing (`node --test compiler/tests/*.test.js`)
 - Current focus: full closure object/runtime semantics beyond the current local capture-payload fallback MVP + runtime packaging hardening for generated dist
 
 ## Milestones
@@ -136,6 +136,7 @@ Legend:
 - [x] Differentiate known-case callable-like semantics by deterministic function-id-derived constant term (`function_id % 10`) so known labels no longer share identical weighted formulas across different signatures, while preserving per-case guards and fail-closed unknown/default handling (Phase E)
 - [x] Differentiate known-case callable-like semantics by arity-derived term (`get_arity(...) * 10`) layered onto weighted/function-id formulas so known labels diverge by signature family while preserving per-case guards and fail-closed unknown/default handling (Phase E)
 - [x] Differentiate known-case callable-like semantics by capture-count family constant (single: `+10`, mid `2..4`: `+20`, overflow `>4`: `+40`) and restrict `capture_at(4)` contribution to overflow known signatures only, while preserving per-case guards and fail-closed unknown/default handling (Phase E)
+- [x] Differentiate known-case callable-like semantics by arity-family constant (unary: `+100`, multi-arg: `+200`) layered onto weighted/function-id/arity/capture-family formulas so known labels diverge by call-shape family while preserving per-case guards and fail-closed unknown/default handling (Phase E)
 
 ## Infrastructure Status
 
@@ -164,7 +165,7 @@ Legend:
   - lexical shadowing by parameters/locals blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - hoisted local function declaration shadowing blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - selector-based call lowering propagates async-call flag from capture-aware async lambda bindings.
-  - capture-aware identifier call lowering targets the invocation dispatch-stub helper (`invoke_function_id`), which validates call-shape and executes a function-id switch scaffold with known-case labels plus per-case `arity`/`is_async` guards; known sync cases return a weighted callable-like value (`capture_at(0)*1 + capture_at(1)*2 + capture_at(2)*3 + capture_at(3)*4 + argc`) plus deterministic function-id (`function_id % 10`) and arity-derived (`get_arity(...) * 10`) constants and a capture-family constant (`+10` single / `+20` mid `2..4` / `+40` overflow), with `capture_at(4)` included only for overflow known signatures (`capture_count > 4`), known async cases return the negated equivalent, and unknown/default function IDs fail closed (`return 0`).
+  - capture-aware identifier call lowering targets the invocation dispatch-stub helper (`invoke_function_id`), which validates call-shape and executes a function-id switch scaffold with known-case labels plus per-case `arity`/`is_async` guards; known sync cases return a weighted callable-like value (`capture_at(0)*1 + capture_at(1)*2 + capture_at(2)*3 + capture_at(3)*4 + argc`) plus deterministic function-id (`function_id % 10`) and arity-derived (`get_arity(...) * 10`) constants, a capture-family constant (`+10` single / `+20` mid `2..4` / `+40` overflow), and an arity-family constant (`+100` unary / `+200` multi-arg), with `capture_at(4)` included only for overflow known signatures (`capture_count > 4`), known async cases return the negated equivalent, and unknown/default function IDs fail closed (`return 0`).
   - selector-routed capture-aware lambda calls are excluded from host-interop detected-call/signature emission.
 - Compatibility fields in `__maia_runtime_lambda_value` (`capture1..capture4`, `extra_*`):
   - currently maintained as mirror projections for backward compatibility.
