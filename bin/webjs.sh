@@ -21,7 +21,7 @@ resolve_webcpp() {
   return 1
 }
 
-WEBCPP_SH="$(resolve_webcpp "$REPO_ROOT/maiacpp/bin/webcpp.sh" "$PROJECTS_ROOT/maiacpp/bin/webcpp.sh" || true)"
+WEBCPP_SH="$(resolve_webcpp "$PROJECTS_ROOT/maiacpp/bin/webcpp.sh" "$REPO_ROOT/maiacpp/bin/webcpp.sh" || true)"
 
 usage() {
   cat <<'EOF'
