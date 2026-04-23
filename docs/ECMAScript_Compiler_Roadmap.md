@@ -6,7 +6,7 @@ Last updated: 2026-04-23
 
 - Overall status: Phase 3 — catch/finally routing in async checkpoints DONE
 - Estimated completion: 99%
-- Test baseline: 234 passing, 0 failing (`node --test compiler/tests/*.test.js`)
+- Test baseline: 235 passing, 0 failing (`node --test compiler/tests/*.test.js`)
 - Current focus: full closure object/runtime semantics beyond the current local capture-payload fallback MVP + runtime packaging hardening for generated dist
 
 ## Milestones
@@ -117,6 +117,7 @@ Legend:
 - [x] Exclude selector-routed capture-aware lambda identifier calls from host-interop classification/signature emission (avoid redundant `__f` host externs for local lambda bindings) (Phase E)
 - [x] Resolve selector-based call lowering eligibility with lexical-scope binding state so function/block-local capture-aware lambda identifiers route through selector bridge (and stay excluded from host interop) (Phase E)
 - [x] Harden lexical-scope selector routing against shadowing so parameter/local no-capture bindings do not misroute through outer capture-aware selector paths (Phase E)
+- [x] Harden lexical-scope selector routing against hoisted local function declaration shadowing (`function f(){}`) so outer capture-aware identifiers with the same name are not misrouted (Phase E)
 
 ## Infrastructure Status
 
@@ -142,6 +143,7 @@ Legend:
   - function/block-local capture-aware lambda identifier calls are lowered through the invocation selector bridge using lexical-scope binding resolution.
   - selector-based call lowering excludes no-capture lambda bindings.
   - lexical shadowing by parameters/locals blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
+  - hoisted local function declaration shadowing blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - selector-based call lowering propagates async-call flag from capture-aware async lambda bindings.
   - selector-routed capture-aware lambda calls are excluded from host-interop detected-call/signature emission.
 - Compatibility fields in `__maia_runtime_lambda_value` (`capture1..capture4`, `extra_*`):

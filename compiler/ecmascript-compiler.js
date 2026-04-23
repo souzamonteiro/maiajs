@@ -656,6 +656,29 @@ function collectVisibleLambdaBindingStatesAtNode(targetNode, compileContext) {
       ? extractTopLevelStatementNodes(compileContext.tree)
       : extractStatementsFromScopeContainer(scopeContainer);
 
+    for (const scopeStatement of scopeStatements) {
+      if (!scopeStatement) {
+        continue;
+      }
+
+      const functionDeclarationNode = extractFunctionDeclarationFromStatement(scopeStatement);
+      if (!functionDeclarationNode) {
+        continue;
+      }
+
+      const functionName = extractFunctionDeclarationName(functionDeclarationNode);
+      if (!functionName) {
+        continue;
+      }
+
+      // Function declarations are visible for the full scope, so pre-register
+      // them before statement-order traversal to avoid selector misrouting.
+      states.set(functionName, {
+        isCaptureAware: false,
+        isAsync: false
+      });
+    }
+
     for (const statementNode of scopeStatements) {
       if (!statementNode) {
         continue;

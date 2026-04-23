@@ -176,6 +176,12 @@ test('lambda lowering: local no-capture shadowing prevents selector misrouting f
   assert.doesNotMatch(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 0\);/, 'local no-capture shadowing must prevent selector routing intended for outer capture-aware lambda binding');
 });
 
+test('lambda lowering: hoisted local function declaration shadowing prevents selector misrouting from outer capture-aware binding', () => {
+  const cpp = runCompilerCpp('const y = 7;\nconst f = x => x + y;\nfunction outer() {\n  f(1);\n  function f(x) { return x; }\n  return 0;\n}\n');
+
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 0\);/, 'hoisted local function declaration shadowing must prevent selector routing intended for outer capture-aware lambda binding');
+});
+
 test('lambda lowering: emits capture-aware async lambda hook for simple function-local capture', () => {
   const cpp = runCompilerCpp('function outer(y) {\n  const z = 7;\n  const f = async x => await z;\n  return 0;\n}\n');
 
