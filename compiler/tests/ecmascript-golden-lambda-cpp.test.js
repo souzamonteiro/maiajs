@@ -119,6 +119,19 @@ test('golden: runtime API helpers avoid direct mirror reads', () => {
     'should delegate to accessor, not direct mirror reads');
 });
 
+test('golden: function-object metadata helpers are emitted for capture-aware payloads', () => {
+  const cpp = runCompilerCpp('const y = 7; const f = async x => await (x + y);');
+
+  assert.match(cpp, /static int __maia_runtime_lambda_get_function_id\(void\* lambda_value\) \{[\s\S]*return fn->function_id;[\s\S]*\}/,
+    'should emit runtime-facing function-id helper');
+  assert.match(cpp, /static int __maia_runtime_lambda_get_arity\(void\* lambda_value\) \{[\s\S]*return fn->arity;[\s\S]*\}/,
+    'should emit runtime-facing arity helper');
+  assert.match(cpp, /static int __maia_runtime_lambda_get_is_async\(void\* lambda_value\) \{[\s\S]*return fn->is_async;[\s\S]*\}/,
+    'should emit runtime-facing is-async helper');
+  assert.match(cpp, /if \(!fn\) \{ return 0; \}/,
+    'metadata helpers should return zero for null payload pointers');
+});
+
 test('golden: legacy-only labels appear in allocator only', () => {
   const cpp = runCompilerCpp('const y = 7; const f = x => x + y;');
 

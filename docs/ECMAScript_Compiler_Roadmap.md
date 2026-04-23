@@ -6,7 +6,7 @@ Last updated: 2026-04-23
 
 - Overall status: Phase 3 — catch/finally routing in async checkpoints DONE
 - Estimated completion: 99%
-- Test baseline: 217 passing, 0 failing (`node --test compiler/tests/*.test.js`)
+- Test baseline: 218 passing, 0 failing (`node --test compiler/tests/*.test.js`)
 - Current focus: full closure object/runtime semantics beyond the current local capture-payload fallback MVP + runtime packaging hardening for generated dist
 
 ## Milestones
@@ -108,6 +108,7 @@ Legend:
 - [x] Add focused regression ensuring runtime-facing capture API helper avoids direct mirror-field reads (mirror reads remain confined to compatibility fallback accessor)
 - [x] Add lint-style regression guard that blocks new direct mirror-field read consumers beyond established compatibility fallback paths (Phase D)
 - [x] Add explicit legacy-only labels at mirror assignment sites in allocator and regress them to prevent ambiguity in future diffs
+- [x] Add minimal runtime-facing lambda function-object metadata APIs (`__maia_runtime_lambda_get_function_id`, `__maia_runtime_lambda_get_arity`, `__maia_runtime_lambda_get_is_async`) with null-safe defaults for capture-aware payloads (Phase E start)
 
 ## Infrastructure Status
 
@@ -118,10 +119,14 @@ Legend:
   - `__maia_runtime_alloc_lambda_value(...)`
   - `__maia_runtime_lambda_get_capture_count(void* lambda_value)`
   - `__maia_runtime_lambda_get_capture_at(void* lambda_value, int index)`
+  - `__maia_runtime_lambda_get_function_id(void* lambda_value)`
+  - `__maia_runtime_lambda_get_arity(void* lambda_value)`
+  - `__maia_runtime_lambda_get_is_async(void* lambda_value)`
 - Semantic guarantees (current):
   - `function_id` is deterministic per lowered lambda hook signature.
   - `capture_count` returned by helper APIs is canonical and env-first.
   - capture reads by index are env-first and return `0` for invalid/out-of-range indexes.
+  - function-object metadata helpers return `0` for null payload pointers.
 - Compatibility fields in `__maia_runtime_lambda_value` (`capture1..capture4`, `extra_*`):
   - currently maintained as mirror projections for backward compatibility.
   - should be treated as transitional, not canonical, by new runtime consumers.

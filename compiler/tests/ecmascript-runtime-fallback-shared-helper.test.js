@@ -79,6 +79,15 @@ test('runtime fallback dedup: capture-aware lambda fallback reuses shared lambda
 
   const lambdaGetCaptureAtCount = (cpp.match(/static int __maia_runtime_lambda_get_capture_at\(void\* lambda_value, int index\) \{/g) || []).length;
   assert.equal(lambdaGetCaptureAtCount, 1, 'runtime-facing lambda capture-by-index API helper must be emitted exactly once');
+
+  const lambdaGetFunctionIdCount = (cpp.match(/static int __maia_runtime_lambda_get_function_id\(void\* lambda_value\) \{/g) || []).length;
+  assert.equal(lambdaGetFunctionIdCount, 1, 'runtime-facing lambda function-id API helper must be emitted exactly once');
+
+  const lambdaGetArityCount = (cpp.match(/static int __maia_runtime_lambda_get_arity\(void\* lambda_value\) \{/g) || []).length;
+  assert.equal(lambdaGetArityCount, 1, 'runtime-facing lambda arity API helper must be emitted exactly once');
+
+  const lambdaGetIsAsyncCount = (cpp.match(/static int __maia_runtime_lambda_get_is_async\(void\* lambda_value\) \{/g) || []).length;
+  assert.equal(lambdaGetIsAsyncCount, 1, 'runtime-facing lambda is-async API helper must be emitted exactly once');
   assert.match(cpp, /static int __maia_runtime_lambda_get_capture_at\(void\* lambda_value, int index\) \{[\s\S]*return __maia_runtime_lambda_value_capture_at\(fn, index\);[\s\S]*\}/,
     'runtime-facing lambda capture-by-index API helper must delegate to lambda-value capture accessor path');
 
@@ -174,6 +183,9 @@ test('runtime fallback dedup: no-capture-only lambda programs do not emit captur
   assert.doesNotMatch(cpp, /static void\* __maia_runtime_alloc_lambda_env\(/, 'no-capture-only programs must not emit lambda env allocator');
   assert.doesNotMatch(cpp, /static int __maia_runtime_lambda_get_capture_count\(void\* lambda_value\) \{/, 'no-capture-only programs must not emit runtime-facing capture-count helper');
   assert.doesNotMatch(cpp, /static int __maia_runtime_lambda_get_capture_at\(void\* lambda_value, int index\) \{/, 'no-capture-only programs must not emit runtime-facing capture-by-index helper');
+  assert.doesNotMatch(cpp, /static int __maia_runtime_lambda_get_function_id\(void\* lambda_value\) \{/, 'no-capture-only programs must not emit runtime-facing function-id helper');
+  assert.doesNotMatch(cpp, /static int __maia_runtime_lambda_get_arity\(void\* lambda_value\) \{/, 'no-capture-only programs must not emit runtime-facing arity helper');
+  assert.doesNotMatch(cpp, /static int __maia_runtime_lambda_get_is_async\(void\* lambda_value\) \{/, 'no-capture-only programs must not emit runtime-facing is-async helper');
 });
 
 test('runtime fallback dedup: runtime-facing capture API avoids direct mirror-field reads', () => {
