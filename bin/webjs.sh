@@ -40,6 +40,11 @@ Options:
   --no-webcpp          Only generate C++ (skip MaiaCpp webcpp.sh invocation).
   -h, --help           Show help.
 
+Dist behavior:
+  --dist / --dist-run  First runs the full MaiaJS compiler test suite
+                       (`node --test compiler/tests/*.test.js`). Dist output is
+                       generated only if that suite passes.
+
 Any unknown options are forwarded to MaiaCpp webcpp.sh (unless --no-webcpp).
 
 Examples:
@@ -52,6 +57,14 @@ EOF
 err() {
   echo "Error: $*" >&2
   exit 1
+}
+
+run_full_compiler_suite() {
+  echo "[webjs] running full compiler suite before dist build"
+  (
+    cd "$REPO_ROOT"
+    node --test compiler/tests/*.test.js
+  )
 }
 
 # Distribution support: copy WAT runtime libs from maiajs/lib to dist directory
@@ -274,6 +287,10 @@ if [[ $AST_SHOW -eq 1 ]]; then
 fi
 
 echo "[webjs] transpiling JS -> C++: $INPUT_FILE"
+if [[ $HAS_DIST -eq 1 ]]; then
+  run_full_compiler_suite
+fi
+
 node "$COMPILER_JS" "${compiler_args[@]}"
 
 echo "[webjs] C++ emitted: $CPP_OUT"

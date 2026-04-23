@@ -20,10 +20,11 @@ This directory contains WebAssembly (WAT/WASM) runtime modules that are included
 
 When `webjs.sh --dist` or `webjs.sh --dist-run` is invoked:
 
-1. MaiaCpp webcpp.sh generates C++ → WAT → WASM
-2. `bin/webjs.sh` detects `--dist` flag
-3. `copy_dist_wasm_libs()` copies all `.wasm` files from this directory to the dist folder
-4. `patch_manifest_copied_libs()` updates manifest.json with the list of included libraries
+1. `bin/webjs.sh` runs the full MaiaJS compiler suite (`node --test compiler/tests/*.test.js`)
+2. MaiaCpp webcpp.sh generates C++ → WAT → WASM
+3. `bin/webjs.sh` detects `--dist` flag
+4. `copy_dist_wasm_libs()` copies all `.wasm` files from this directory to the dist folder
+5. `patch_manifest_copied_libs()` updates manifest.json with the list of included libraries
 
 ## Adding New Runtime Modules
 
