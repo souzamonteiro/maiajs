@@ -132,6 +132,15 @@ test('golden: function-object metadata helpers are emitted for capture-aware pay
     'metadata helpers should return zero for null payload pointers');
 });
 
+test('golden: invocation bridge helpers validate call-shape and select function id', () => {
+  const cpp = runCompilerCpp('const y = 7; const f = async x => await (x + y);');
+
+  assert.match(cpp, /static int __maia_runtime_lambda_can_invoke\(void\* lambda_value, int argc, int async_call\) \{[\s\S]*if \(!fn \|\| argc < 0\) \{ return 0; \}[\s\S]*if \(fn->arity != argc\) \{ return 0; \}[\s\S]*if \(fn->is_async != \(async_call \? 1 : 0\)\) \{ return 0; \}[\s\S]*return 1;[\s\S]*\}/,
+    'invocation bridge compatibility helper should validate null/arity/async shape before invocation');
+  assert.match(cpp, /static int __maia_runtime_lambda_select_function_id\(void\* lambda_value, int argc, int async_call\) \{[\s\S]*if \(!__maia_runtime_lambda_can_invoke\(lambda_value, argc, async_call\)\) \{ return 0; \}[\s\S]*return __maia_runtime_lambda_get_function_id\(lambda_value\);[\s\S]*\}/,
+    'invocation bridge selector should return function id only for compatible call-shapes');
+});
+
 test('golden: legacy-only labels appear in allocator only', () => {
   const cpp = runCompilerCpp('const y = 7; const f = x => x + y;');
 
