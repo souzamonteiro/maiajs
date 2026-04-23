@@ -24,6 +24,38 @@ Legend:
 - [x] Implemented and validated in current pipeline/tests
 - [ ] Not implemented yet, partial, or not validated end-to-end
 
+### 0) Objective: 100% behavioral run of `compiler/examples/full_es8_test.js`
+
+Target outcome:
+- [ ] The compiled dist path reproduces the behavioral runtime markers from `compiler/examples/full_es8_test.js` (not only exit code `0`).
+
+Current observed state (2026-04-23):
+- [x] `bin/webjs.sh --file compiler/examples/full_es8_test.js --name full_es8_test --dist-run` reaches WASM/dist and returns `0`.
+- [ ] Behavioral parity is not yet achieved: generated `out/full_es8_test.cpp` currently has `Host-call map: (none detected)` and an empty `main` body.
+- [x] A behavior gate exists: `compiler/examples/validate_full_es8_dist.sh` fails when required source runtime markers are missing from dist output.
+
+Clear TODO to close this objective:
+
+MaiaJS (ECMAScript -> C++):
+- [ ] Ensure top-level expression statements in `full_es8_test.js` are lowered into emitted C++ `main` (instead of empty program fallback).
+- [ ] Ensure host-call detection maps `console.log` and related runtime-visible calls in this example into emitted host symbols.
+- [ ] Add/extend compiler tests proving the generated C++ for `full_es8_test.js` is non-empty and contains expected runtime-visible call paths.
+- [ ] Keep `compiler/examples/validate_full_es8_dist.sh` green as a blocking behavior check.
+
+MaiaCpp (C++ -> C):
+- [ ] Preserve lowered runtime-visible call paths from generated C++ without collapsing `main` to stub fallback for this scenario.
+- [ ] Add a fixture/regression case derived from the `full_es8_test` shape to prevent silent empty-main/stub regressions.
+
+MaiaC / webc (C -> WASM/dist):
+- [ ] Keep generated imports/wrapper wiring sufficient to surface host output from compiled program execution in node/browser runners.
+- [ ] Fix `tools/webc.js --no-validate` behavior consistency so diagnostics do not mask artifact generation state during debugging.
+
+Definition of Done for this objective:
+- [ ] `compiler/examples/validate_full_es8_dist.sh` passes end-to-end.
+- [ ] Dist node runner output includes required ES8 runtime markers (same checkpoints used by validator script).
+- [ ] Browser runner also surfaces the same required markers.
+- [ ] Full compiler test suite remains green (`node --test compiler/tests/*.test.js`).
+
 ### A) Parser and Grammar (EBNF + generated parser)
 
 - [x] ES8 grammar baseline integrated
