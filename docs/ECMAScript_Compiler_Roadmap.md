@@ -128,6 +128,7 @@ Legend:
 - [x] Introduce first callable-like known-case dispatch behavior for sync capture-aware lambdas (`return __maia_runtime_lambda_get_capture_at(lambda_value, 0)`) while preserving async differentiated return behavior, per-case guards, and fail-closed unknown/default handling (Phase E)
 - [x] Introduce first callable-like known-case dispatch behavior for async capture-aware lambdas (`return -__maia_runtime_lambda_get_capture_at(lambda_value, 0)`) so both sync/async known paths now use capture-value reads under the same guard/fail-closed scaffold (Phase E)
 - [x] Make callable-like known-case dispatch returns argc-aware (sync: `capture_at(0) + argc`; async: `-(capture_at(0) + argc)`) while preserving per-case guards and fail-closed unknown/default handling (Phase E)
+- [x] Extend callable-like known-case dispatch returns with second-capture contribution (sync: `capture_at(0) + capture_at(1) + argc`; async: `-(capture_at(0) + capture_at(1) + argc)`) while preserving per-case guards and fail-closed unknown/default handling (Phase E)
 
 ## Infrastructure Status
 
@@ -156,7 +157,7 @@ Legend:
   - lexical shadowing by parameters/locals blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - hoisted local function declaration shadowing blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - selector-based call lowering propagates async-call flag from capture-aware async lambda bindings.
-  - capture-aware identifier call lowering targets the invocation dispatch-stub helper (`invoke_function_id`), which validates call-shape and executes a function-id switch scaffold with known-case labels plus per-case `arity`/`is_async` guards; known sync cases now return argc-aware callable-like value (`capture_at(0) + argc`), known async cases return negated argc-aware callable-like value (`-(capture_at(0) + argc)`), and unknown/default function IDs fail closed (`return 0`).
+  - capture-aware identifier call lowering targets the invocation dispatch-stub helper (`invoke_function_id`), which validates call-shape and executes a function-id switch scaffold with known-case labels plus per-case `arity`/`is_async` guards; known sync cases now return second-capture argc-aware callable-like value (`capture_at(0) + capture_at(1) + argc`), known async cases return negated second-capture argc-aware callable-like value (`-(capture_at(0) + capture_at(1) + argc)`), and unknown/default function IDs fail closed (`return 0`).
   - selector-routed capture-aware lambda calls are excluded from host-interop detected-call/signature emission.
 - Compatibility fields in `__maia_runtime_lambda_value` (`capture1..capture4`, `extra_*`):
   - currently maintained as mirror projections for backward compatibility.
