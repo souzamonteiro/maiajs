@@ -1,0 +1,20 @@
+{
+  "generatedAt": "2026-04-23T21:38:24.386Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.78YIulQIGB/full_es8_test.c",
+  "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/dist",
+  "appName": "full_es8_test",
+  "artifacts": {
+    "wasm": "full_es8_test.wasm",
+    "wrapper": "full_es8_test.js",
+    "wat": null,
+    "browserRunner": "browser-runner.html",
+    "browserMemoryFileStore": "browser-memory-file-store.js",
+    "nodeRunner": "node-runner.js",
+    "nodeRunnerShell": "node-runner.sh"
+  },
+  "linkedLibraries": [],
+  "copiedLibraries": [],
+  "runtimeProvidedHeaders": [],
+  "missingLibraries": [],
+  "sourceBytes": 1362
+}

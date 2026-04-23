@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "kind": "placeholder-ir",
+  "source": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/full_es8_test.js",
+  "hostInterop": {
+    "strategy": {
+      "mode": "dynamic-prefix",
+      "hostPrefix": "__",
+      "separator": "__",
+      "internalHostSymbols": []
+    },
+    "mappings": [],
+    "detectedCalls": [
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 0
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 1
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 2
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 3
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 4
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 5
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 6
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 7
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 8
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 9
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 10
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 11
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 12
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 13
+      }
+    ]
+  },
+  "asyncIR": {
+    "version": "0.1.0",
+    "asyncFunctions": []
+  },
+  "asyncRuntime": {
+    "resumeBridges": []
+  },
+  "notes": [
+    "Replace with semantic/lowering pipeline described in docs/ECMAScript_Compiler_Architecture.md"
+  ]
+}
