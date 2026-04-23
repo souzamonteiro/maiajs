@@ -6,7 +6,7 @@ Last updated: 2026-04-23
 
 - Overall status: Phase 3 — catch/finally routing in async checkpoints DONE
 - Estimated completion: 99%
-- Test baseline: 209 passing, 0 failing (`node --test compiler/tests/*.test.js`)
+- Test baseline: 217 passing, 0 failing (`node --test compiler/tests/*.test.js`)
 - Current focus: full closure object/runtime semantics beyond the current local capture-payload fallback MVP + runtime packaging hardening for generated dist
 
 ## Milestones
@@ -69,7 +69,7 @@ Legend:
 - [x] Full compiler suite green baseline (`node --test compiler/tests/*.test.js`)
 - [x] Focused async IR/C++/runtime wrapper test coverage
 - [x] Dist bootstrap resolver contract test coverage
-- [ ] Golden tests for representative generated C++ outputs
+- [x] Golden tests for representative generated C++ outputs (lambda capture-aware payloads)
 - [ ] Smoke corpus compilation runs for larger JS inputs
 - [ ] Performance budget and compile-time trend tracking
 
