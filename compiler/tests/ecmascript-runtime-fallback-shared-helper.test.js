@@ -187,8 +187,8 @@ test('runtime fallback dedup: mixed sync and async overflow hooks reuse one shar
   assert.match(cpp, /case 1005:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return __maia_runtime_lambda_get_capture_at\(lambda_value, 0\);/,
     'known sync function-id case should return callable-like first-capture value after metadata guards');
 
-  assert.match(cpp, /case 1001005:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*return -__maia_runtime_lambda_get_capture_count\(lambda_value\);/,
-    'known async function-id case should return async-specific payload-derived value after metadata guards');
+  assert.match(cpp, /case 1001005:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*return -__maia_runtime_lambda_get_capture_at\(lambda_value, 0\);/,
+    'known async function-id case should return async-specific callable-like first-capture value after metadata guards');
 });
 
 test('runtime fallback dedup: no-capture-only lambda programs do not emit capture runtime API helpers', () => {

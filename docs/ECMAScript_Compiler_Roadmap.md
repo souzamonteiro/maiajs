@@ -126,6 +126,7 @@ Legend:
 - [x] Add first payload-derived known-case return behavior in invocation dispatch scaffold (`return __maia_runtime_lambda_get_capture_count(lambda_value)`) while preserving fail-closed unknown/default handling (Phase E)
 - [x] Differentiate known-case invocation dispatch returns by lambda async kind (sync returns `capture_count`; async returns negated `capture_count`) while preserving per-case guards and fail-closed unknown/default handling (Phase E)
 - [x] Introduce first callable-like known-case dispatch behavior for sync capture-aware lambdas (`return __maia_runtime_lambda_get_capture_at(lambda_value, 0)`) while preserving async differentiated return behavior, per-case guards, and fail-closed unknown/default handling (Phase E)
+- [x] Introduce first callable-like known-case dispatch behavior for async capture-aware lambdas (`return -__maia_runtime_lambda_get_capture_at(lambda_value, 0)`) so both sync/async known paths now use capture-value reads under the same guard/fail-closed scaffold (Phase E)
 
 ## Infrastructure Status
 
@@ -154,7 +155,7 @@ Legend:
   - lexical shadowing by parameters/locals blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - hoisted local function declaration shadowing blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - selector-based call lowering propagates async-call flag from capture-aware async lambda bindings.
-  - capture-aware identifier call lowering targets the invocation dispatch-stub helper (`invoke_function_id`), which validates call-shape and executes a function-id switch scaffold with known-case labels plus per-case `arity`/`is_async` guards; known sync cases now return callable-like first-capture value (`capture_at(0)`), known async cases return negated payload-derived `capture_count`, and unknown/default function IDs fail closed (`return 0`).
+  - capture-aware identifier call lowering targets the invocation dispatch-stub helper (`invoke_function_id`), which validates call-shape and executes a function-id switch scaffold with known-case labels plus per-case `arity`/`is_async` guards; known sync cases now return callable-like first-capture value (`capture_at(0)`), known async cases return negated callable-like first-capture value (`-capture_at(0)`), and unknown/default function IDs fail closed (`return 0`).
   - selector-routed capture-aware lambda calls are excluded from host-interop detected-call/signature emission.
 - Compatibility fields in `__maia_runtime_lambda_value` (`capture1..capture4`, `extra_*`):
   - currently maintained as mirror projections for backward compatibility.
