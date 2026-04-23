@@ -1,12 +1,12 @@
 # ECMAScript Compiler Roadmap (ES8 -> C++98 -> WASM)
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 
 ## Progress Snapshot
 
 - Overall status: Phase 3 — catch/finally routing in async checkpoints DONE
 - Estimated completion: 99%
-- Test baseline: 208 passing, 0 failing (`node --test compiler/tests/*.test.js`)
+- Test baseline: 209 passing, 0 failing (`node --test compiler/tests/*.test.js`)
 - Current focus: full closure object/runtime semantics beyond the current local capture-payload fallback MVP + runtime packaging hardening for generated dist
 
 ## Milestones
@@ -50,7 +50,7 @@ Legend:
 - [x] Array literal lowering MVP (empty + non-empty literals via arity-based runtime hooks)
 - [x] Array spread/elision lowering semantics now emit explicit builder-based runtime calls (no direct `nullptr` fallback)
 - [x] Local object/array/lambda fallback hooks deduplicated through shared runtime helper allocators, including capture-aware lambda payload allocation
-- [ ] Arrow/lambda semantics are partial: non-closure MVP plus immediate top-level/local/nested-block/enclosing-lambda capture-aware hook lowering are implemented for sync/async cases, and local fallback payloads now preserve concrete captured values including overflow sidecar storage beyond four fixed slots plus deterministic function identity metadata and explicit closure-handle/env-handle separation, with env-first capture access feeding compatibility mirror fields through a lambda-value capture accessor path, explicit env-null defensive fallbacks, out-of-range accessor guard coverage, a minimal runtime-facing capture read API (`count`/`at`) now used by internal allocator reads, explicit emitted contract documentation in the shared local fallback block, and mirror-field legacy-only labeling in contract text; full closure objects and complete function-object behavior remain pending
+- [ ] Arrow/lambda semantics are partial: non-closure MVP plus immediate top-level/local/nested-block/enclosing-lambda capture-aware hook lowering are implemented for sync/async cases, and local fallback payloads now preserve concrete captured values including overflow sidecar storage beyond four fixed slots plus deterministic function identity metadata and explicit closure-handle/env-handle separation, with env-first capture access feeding compatibility mirror fields through a lambda-value capture accessor path, explicit env-null defensive fallbacks, out-of-range accessor guard coverage, a minimal runtime-facing capture read API (`count`/`at`) now used by internal allocator reads, explicit emitted contract documentation in the shared local fallback block, mirror-field legacy-only labeling in contract text, and explicit legacy-only labeling at mirror assignment sites; full closure objects and complete function-object behavior remain pending
 - [ ] Full control-flow lowering completeness for loops/advanced statements beyond current subset
 
 ### C) Async/Await + Runtime + Dist bootstrap
@@ -106,6 +106,7 @@ Legend:
 - [x] Mark lambda payload mirror fields as legacy-only in emitted local fallback contract documentation (Phase C start)
 - [x] Add focused regression ensuring runtime-facing capture API helper avoids direct mirror-field reads (mirror reads remain confined to compatibility fallback accessor)
 - [x] Add lint-style regression guard that blocks new direct mirror-field read consumers beyond established compatibility fallback paths (Phase D)
+- [x] Add explicit legacy-only labels at mirror assignment sites in allocator and regress them to prevent ambiguity in future diffs
 
 ## Infrastructure Status
 
@@ -124,10 +125,16 @@ Legend:
   - currently maintained as mirror projections for backward compatibility.
   - should be treated as transitional, not canonical, by new runtime consumers.
 - Deprecation path (planned):
-  - Phase A: keep mirrors + env/value accessors (current).
-  - Phase B: migrate internal/runtime consumers to helper APIs only.
-  - Phase C: mark mirror fields as legacy-only in tests/docs.
+  - Phase A: keep mirrors + env/value accessors (✅ complete).
+  - Phase B: migrate internal/runtime consumers to helper APIs only (✅ complete).
+  - Phase C: mark mirror fields as legacy-only in tests/docs (✅ complete).
   - Phase D: remove mirror-field dependency from new features and closure object integration work.
+    - [x] explicit env handle separation in lambda payload struct.
+    - [x] env-first capture accessors with defensive fallbacks.
+    - [x] runtime-facing capture read API surface.
+    - [x] internal allocator migrated to use runtime APIs for mirror projection.
+    - [x] assignment-site labels marking mirror writes as legacy-only.
+    - [x] label scope enforcement: legacy-only labels confined to allocator, not runtime API bodies.
 
 ### Distribution and Runtime Libraries
 

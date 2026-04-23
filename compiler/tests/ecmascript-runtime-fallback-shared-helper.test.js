@@ -92,9 +92,33 @@ test('runtime fallback dedup: capture-aware lambda fallback reuses shared lambda
     'lambda payload allocator must create an explicit env handle and attach it to the closure payload');
   assert.match(cpp, /fn->capture_count = __maia_runtime_lambda_get_capture_count\(\(void\*\)fn\);[\s\S]*fn->capture1 = c1;[\s\S]*fn->capture4 = c4;[\s\S]*fn->capture1 = __maia_runtime_lambda_get_capture_at\(\(void\*\)fn, 0\);[\s\S]*fn->capture4 = __maia_runtime_lambda_get_capture_at\(\(void\*\)fn, 3\);/,
     'lambda payload allocator must consume capture metadata through runtime-facing capture APIs and project compatibility mirrors from that path');
+  assert.match(cpp, /\/\* legacy-only mirror projection seed from constructor arguments \*\/[\s\S]*\/\* legacy-only mirror projection from canonical runtime capture API \*\//,
+    'lambda payload allocator must keep explicit legacy-only projection labels at mirror assignment sites');
 
   assert.match(cpp, /void\* __maia_lambda1_capture1\(int c1\) \{[\s\S]*__maia_runtime_alloc_lambda_value\(1001, 1, 0, 1, c1, 0, 0, 0, 0, 0\);/,
     'capture-aware sync lambda fallback must reuse shared lambda payload allocator');
+});
+
+test('runtime fallback dedup: legacy-only projection labels scoped to allocator, not runtime APIs', () => {
+  const cpp = runCompilerCpp('const y = 7;\nconst f = x => x + y;\n');
+
+  const allocatorMatch = cpp.match(/static void\* __maia_runtime_alloc_lambda_value\([^}]*?\{[\s\S]*?\n\}/);
+  assert.ok(allocatorMatch, 'must find lambda payload allocator');
+  const allocatorBody = allocatorMatch[0];
+  assert.match(allocatorBody, /\/\* legacy-only mirror projection seed from constructor arguments \*\/[\s\S]*\/\* legacy-only mirror projection from canonical runtime capture API \*\//,
+    'legacy-only labels must appear in allocator body');
+
+  const getCaptureCountMatch = cpp.match(/static int __maia_runtime_lambda_get_capture_count\(void\* lambda_value\) \{[\s\S]*?\n\}/);
+  assert.ok(getCaptureCountMatch, 'must find runtime-facing capture-count API');
+  const getCaptureCountBody = getCaptureCountMatch[0];
+  assert.doesNotMatch(getCaptureCountBody, /legacy-only/,
+    'legacy-only labels must not appear in get_capture_count API body');
+
+  const getCaptureAtMatch = cpp.match(/static int __maia_runtime_lambda_get_capture_at\(void\* lambda_value, int index\) \{[\s\S]*?\n\}/);
+  assert.ok(getCaptureAtMatch, 'must find runtime-facing capture-by-index API');
+  const getCaptureAtBody = getCaptureAtMatch[0];
+  assert.doesNotMatch(getCaptureAtBody, /legacy-only/,
+    'legacy-only labels must not appear in get_capture_at API body');
 });
 
 test('runtime fallback dedup: mixed sync and async overflow hooks reuse one shared lambda payload allocator', () => {
