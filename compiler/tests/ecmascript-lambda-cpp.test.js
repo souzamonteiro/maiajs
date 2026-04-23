@@ -113,6 +113,13 @@ test('lambda lowering: capture-aware identifier call routes through invocation f
   assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 0\);/, 'C++ must route capture-aware identifier calls through invocation selector bridge');
 });
 
+test('lambda lowering: no-capture identifier calls are not misrouted through invocation selector bridge', () => {
+  const cpp = runCompilerCpp('const y = 7;\nconst f = x => x + y;\nconst g = x => x;\nf(1);\ng(1);\n');
+
+  assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 0\);/, 'capture-aware binding should still route through invocation selector bridge');
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)g, 1, 0\);/, 'no-capture binding must not be routed through capture-aware invocation selector bridge');
+});
+
 test('lambda lowering: emits capture-aware async lambda hook for simple top-level identifier capture', () => {
   const cpp = runCompilerCpp('const y = 7;\nconst f = async x => await y;\n');
 

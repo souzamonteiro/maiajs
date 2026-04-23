@@ -383,6 +383,11 @@ function collectTopLevelBindingNames(tree) {
 
 function collectTopLevelLambdaBindingNames(tree) {
   const names = new Set();
+  const lambdaCompileContext = {
+    tree,
+    topLevelBindingNames: collectTopLevelBindingNames(tree),
+    localFunctionNames: collectTopLevelFunctionNames(tree)
+  };
 
   for (const statementNode of extractTopLevelStatementNodes(tree)) {
     const declarationNode = (statementNode.children || []).find(
@@ -405,17 +410,22 @@ function collectTopLevelLambdaBindingNames(tree) {
         continue;
       }
 
-      let hasLambdaInitializer = false;
+      let hasCaptureAwareLambdaInitializer = false;
       walk(initializerExpr, (candidate) => {
-        if (hasLambdaInitializer || !candidate || candidate.kind !== 'nonterminal') {
+        if (hasCaptureAwareLambdaInitializer || !candidate || candidate.kind !== 'nonterminal') {
           return;
         }
-        if (candidate.name === 'arrowFunction' || candidate.name === 'asyncArrowFunction') {
-          hasLambdaInitializer = true;
+        if (candidate.name !== 'arrowFunction' && candidate.name !== 'asyncArrowFunction') {
+          return;
+        }
+
+        const captureCount = collectLambdaCaptureNames(candidate, lambdaCompileContext).length;
+        if (captureCount > 0) {
+          hasCaptureAwareLambdaInitializer = true;
         }
       });
 
-      if (hasLambdaInitializer) {
+      if (hasCaptureAwareLambdaInitializer) {
         names.add(variableName);
       }
     }
