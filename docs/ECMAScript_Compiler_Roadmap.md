@@ -133,6 +133,7 @@ Legend:
 - [x] Extend callable-like known-case dispatch returns with fourth-capture contribution (sync: `capture_at(0) + capture_at(1) + capture_at(2) + capture_at(3) + argc`; async: `-(capture_at(0) + capture_at(1) + capture_at(2) + capture_at(3) + argc)`) while preserving per-case guards and fail-closed unknown/default handling (Phase E)
 - [x] Introduce weighted known-case callable-like composition over capture indexes 0..3 (sync: `capture_at(0)*1 + capture_at(1)*2 + capture_at(2)*3 + capture_at(3)*4 + argc`; async: negated equivalent) while preserving per-case guards and fail-closed unknown/default handling (Phase E)
 - [x] Differentiate known-case callable-like semantics by capture profile so multi-capture known cases add an explicit index-4 contribution (`capture_at(4)`) while single-capture known cases keep the base weighted composition, preserving per-case guards and fail-closed unknown/default handling (Phase E)
+- [x] Differentiate known-case callable-like semantics by deterministic function-id-derived constant term (`function_id % 10`) so known labels no longer share identical weighted formulas across different signatures, while preserving per-case guards and fail-closed unknown/default handling (Phase E)
 
 ## Infrastructure Status
 
@@ -161,7 +162,7 @@ Legend:
   - lexical shadowing by parameters/locals blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - hoisted local function declaration shadowing blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - selector-based call lowering propagates async-call flag from capture-aware async lambda bindings.
-  - capture-aware identifier call lowering targets the invocation dispatch-stub helper (`invoke_function_id`), which validates call-shape and executes a function-id switch scaffold with known-case labels plus per-case `arity`/`is_async` guards; known sync cases return a weighted callable-like value (`capture_at(0)*1 + capture_at(1)*2 + capture_at(2)*3 + capture_at(3)*4 + argc`) with an extra `capture_at(4)` term for multi-capture known signatures, known async cases return the negated equivalent, and unknown/default function IDs fail closed (`return 0`).
+  - capture-aware identifier call lowering targets the invocation dispatch-stub helper (`invoke_function_id`), which validates call-shape and executes a function-id switch scaffold with known-case labels plus per-case `arity`/`is_async` guards; known sync cases return a weighted callable-like value (`capture_at(0)*1 + capture_at(1)*2 + capture_at(2)*3 + capture_at(3)*4 + argc`) with an extra `capture_at(4)` term for multi-capture known signatures plus a deterministic function-id-derived constant (`function_id % 10`), known async cases return the negated equivalent, and unknown/default function IDs fail closed (`return 0`).
   - selector-routed capture-aware lambda calls are excluded from host-interop detected-call/signature emission.
 - Compatibility fields in `__maia_runtime_lambda_value` (`capture1..capture4`, `extra_*`):
   - currently maintained as mirror projections for backward compatibility.

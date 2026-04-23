@@ -2100,11 +2100,11 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
         `      if (__maia_runtime_lambda_get_is_async(lambda_value) != ${dispatchCase.isAsync}) { return 0; }`,
         dispatchCase.isAsync
           ? (dispatchCase.captureCount > 1
-            ? '      return -((__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4) + __maia_runtime_lambda_get_capture_at(lambda_value, 4) + argc);'
-            : '      return -((__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4) + argc);')
+            ? `      return -((__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4) + __maia_runtime_lambda_get_capture_at(lambda_value, 4) + argc + ${dispatchCase.functionId % 10});`
+            : `      return -((__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4) + argc + ${dispatchCase.functionId % 10});`)
           : (dispatchCase.captureCount > 1
-            ? '      return (__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4) + __maia_runtime_lambda_get_capture_at(lambda_value, 4) + argc;'
-            : '      return (__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4) + argc;')
+            ? `      return (__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4) + __maia_runtime_lambda_get_capture_at(lambda_value, 4) + argc + ${dispatchCase.functionId % 10};`
+            : `      return (__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4) + argc + ${dispatchCase.functionId % 10};`)
       ]),
       '    default:',
       '      return 0;',
