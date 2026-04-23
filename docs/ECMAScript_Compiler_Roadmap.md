@@ -121,6 +121,7 @@ Legend:
 - [x] Add runtime-facing invocation dispatch-stub helper (`__maia_runtime_lambda_invoke_function_id`) and route capture-aware identifier call lowering through it (Phase E)
 - [x] Evolve invocation dispatch-stub helper to explicit function-id switch scaffold with built-in invocation compatibility validation (Phase E)
 - [x] Materialize known capture-aware `function_id` case labels inside invocation dispatch scaffold switch (compatibility path still returns `function_id`) (Phase E)
+- [x] Tighten invocation dispatch scaffold so unknown `function_id` values fail closed (`return 0`) while known case labels preserve deterministic `function_id` returns (Phase E)
 
 ## Infrastructure Status
 
@@ -149,7 +150,7 @@ Legend:
   - lexical shadowing by parameters/locals blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - hoisted local function declaration shadowing blocks selector routing that would otherwise target an outer capture-aware binding with the same identifier.
   - selector-based call lowering propagates async-call flag from capture-aware async lambda bindings.
-  - capture-aware identifier call lowering targets the invocation dispatch-stub helper (`invoke_function_id`), which validates call-shape and executes a function-id switch scaffold with known-case labels (compatibility path returns `function_id`).
+  - capture-aware identifier call lowering targets the invocation dispatch-stub helper (`invoke_function_id`), which validates call-shape and executes a function-id switch scaffold with known-case labels; unknown/default function IDs fail closed (`return 0`).
   - selector-routed capture-aware lambda calls are excluded from host-interop detected-call/signature emission.
 - Compatibility fields in `__maia_runtime_lambda_value` (`capture1..capture4`, `extra_*`):
   - currently maintained as mirror projections for backward compatibility.

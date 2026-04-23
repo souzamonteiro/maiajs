@@ -2086,7 +2086,7 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
       ...lambdaDispatchFunctionIds.map((functionId) => `    case ${functionId}:`),
       ...(lambdaDispatchFunctionIds.length > 0 ? ['      return function_id;'] : []),
       '    default:',
-      '      return function_id;',
+      '      return 0;',
       '  }',
       '}',
       'static void* __maia_runtime_alloc_lambda_value(int function_id, int arity, int is_async, int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, const int* extra_captures) {',
