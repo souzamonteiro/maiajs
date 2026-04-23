@@ -184,11 +184,11 @@ test('runtime fallback dedup: mixed sync and async overflow hooks reuse one shar
   assert.match(cpp, /void\* __maia_async_lambda1_capture5\(int c1, int c2, int c3, int c4, int c5\) \{[\s\S]*int extra_captures\[1\];[\s\S]*__maia_runtime_alloc_lambda_value\(1001005, 1, 1, 5, c1, c2, c3, c4, 1, extra_captures\);/,
     'async overflow hook must reuse shared lambda payload allocator');
 
-  assert.match(cpp, /case 1005:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return \(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ argc;/,
-    'known sync function-id case should return weighted-capture callable-like value after metadata guards');
+  assert.match(cpp, /case 1005:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 0\) \{ return 0; \}[\s\S]*return \(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ __maia_runtime_lambda_get_capture_at\(lambda_value, 4\) \+ argc;/,
+    'known sync overflow function-id case should include capture-index-4 contribution after metadata guards');
 
-  assert.match(cpp, /case 1001005:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*return -\(\(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ argc\);/,
-    'known async function-id case should return async-specific weighted-capture callable-like value after metadata guards');
+  assert.match(cpp, /case 1001005:[\s\S]*if \(__maia_runtime_lambda_get_arity\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*if \(__maia_runtime_lambda_get_is_async\(lambda_value\) != 1\) \{ return 0; \}[\s\S]*return -\(\(__maia_runtime_lambda_get_capture_at\(lambda_value, 0\) \* 1\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 1\) \* 2\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 2\) \* 3\) \+ \(__maia_runtime_lambda_get_capture_at\(lambda_value, 3\) \* 4\) \+ __maia_runtime_lambda_get_capture_at\(lambda_value, 4\) \+ argc\);/,
+    'known async overflow function-id case should include negated capture-index-4 contribution after metadata guards');
 });
 
 test('runtime fallback dedup: no-capture-only lambda programs do not emit capture runtime API helpers', () => {
