@@ -383,11 +383,33 @@ function collectTopLevelBindingNames(tree) {
 
 function collectTopLevelLambdaBindingInfo(tree) {
   const bindings = new Map();
+  const topLevelBindingNames = collectTopLevelBindingNames(tree);
   const lambdaCompileContext = {
     tree,
-    topLevelBindingNames: collectTopLevelBindingNames(tree),
+    topLevelBindingNames,
     localFunctionNames: collectTopLevelFunctionNames(tree)
   };
+
+  function collectCaptureAwareBindingInfoFromExpression(exprNode) {
+    let captureAwareBindingInfo = null;
+    walk(exprNode, (candidate) => {
+      if (captureAwareBindingInfo || !candidate || candidate.kind !== 'nonterminal') {
+        return;
+      }
+      if (candidate.name !== 'arrowFunction' && candidate.name !== 'asyncArrowFunction') {
+        return;
+      }
+
+      const captureCount = collectLambdaCaptureNames(candidate, lambdaCompileContext).length;
+      if (captureCount > 0) {
+        captureAwareBindingInfo = {
+          isAsync: candidate.name === 'asyncArrowFunction'
+        };
+      }
+    });
+
+    return captureAwareBindingInfo;
+  }
 
   for (const statementNode of extractTopLevelStatementNodes(tree)) {
     const declarationNode = (statementNode.children || []).find(
@@ -410,27 +432,64 @@ function collectTopLevelLambdaBindingInfo(tree) {
         continue;
       }
 
-      let captureAwareBindingInfo = null;
-      walk(initializerExpr, (candidate) => {
-        if (captureAwareBindingInfo || !candidate || candidate.kind !== 'nonterminal') {
-          return;
-        }
-        if (candidate.name !== 'arrowFunction' && candidate.name !== 'asyncArrowFunction') {
-          return;
-        }
-
-        const captureCount = collectLambdaCaptureNames(candidate, lambdaCompileContext).length;
-        if (captureCount > 0) {
-          captureAwareBindingInfo = {
-            isAsync: candidate.name === 'asyncArrowFunction'
-          };
-        }
-      });
+      const captureAwareBindingInfo = collectCaptureAwareBindingInfoFromExpression(initializerExpr);
 
       if (captureAwareBindingInfo) {
         bindings.set(variableName, captureAwareBindingInfo);
       }
     }
+  }
+
+  for (const statementNode of extractTopLevelStatementNodes(tree)) {
+    const expressionStatementNode = (statementNode.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'expressionStatement'
+    );
+    if (!expressionStatementNode) {
+      continue;
+    }
+
+    const expressionNode = (expressionStatementNode.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'expression'
+    );
+    const assignmentExpressionNode = expressionNode ? (expressionNode.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'assignmentExpression'
+    ) : null;
+    if (!assignmentExpressionNode) {
+      continue;
+    }
+
+    const assignmentChildren = assignmentExpressionNode.children || [];
+    if (assignmentChildren.length !== 3
+      || !assignmentChildren[0]
+      || assignmentChildren[0].kind !== 'nonterminal'
+      || assignmentChildren[0].name !== 'leftHandSideExpression'
+      || !assignmentChildren[1]
+      || assignmentChildren[1].kind !== 'nonterminal'
+      || assignmentChildren[1].name !== 'assignmentOperator'
+      || !assignmentChildren[2]
+      || assignmentChildren[2].kind !== 'nonterminal'
+      || assignmentChildren[2].name !== 'assignmentExpression') {
+      continue;
+    }
+
+    const operatorToken = (assignmentChildren[1].children || []).find(
+      (child) => child && child.kind === 'terminal'
+    );
+    if (!operatorToken || operatorToken.value !== '=') {
+      continue;
+    }
+
+    const lhsIdentifier = lowerIdentifierFromLeftHandSideExpression(assignmentChildren[0]);
+    if (!lhsIdentifier || !topLevelBindingNames.has(lhsIdentifier)) {
+      continue;
+    }
+
+    const captureAwareBindingInfo = collectCaptureAwareBindingInfoFromExpression(assignmentChildren[2]);
+    if (!captureAwareBindingInfo) {
+      continue;
+    }
+
+    bindings.set(lhsIdentifier, captureAwareBindingInfo);
   }
 
   return bindings;

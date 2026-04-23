@@ -120,6 +120,12 @@ test('lambda lowering: no-capture identifier calls are not misrouted through inv
   assert.doesNotMatch(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)g, 1, 0\);/, 'no-capture binding must not be routed through capture-aware invocation selector bridge');
 });
 
+test('lambda lowering: top-level assignment to capture-aware sync lambda participates in invocation selector routing', () => {
+  const cpp = runCompilerCpp('let f;\nconst y = 7;\nf = x => x + y;\nf(1);\n');
+
+  assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 0\);/, 'C++ must route assignment-defined capture-aware sync lambda calls through invocation selector bridge');
+});
+
 test('lambda lowering: emits capture-aware async lambda hook for simple top-level identifier capture', () => {
   const cpp = runCompilerCpp('const y = 7;\nconst f = async x => await y;\n');
 
@@ -131,6 +137,12 @@ test('lambda lowering: capture-aware async identifier call routes through invoca
   const cpp = runCompilerCpp('const y = 7;\nconst f = async x => await (x + y);\nf(1);\n');
 
   assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 1\);/, 'C++ must route capture-aware async identifier calls through invocation selector bridge with async flag set');
+});
+
+test('lambda lowering: top-level assignment to capture-aware async lambda participates in invocation selector routing', () => {
+  const cpp = runCompilerCpp('let f;\nconst y = 7;\nf = async x => await (x + y);\nf(1);\n');
+
+  assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 1\);/, 'C++ must route assignment-defined capture-aware async lambda calls through invocation selector bridge with async flag set');
 });
 
 test('lambda lowering: emits capture-aware async lambda hook for simple function-local capture', () => {
