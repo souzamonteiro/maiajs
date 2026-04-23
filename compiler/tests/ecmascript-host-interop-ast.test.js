@@ -55,6 +55,16 @@ test('AST-first host interop maps member call to __object__method', () => {
   assert.equal(calls[0].host, '__console__log');
 });
 
+test('AST-first host interop maps member call with leading single-line comment', () => {
+  const ir = runCompiler('// warmup\nconsole.log("hi");\n');
+  const calls = ir.hostInterop.detectedCalls;
+
+  assert.ok(Array.isArray(calls), 'detectedCalls must be an array');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].source, 'console.log');
+  assert.equal(calls[0].host, '__console__log');
+});
+
 test('AST-first host interop maps direct function call to __function', () => {
   const ir = runCompiler('setTimeout();\n');
   const calls = ir.hostInterop.detectedCalls;
@@ -94,6 +104,13 @@ test('C++ lowering emits actual host call statement for console.log string arg',
 
   assert.match(cpp, /__console__log\("hello"\);/, 'C++ body must contain the lowered call');
   assert.match(cpp, /extern void __console__log\(const char\*\);/, 'C++ must declare the host function');
+});
+
+test('C++ lowering preserves statements after leading single-line comment', () => {
+  const cpp = runCompilerCpp('// warmup\nconsole.log("hello");\n');
+
+  assert.match(cpp, /__console__log\("hello"\);/, 'C++ body must contain call after comment');
+  assert.doesNotMatch(cpp, /int main\(void\) \{\s*\}/, 'C++ main must not be empty for commented input');
 });
 
 test('C++ lowering emits extern void with void params for zero-arg call', () => {

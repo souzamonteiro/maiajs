@@ -879,18 +879,37 @@ ZWJ ::= #x200D
 StringLiteral ::= '"' DoubleStringCharacter* '"'
            | "'" SingleStringCharacter* "'"
 
-DoubleStringCharacter ::= . - ( '"' | '\' | LineTerminator )
+DoubleStringCharacter ::= DoubleStringPlainChar
            | '\' EscapeSequence
            | LineContinuation
 
-SingleStringCharacter ::= . - ( "'" | '\' | LineTerminator )
+SingleStringCharacter ::= SingleStringPlainChar
            | '\' EscapeSequence
            | LineContinuation
+
+DoubleStringPlainChar ::= [#x0000-#x0009]
+           | [#x000B-#x000C]
+           | [#x000E-#x0021]
+           | [#x0023-#x005B]
+           | [#x005D-#x2027]
+           | [#x202A-#xFFFF]
+
+SingleStringPlainChar ::= [#x0000-#x0009]
+           | [#x000B-#x000C]
+           | [#x000E-#x0026]
+           | [#x0028-#x005B]
+           | [#x005D-#x2027]
+           | [#x202A-#xFFFF]
 
 LineTerminator ::= #x000A
            | #x000D
            | #x2028
            | #x2029
+
+NonLineTerminatorChar ::= [#x0000-#x0009]
+           | [#x000B-#x000C]
+           | [#x000E-#x2027]
+           | [#x202A-#xFFFF]
 
 EscapeSequence ::= CharacterEscapeSequence
            | OctalEscapeSequence
@@ -911,26 +930,17 @@ EscapeCharacter ::= SingleEscapeCharacter
 
 RegularExpressionLiteral ::= '/' RegularExpressionBody '/' RegularExpressionFlag*
 
-RegularExpressionBody ::= RegularExpressionFirstChar RegularExpressionChar*
+RegularExpressionBody ::= RegularExpressionBodyChar RegularExpressionBodyChar*
 
-RegularExpressionFirstChar ::= RegularExpressionNonTerminator - [*\/[]
-           | RegularExpressionBackslashSequence
-           | RegularExpressionClass
-
-RegularExpressionNonTerminator ::= SourceCharacter - LineTerminator
+RegularExpressionBodyChar ::= [#x0000-#x0009]
+           | [#x000B-#x000C]
+           | [#x000E-#x0029]
+           | [#x002B-#x002E]
+           | [#x0030-#x005A]
+           | [#x005C-#x2027]
+           | [#x202A-#xFFFF]
 
 SourceCharacter ::= .
-
-RegularExpressionBackslashSequence ::= '\' RegularExpressionNonTerminator
-
-RegularExpressionClass ::= '[' RegularExpressionClassChar* ']'
-
-RegularExpressionClassChar ::= RegularExpressionNonTerminator - ( ']' | '\' )
-           | RegularExpressionBackslashSequence
-
-RegularExpressionChar ::= RegularExpressionNonTerminator - ( '\' | '/' | '[' )
-           | RegularExpressionBackslashSequence
-           | RegularExpressionClass
 
 RegularExpressionFlag ::= IdentifierPart
 
@@ -1024,7 +1034,7 @@ MultiLineComment ::= '/*' MultiLineCommentBody* '*/'
 MultiLineCommentBody ::= ( SourceCharacter - '*' )
                        | ( '*' ( SourceCharacter - '/' ) )
 
-SingleLineComment ::= '//' ( SourceCharacter - LineTerminator )*
+SingleLineComment ::= '//' NonLineTerminatorChar*
            /* ws: explicit */
 
 IdentifierName^Token << 'get' 'set'
