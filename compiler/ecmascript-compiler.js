@@ -2092,7 +2092,8 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
       '}',
       'static int __maia_runtime_lambda_invoke_function_id(void* lambda_value, int argc, int async_call) {',
       '  if (!__maia_runtime_lambda_can_invoke(lambda_value, argc, async_call)) { return 0; }',
-      '  int function_id = __maia_runtime_lambda_get_function_id(lambda_value);',
+      '  int function_id = __maia_runtime_lambda_select_function_id(lambda_value, argc, async_call);',
+      '  if (!function_id) { return 0; }',
       '  switch (function_id) {',
       ...lambdaDispatchCases.flatMap((dispatchCase) => [
         `    case ${dispatchCase.functionId}:`,
