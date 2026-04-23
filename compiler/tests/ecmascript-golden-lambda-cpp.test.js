@@ -141,6 +141,13 @@ test('golden: invocation bridge helpers validate call-shape and select function 
     'invocation bridge selector should return function id only for compatible call-shapes');
 });
 
+test('golden: capture-aware identifier call lowers through invocation selector bridge', () => {
+  const cpp = runCompilerCpp('const y = 7; const f = x => x + y; f(1);');
+
+  assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 0\);/,
+    'capture-aware identifier call should lower to runtime invocation selector bridge');
+});
+
 test('golden: legacy-only labels appear in allocator only', () => {
   const cpp = runCompilerCpp('const y = 7; const f = x => x + y;');
 

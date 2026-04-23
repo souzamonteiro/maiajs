@@ -107,6 +107,12 @@ test('lambda lowering: emits async lambda runtime hook by arity', () => {
   assert.match(cpp, /void\* f = __maia_async_lambda1\(\);/, 'C++ must lower async lambda expression into runtime helper');
 });
 
+test('lambda lowering: capture-aware identifier call routes through invocation function-id selector', () => {
+  const cpp = runCompilerCpp('const y = 7;\nconst f = x => x + y;\nf(1);\n');
+
+  assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 0\);/, 'C++ must route capture-aware identifier calls through invocation selector bridge');
+});
+
 test('lambda lowering: emits capture-aware async lambda hook for simple top-level identifier capture', () => {
   const cpp = runCompilerCpp('const y = 7;\nconst f = async x => await y;\n');
 
