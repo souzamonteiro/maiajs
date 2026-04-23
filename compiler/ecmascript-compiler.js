@@ -674,6 +674,10 @@ function extractHostCallsFromTree(tree, compileContext) {
       return;
     }
 
+    if (getTopLevelLambdaBindingInfo(pathSegments, compileContext)) {
+      return;
+    }
+
     const host = compileContext.hostRegistry.resolvePath(pathSegments);
     if (!host) {
       return;
@@ -2264,6 +2268,10 @@ function collectHostSignatures(tree, compileContext) {
     if (!pathSegments) { return; }
 
     if (isLocalFunctionPath(pathSegments, compileContext)) {
+      return;
+    }
+
+    if (getTopLevelLambdaBindingInfo(pathSegments, compileContext)) {
       return;
     }
 

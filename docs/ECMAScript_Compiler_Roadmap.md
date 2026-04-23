@@ -6,7 +6,7 @@ Last updated: 2026-04-23
 
 - Overall status: Phase 3 — catch/finally routing in async checkpoints DONE
 - Estimated completion: 99%
-- Test baseline: 227 passing, 0 failing (`node --test compiler/tests/*.test.js`)
+- Test baseline: 228 passing, 0 failing (`node --test compiler/tests/*.test.js`)
 - Current focus: full closure object/runtime semantics beyond the current local capture-payload fallback MVP + runtime packaging hardening for generated dist
 
 ## Milestones
@@ -114,6 +114,7 @@ Legend:
 - [x] Harden selector-based call lowering to target only capture-aware lambda bindings (avoid misrouting no-capture lambdas when capture-aware payload helpers are present) (Phase E)
 - [x] Route capture-aware async top-level identifier calls through invocation selector bridge with async-call flag propagation (`async_call=1`) (Phase E)
 - [x] Extend selector-based call lowering eligibility to top-level bindings that become capture-aware lambdas via assignment expressions (`f = x => ...` / `f = async x => ...`) (Phase E)
+- [x] Exclude selector-routed capture-aware lambda identifier calls from host-interop classification/signature emission (avoid redundant `__f` host externs for local lambda bindings) (Phase E)
 
 ## Infrastructure Status
 
@@ -138,6 +139,7 @@ Legend:
   - capture-aware top-level identifier calls are lowered through the invocation selector bridge, including bindings that become capture-aware via top-level assignment.
   - selector-based call lowering excludes no-capture lambda bindings.
   - selector-based call lowering propagates async-call flag from capture-aware async lambda bindings.
+  - selector-routed capture-aware lambda calls are excluded from host-interop detected-call/signature emission.
 - Compatibility fields in `__maia_runtime_lambda_value` (`capture1..capture4`, `extra_*`):
   - currently maintained as mirror projections for backward compatibility.
   - should be treated as transitional, not canonical, by new runtime consumers.

@@ -111,6 +111,7 @@ test('lambda lowering: capture-aware identifier call routes through invocation f
   const cpp = runCompilerCpp('const y = 7;\nconst f = x => x + y;\nf(1);\n');
 
   assert.match(cpp, /__maia_runtime_lambda_select_function_id\(\(void\*\)f, 1, 0\);/, 'C++ must route capture-aware identifier calls through invocation selector bridge');
+  assert.doesNotMatch(cpp, /extern void __f\(/, 'selector-routed capture-aware lambda call must not emit host extern declarations for local binding names');
 });
 
 test('lambda lowering: no-capture identifier calls are not misrouted through invocation selector bridge', () => {

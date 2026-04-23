@@ -73,6 +73,14 @@ test('AST-first host interop does not classify local top-level function calls as
   assert.equal(calls.length, 0, 'local function invocation must not be emitted as host call');
 });
 
+test('AST-first host interop does not classify capture-aware lambda selector calls as host', () => {
+  const ir = runCompiler('const y = 7;\nconst f = x => x + y;\nf(1);\n');
+  const calls = ir.hostInterop.detectedCalls;
+
+  assert.ok(Array.isArray(calls), 'detectedCalls must be an array');
+  assert.equal(calls.length, 0, 'capture-aware lambda invocation should be handled by selector bridge, not host interop');
+});
+
 test('C++ lowering emits actual host call statement for console.log string arg', () => {
   const cpp = runCompilerCpp('console.log("hello");\n');
 
