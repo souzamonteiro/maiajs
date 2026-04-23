@@ -531,13 +531,14 @@ function collectVisibleLambdaBindingStatesAtNode(targetNode, compileContext) {
     return states;
   }
 
-  const scopeContainers = [compileContext.tree];
+  const scopeContainers = [{ container: compileContext.tree, parent: null }];
   for (const node of path) {
     if (!node || node === compileContext.tree || node.kind !== 'nonterminal') {
       continue;
     }
     if (node.name === 'functionBody' || node.name === 'asyncFunctionBody' || node.name === 'block') {
-      scopeContainers.push(node);
+      const parent = path[path.indexOf(node) - 1] || null;
+      scopeContainers.push({ container: node, parent });
     }
   }
 
@@ -567,6 +568,17 @@ function collectVisibleLambdaBindingStatesAtNode(targetNode, compileContext) {
   }
 
   function processStatement(statementNode) {
+    const functionDeclarationNode = extractFunctionDeclarationFromStatement(statementNode);
+    if (functionDeclarationNode) {
+      const functionName = extractFunctionDeclarationName(functionDeclarationNode);
+      if (functionName) {
+        states.set(functionName, {
+          isCaptureAware: false,
+          isAsync: false
+        });
+      }
+    }
+
     const declarationNode = (statementNode.children || []).find(
       (child) => child
         && child.kind === 'nonterminal'
@@ -626,7 +638,20 @@ function collectVisibleLambdaBindingStatesAtNode(targetNode, compileContext) {
     applyBindingState(lhsIdentifier, assignmentChildren[2]);
   }
 
-  for (const scopeContainer of scopeContainers) {
+  for (const scopeInfo of scopeContainers) {
+    const scopeContainer = scopeInfo.container;
+    if ((scopeContainer.name === 'functionBody' || scopeContainer.name === 'asyncFunctionBody')
+      && scopeInfo.parent
+      && scopeInfo.parent.kind === 'nonterminal') {
+      const parameterNames = extractFormalParameterNamesFromNode(scopeInfo.parent);
+      for (const parameterName of parameterNames) {
+        states.set(parameterName, {
+          isCaptureAware: false,
+          isAsync: false
+        });
+      }
+    }
+
     const scopeStatements = scopeContainer === compileContext.tree
       ? extractTopLevelStatementNodes(compileContext.tree)
       : extractStatementsFromScopeContainer(scopeContainer);
@@ -647,7 +672,7 @@ function collectVisibleLambdaBindingStatesAtNode(targetNode, compileContext) {
   return states;
 }
 
-function getCaptureAwareLambdaBindingInfoAtCallNode(callNode, pathSegments, compileContext) {
+function getLambdaBindingStateAtCallNode(callNode, pathSegments, compileContext) {
   if (!Array.isArray(pathSegments)
     || pathSegments.length !== 1
     || !compileContext
@@ -656,14 +681,7 @@ function getCaptureAwareLambdaBindingInfoAtCallNode(callNode, pathSegments, comp
   }
 
   const visibleStates = collectVisibleLambdaBindingStatesAtNode(callNode, compileContext);
-  const bindingState = visibleStates.get(pathSegments[0]);
-  if (!bindingState || !bindingState.isCaptureAware) {
-    return null;
-  }
-
-  return {
-    isAsync: !!bindingState.isAsync
-  };
+  return visibleStates.get(pathSegments[0]) || null;
 }
 
 function findNodePath(root, target) {
@@ -810,17 +828,6 @@ function isLocalFunctionPath(pathSegments, compileContext) {
     && compileContext.localFunctionNames.has(pathSegments[0]);
 }
 
-function getTopLevelLambdaBindingInfo(pathSegments, compileContext) {
-  if (!Array.isArray(pathSegments)
-    || pathSegments.length !== 1
-    || !compileContext
-    || !compileContext.topLevelLambdaBindingInfo) {
-    return null;
-  }
-
-  return compileContext.topLevelLambdaBindingInfo.get(pathSegments[0]) || null;
-}
-
 function extractHostCallsFromTree(tree, compileContext) {
   const hostCalls = [];
   let callIndex = 0;
@@ -845,7 +852,8 @@ function extractHostCallsFromTree(tree, compileContext) {
       return;
     }
 
-    if (getCaptureAwareLambdaBindingInfoAtCallNode(node, pathSegments, compileContext)) {
+    const lambdaBindingState = getLambdaBindingStateAtCallNode(node, pathSegments, compileContext);
+    if (lambdaBindingState && lambdaBindingState.isCaptureAware) {
       return;
     }
 
@@ -2413,12 +2421,12 @@ function lowerCallExpressionValue(node, compileContext) {
     return `${pathSegments[0]}(${args})`;
   }
 
-  const lambdaBindingInfo = getTopLevelLambdaBindingInfo(pathSegments, compileContext);
+  const lambdaBindingState = getLambdaBindingStateAtCallNode(node, pathSegments, compileContext);
   if (compileContext
     && compileContext.hasLambdaCapturePayload
-    && (lambdaBindingInfo || getCaptureAwareLambdaBindingInfoAtCallNode(node, pathSegments, compileContext))) {
-    const resolvedBindingInfo = lambdaBindingInfo || getCaptureAwareLambdaBindingInfoAtCallNode(node, pathSegments, compileContext);
-    const asyncCallFlag = resolvedBindingInfo && resolvedBindingInfo.isAsync ? 1 : 0;
+    && lambdaBindingState
+    && lambdaBindingState.isCaptureAware) {
+    const asyncCallFlag = lambdaBindingState.isAsync ? 1 : 0;
     return `__maia_runtime_lambda_select_function_id((void*)${pathSegments[0]}, ${argExprs.length}, ${asyncCallFlag})`;
   }
 
@@ -2443,7 +2451,8 @@ function collectHostSignatures(tree, compileContext) {
       return;
     }
 
-    if (getCaptureAwareLambdaBindingInfoAtCallNode(node, pathSegments, compileContext)) {
+    const lambdaBindingState = getLambdaBindingStateAtCallNode(node, pathSegments, compileContext);
+    if (lambdaBindingState && lambdaBindingState.isCaptureAware) {
       return;
     }
 
