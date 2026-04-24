@@ -3073,6 +3073,78 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     return lines;
   }
 
+  const switchStmtNode = (statementNode.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'switchStatement');
+  if (switchStmtNode) {
+    const switchChildren = switchStmtNode.children || [];
+    
+    // Extract the switch expression
+    const switchExpr = switchChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'expression');
+    const caseBlock = switchChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'caseBlock');
+    
+    if (!switchExpr || !caseBlock) {
+      return [`${indent}// [switch statement missing expression or caseBlock]`];
+    }
+
+    const loweredExpr = lowerExpressionValue(switchExpr, compileContext);
+    lines.push(`${indent}switch (${loweredExpr || '/* expression */'}) {`);
+
+    // Extract case clauses and default clause
+    const blockChildren = caseBlock.children || [];
+    const caseClauses = blockChildren.filter((c) => c && c.kind === 'nonterminal' && c.name === 'caseClause');
+    const defaultClause = blockChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'defaultClause');
+
+    // Process each case clause
+    for (const caseClause of caseClauses) {
+      const caseChildren = caseClause.children || [];
+      const caseExpr = caseChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'expression');
+      const caseStatements = caseChildren.filter((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+
+      if (caseExpr) {
+        const loweredCaseExpr = lowerExpressionValue(caseExpr, compileContext);
+        lines.push(`${indentation(indentLevel + 1)}case ${loweredCaseExpr || '/* expression */'}:`);
+      } else {
+        lines.push(`${indentation(indentLevel + 1)}case /* expression */:`);
+      }
+
+      // Add case body statements
+      for (const stmt of caseStatements) {
+        const isBreakStmt = (stmt.children || []).some(
+          (c) => c && c.kind === 'nonterminal' && c.name === 'breakStatement'
+        );
+        
+        if (isBreakStmt) {
+          lines.push(`${indentation(indentLevel + 2)}break;`);
+        } else {
+          lines.push(...lowerStatementNode(stmt, compileContext, indentLevel + 2, options));
+        }
+      }
+    }
+
+    // Process default clause (if present)
+    if (defaultClause) {
+      const defaultChildren = defaultClause.children || [];
+      const defaultStatements = defaultChildren.filter((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+
+      lines.push(`${indentation(indentLevel + 1)}default:`);
+
+      // Add default body statements
+      for (const stmt of defaultStatements) {
+        const isBreakStmt = (stmt.children || []).some(
+          (c) => c && c.kind === 'nonterminal' && c.name === 'breakStatement'
+        );
+        
+        if (isBreakStmt) {
+          lines.push(`${indentation(indentLevel + 2)}break;`);
+        } else {
+          lines.push(...lowerStatementNode(stmt, compileContext, indentLevel + 2, options));
+        }
+      }
+    }
+
+    lines.push(`${indent}}`);
+    return lines;
+  }
+
   return [`${indent}// [statement not yet lowered]`];
 }
 
