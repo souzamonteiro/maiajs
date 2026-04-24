@@ -2754,6 +2754,36 @@ function collectHostSignatures(tree, compileContext) {
   return signatures;
 }
 
+// Returns array of identifier name strings from arrayBindingPattern
+function extractArrayBindingIdentifiers(arrayBindingPatternNode) {
+  const names = [];
+  const bel = (arrayBindingPatternNode.children || []).find(
+    (c) => c && c.kind === 'nonterminal' && c.name === 'bindingElementList'
+  );
+  if (!bel) { return names; }
+  for (const child of (bel.children || [])) {
+    if (!child || child.kind !== 'nonterminal' || child.name !== 'bindingElisionElement') { continue; }
+    const ident = findFirstIdentifierValue(child);
+    if (ident) { names.push(ident); }
+  }
+  return names;
+}
+
+// Returns array of identifier name strings from objectBindingPattern
+function extractObjectBindingIdentifiers(objectBindingPatternNode) {
+  const names = [];
+  const bpl = (objectBindingPatternNode.children || []).find(
+    (c) => c && c.kind === 'nonterminal' && c.name === 'bindingPropertyList'
+  );
+  if (!bpl) { return names; }
+  for (const child of (bpl.children || [])) {
+    if (!child || child.kind !== 'nonterminal' || child.name !== 'bindingProperty') { continue; }
+    const ident = findFirstIdentifierValue(child);
+    if (ident) { names.push(ident); }
+  }
+  return names;
+}
+
 function extractVariableDeclarations(variableDeclarationListNode) {
   if (!variableDeclarationListNode || variableDeclarationListNode.kind !== 'nonterminal' || variableDeclarationListNode.name !== 'variableDeclarationList') {
     return [];
@@ -2794,6 +2824,11 @@ function extractVariableDeclarationInitializer(variableDeclarationNode) {
 
 function lowerVariableDeclarations(statementNode, compileContext, indent = '  ') {
   const lowered = [];
+  // Use compileContext to maintain unique temp var count across statements
+  if (compileContext && compileContext._destrCount === undefined) {
+    compileContext._destrCount = 0;
+  }
+  const nextDestrIdx = () => compileContext ? compileContext._destrCount++ : 0;
   const declarationNode = (statementNode.children || []).find(
     (child) => child
       && child.kind === 'nonterminal'
@@ -2813,7 +2848,50 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
   for (const variableDeclaration of declarations) {
     const variableName = extractVariableDeclarationName(variableDeclaration);
     if (!variableName) {
-      lowered.push(`${indent}// [variable declaration without supported binding name]`);
+      // Check for destructuring pattern
+      const bindingPatternNode = (variableDeclaration.children || []).find(
+        (c) => c && c.kind === 'nonterminal' && c.name === 'bindingPattern'
+      );
+      if (bindingPatternNode) {
+        const initializerExpr = extractVariableDeclarationInitializer(variableDeclaration);
+        const loweredRhs = initializerExpr ? lowerExpressionValue(initializerExpr, compileContext) : null;
+        const rhsExpr = loweredRhs !== null ? loweredRhs : '/* rhs */';
+
+        const arrayPattern = (bindingPatternNode.children || []).find(
+          (c) => c && c.kind === 'nonterminal' && c.name === 'arrayBindingPattern'
+        );
+        const objectPattern = (bindingPatternNode.children || []).find(
+          (c) => c && c.kind === 'nonterminal' && c.name === 'objectBindingPattern'
+        );
+
+        if (arrayPattern) {
+          const names = extractArrayBindingIdentifiers(arrayPattern);
+          if (names.length > 0) {
+            const tmpName = `__arr${nextDestrIdx()}`;
+            lowered.push(`${indent}auto ${tmpName} = ${rhsExpr};`);
+            names.forEach((name, idx) => {
+              lowered.push(`${indent}int ${name} = ${tmpName}[${idx}];`);
+            });
+          } else {
+            lowered.push(`${indent}// [empty array destructuring]`);
+          }
+        } else if (objectPattern) {
+          const names = extractObjectBindingIdentifiers(objectPattern);
+          if (names.length > 0) {
+            const tmpName = `__obj${nextDestrIdx()}`;
+            lowered.push(`${indent}auto ${tmpName} = ${rhsExpr};`);
+            names.forEach((name) => {
+              lowered.push(`${indent}int ${name} = ${tmpName}.${name};`);
+            });
+          } else {
+            lowered.push(`${indent}// [empty object destructuring]`);
+          }
+        } else {
+          lowered.push(`${indent}// [unsupported destructuring pattern]`);
+        }
+      } else {
+        lowered.push(`${indent}// [variable declaration without supported binding name]`);
+      }
       continue;
     }
 
