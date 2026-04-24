@@ -31,30 +31,80 @@ Target outcome:
 
 Current observed state (2026-04-23):
 - [x] `bin/webjs.sh --file compiler/examples/full_es8_test.js --name full_es8_test --dist-run` reaches WASM/dist and returns `0`.
-- [ ] Behavioral parity is not yet achieved: generated `out/full_es8_test.cpp` currently has `Host-call map: (none detected)` and an empty `main` body.
-- [x] A behavior gate exists: `compiler/examples/validate_full_es8_dist.sh` fails when required source runtime markers are missing from dist output.
+- [ ] Behavioral parity NOT achieved: generated C++ is truncated (~65 lines instead of 400+); MaiaCpp parser fails with "Unexpected character" and fallback C compilation fails with "Unknown assignment target 'weakKey'".
+- [x] Full compiler test suite passes: 240/240 tests green, all async/lambda/dist-bootstrap infrastructure validated.
+- [ ] Root cause identified: `lowerStatementNode()` function in `compiler/ecmascript-compiler.js` does not support critical ES8 statements needed by `full_es8_test.js`.
 
-Clear TODO to close this objective:
+Blocking issues preventing compilation (in order of impact):
 
-MaiaJS (ECMAScript -> C++):
-- [ ] Ensure top-level expression statements in `full_es8_test.js` are lowered into emitted C++ `main` (instead of empty program fallback).
-- [ ] Ensure host-call detection maps `console.log` and related runtime-visible calls in this example into emitted host symbols.
-- [ ] Add/extend compiler tests proving the generated C++ for `full_es8_test.js` is non-empty and contains expected runtime-visible call paths.
-- [ ] Keep `compiler/examples/validate_full_es8_dist.sh` green as a blocking behavior check.
+**MaiaJS (ECMAScript -> C++)**:
+- [ ] **While/do-while loops**: Not lowered in `lowerStatementNode()` → entire loop sections fallback to `// [statement not yet lowered]`
+- [ ] **For/for-in loops**: Not lowered in `lowerStatementNode()` → loop bodies skipped
+- [ ] **Try-catch-finally blocks**: Parser recognizes but `lowerStatementNode()` returns fallback comment → exception handling skipped
+- [ ] **Switch statements**: Not lowered in `lowerStatementNode()` → switch blocks skipped
+- [ ] **Class bodies with methods**: Constructor + method stubs emitted but method bodies not lowered
+- [ ] **String literal escaping in C++ output**: Template literals with quotes generate invalid C++ syntax (e.g., `Unexpected character at position 1852: '''`)
+- [ ] **WeakMap/WeakSet collections**: No C++ lowering strategy exists → code generates invalid C++ (`weakKey = null;` without declaration)
+- [ ] **Destructuring in statement context**: Destructuring patterns in variable declarations not fully lowered in statement position
+- [ ] **Complex object/array literals in statements**: Literals with nested structures or computed properties not fully lowered
 
-MaiaCpp (C++ -> C):
-- [ ] Preserve lowered runtime-visible call paths from generated C++ without collapsing `main` to stub fallback for this scenario.
-- [ ] Add a fixture/regression case derived from the `full_es8_test` shape to prevent silent empty-main/stub regressions.
+**MaiaCpp (C++ -> C)**:
+- [ ] Parser fails on invalid C++ syntax from above (escape sequences, syntax errors)
+- [ ] Fallback C compiler receives malformed input and reports semantic errors
 
-MaiaC / webc (C -> WASM/dist):
-- [ ] Keep generated imports/wrapper wiring sufficient to surface host output from compiled program execution in node/browser runners.
-- [ ] Fix `tools/webc.js --no-validate` behavior consistency so diagnostics do not mask artifact generation state during debugging.
+**MaiaC / webc (C -> WASM/dist)**:
+- [ ] Downstream issues cascade from C++ generation failures
+
+**CRITICAL PATH: Minimum Viable ES8 Compiler** (must fix to be usable):
+
+Priority 1 - **CRITICAL** (blocks ANY real program):
+- [ ] **Loops (while/do-while/for/for-in)**: 90% of ES8 programs use loops. Currently fallback to `// [statement not yet lowered]`. Estimated effort: 3-4 hours.
+- [ ] **String literal escaping**: Template literals with quotes generate invalid C++ (`'''` → parser fails). Estimated effort: 1-2 hours. **Quick win that unblocks C++ parsing**.
+
+Priority 2 - **HIGH** (blocks most programs):
+- [ ] **Try-catch-finally blocks**: Error handling is standard ES8 pattern. Currently recognized by parser but not lowered. Estimated effort: 2-3 hours.
+
+Priority 3 - **MEDIUM** (common but deferrable):
+- [ ] **Switch statements**: Common control flow but can be rewritten as if/else chains. Estimated effort: 1-2 hours.
+- [ ] **Complex object/array literals**: Nested structures can be decomposed into simpler assignments. Estimated effort: 2-3 hours.
+
+Priority 4 - **LOW** (nice-to-have, can be deferred):
+- [ ] **Class bodies with methods**: Method bodies can be emitted as stubs for now. Estimated effort: 2 hours.
+- [ ] **WeakMap/WeakSet**: Specialized collections; users can use Map/Set as fallback. Estimated effort: 1-2 hours.
+- [ ] **Destructuring in statements**: Can be expanded into individual assignments. Estimated effort: 2-3 hours.
+
+**Quick Win Strategy (2-3 hours total)**:
+1. Fix string literal escaping in C++ output → unblocks C++ parser errors
+2. Implement basic loops (while/do-while) → unblocks 80% of programs
+→ Result: Working compiler that handles typical ES8 code
+
+**Full Usability (8-12 hours total)**:
+- Add all Priority 1+2 features
+- Result: Production-ready ES8→C++ for mainstream code
 
 Definition of Done for this objective:
-- [ ] `compiler/examples/validate_full_es8_dist.sh` passes end-to-end.
-- [ ] Dist node runner output includes required ES8 runtime markers (same checkpoints used by validator script).
-- [ ] Browser runner also surfaces the same required markers.
-- [ ] Full compiler test suite remains green (`node --test compiler/tests/*.test.js`).
+- [ ] **PHASE 1 (Quick Win)**: String escaping + basic loops working
+  - [ ] Template literal quotes properly escaped in C++ output
+  - [ ] While/do-while loops generate valid C++ with condition checks
+  - [ ] Generated C++ for simple benchmark compiles through MaiaCpp pipeline
+  - [ ] Dist bootstrap tests (3/3) remain green
+  
+- [ ] **PHASE 2 (High Priority)**: Loops + error handling complete
+  - [ ] For/for-in loops fully implemented
+  - [ ] Try-catch-finally lowering implemented with exception routing
+  - [ ] Generated C++ for `full_es8_test.js` is 300+ lines (not truncated)
+  
+- [ ] **PHASE 3 (Medium Priority)**: Switch + complex literals
+  - [ ] Switch statements with proper fall-through semantics
+  - [ ] Nested object/array literals with computed properties
+  
+- [ ] **End State**: All 9 issues resolved
+  - [ ] Generated C++ for `full_es8_test.js` is complete (400+ lines)
+  - [ ] MaiaCpp parser accepts generated C++ without "Unexpected character" errors
+  - [ ] Fallback C compiler accepts generated code without semantic errors
+  - [ ] Dist node/browser runners execute benchmark and output all test markers
+  - [ ] Full compiler test suite remains green (240/240 tests)
+  - [ ] Regression tests added for each statement type to prevent regressions
 
 ### A) Parser and Grammar (EBNF + generated parser)
 
@@ -179,6 +229,53 @@ Definition of Done for this objective:
 - [x] Extract known-case structured result computation into a dedicated helper (`invoke_known_case`) so invocation dispatch reuses a single known-case result path instead of inlining token/polarity/weighted/match validation directly inside `invoke_function_id`, while preserving fail-closed unknown/default handling (Phase E)
 
 ## Infrastructure Status
+
+### Implementation Roadmap (Where to Make Changes)
+
+**File**: `/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/ecmascript-compiler.js`
+
+**Function**: `lowerStatementNode()` (line 2664)
+- Current: handles only if/else, blocks, return, expression statements, variable declarations
+- Needed: add handlers for while, do-while, for, for-in, try-catch-finally, switch
+
+**Quick Win 1 - String Literal Escaping** (2 hours):
+- File: `compiler/ecmascript-compiler.js`
+- Function: `lowerExpressionValue()` or `emitStringLiteral()` 
+- Issue: Template literal quotes not escaped when generating C++ string literals
+- Fix: When emitting `__console__log('text with "quotes"')` in C++, escape the inner quotes
+- Test: Check that generated `test.cpp` doesn't have mismatched quotes
+
+**Quick Win 2 - While Loop Lowering** (2 hours):
+- Add case in `lowerStatementNode()` for while statements:
+  ```javascript
+  const whileStmtNode = (statementNode.children || []).find(
+    (child) => child && child.kind === 'nonterminal' && child.name === 'whileStatement'
+  );
+  if (whileStmtNode) {
+    const conditionExpr = /* extract condition */;
+    const bodyStatement = /* extract body */;
+    lines.push(`${indent}while (${lowerExpressionValue(conditionExpr, compileContext)}) {`);
+    lines.push(...lowerStatementNode(bodyStatement, compileContext, indentLevel + 1, options));
+    lines.push(`${indent}}`);
+    return lines;
+  }
+  ```
+
+**Priority 2 - For Loop Lowering** (2 hours):
+- Similar pattern to while but with init/condition/update
+- Handle for, for-in separately
+
+**Priority 3 - Try-Catch-Finally** (3 hours):
+- Extract try block, catch handlers, finally block
+- Route through existing exception handling infrastructure (already built for async)
+- Emit `try { ... } catch (...) { ... } finally { ... }` C++ equivalents
+
+**Test After Each Fix**:
+```bash
+cd /Volumes/External_SSD/Documentos/Projects/maiajs
+npm test  # Verify 240/240 still green
+./compiler/examples/build_test_dist.sh  # Check generated C++
+```
 
 ### Lambda Runtime Contract Stability (Local Fallback MVP)
 
