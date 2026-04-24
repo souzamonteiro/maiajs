@@ -2990,6 +2990,89 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     return [`${indent}// [iteration statement type not yet lowered: ${loopType}]`];
   }
 
+  const tryStmtNode = (statementNode.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'tryStatement');
+  if (tryStmtNode) {
+    const tryChildren = tryStmtNode.children || [];
+    
+    // Extract try block
+    const tryBlock = tryChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'block');
+    
+    // Extract catch clause (if present)
+    const catchClause = tryChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'catch');
+    
+    // Extract finally clause (if present)
+    const finallyClause = tryChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'finally');
+    
+    // Must have at least try block
+    if (!tryBlock) {
+      return [`${indent}// [try statement missing block]`];
+    }
+
+    // Try block
+    lines.push(`${indent}try {`);
+    
+    const tryStatements = (tryBlock.children || []).filter((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+    for (const stmt of tryStatements) {
+      lines.push(...lowerStatementNode(stmt, compileContext, indentLevel + 1, options));
+    }
+    
+    if (tryStatements.length === 0) {
+      lines.push(`${indentation(indentLevel + 1)}// [empty try block]`);
+    }
+    
+    lines.push(`${indent}}`);
+
+    // Catch clause (if present)
+    if (catchClause) {
+      const catchChildren = catchClause.children || [];
+      const catchIdentifier = catchChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'identifier');
+      const catchBlock = catchChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'block');
+      
+      let catchParam = 'e';
+      if (catchIdentifier) {
+        catchParam = findFirstIdentifierValue(catchIdentifier) || 'e';
+      }
+      
+      lines.push(`${indent}catch (const char* ${catchParam}) {`);
+      
+      if (catchBlock) {
+        const catchStatements = (catchBlock.children || []).filter((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+        for (const stmt of catchStatements) {
+          lines.push(...lowerStatementNode(stmt, compileContext, indentLevel + 1, options));
+        }
+        
+        if (catchStatements.length === 0) {
+          lines.push(`${indentation(indentLevel + 1)}// [empty catch block]`);
+        }
+      } else {
+        lines.push(`${indentation(indentLevel + 1)}// [catch block not yet lowered]`);
+      }
+      
+      lines.push(`${indent}}`);
+    }
+
+    // Finally clause (if present)
+    if (finallyClause) {
+      const finallyChildren = finallyClause.children || [];
+      const finallyBlock = finallyChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'block');
+      
+      lines.push(`${indent}// [finally clause not yet fully lowered in C++98]`);
+      
+      if (finallyBlock) {
+        const finallyStatements = (finallyBlock.children || []).filter((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+        for (const stmt of finallyStatements) {
+          lines.push(...lowerStatementNode(stmt, compileContext, indentLevel + 1, options));
+        }
+        
+        if (finallyStatements.length === 0) {
+          lines.push(`${indentation(indentLevel + 1)}// [empty finally block]`);
+        }
+      }
+    }
+
+    return lines;
+  }
+
   return [`${indent}// [statement not yet lowered]`];
 }
 
