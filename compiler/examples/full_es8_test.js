@@ -206,7 +206,7 @@ const name = 'World';
 const templateStr = `Hello ${name}! 
   This is a multiline
   template string.`;
-console.log(`Template literal:\n${templateStr}`);
+console.log('Template literal:\n' + templateStr);
 
 // Tagged templates
 function tag(strings, ...values) {
@@ -257,13 +257,19 @@ console.log(`flatMap: [${numbers.flatMap(n => [n, n * 2])}]`);
 // ==================== 7. CLASSES (ES6/ES8 syntax) ====================
 console.log('\n--- SECTION 7: CLASSES ---');
 
+// ES8-compatible private state pattern
+const _animalPrivate = new WeakMap();
+function getAnimalPrivate(instance) {
+  return _animalPrivate.get(instance);
+}
+
 class Animal {
-  // Private field (ES2022, but syntax is valid in modern engines)
-  #privateField = 'private value';
-  
   constructor(name, species) {
     this.name = name;
     this.species = species;
+    _animalPrivate.set(this, {
+      privateField: 'private value'
+    });
   }
   
   // Instance method
@@ -290,14 +296,14 @@ class Animal {
     return 'All animals are living organisms';
   }
   
-  // Private method (syntax)
-  #privateMethod() {
+  // Private-like helper method (ES8-compatible)
+  _privateMethod() {
     return 'This is private';
   }
   
-  // Method that uses private member
+  // Method that uses private state
   accessPrivate() {
-    return this.#privateField;
+    return getAnimalPrivate(this).privateField;
   }
 }
 
