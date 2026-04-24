@@ -1678,12 +1678,78 @@ function lowerArrowFunctionValue(arrowNode, isAsync = false, compileContext = nu
   return `${hookName}()`;
 }
 
+function normalizeJsStringLiteralForCpp(raw) {
+  if (typeof raw !== 'string' || raw.length < 2) {
+    return null;
+  }
+
+  const quote = raw[0];
+  if ((quote !== '"' && quote !== '\'') || raw[raw.length - 1] !== quote) {
+    return null;
+  }
+
+  let decoded = '';
+  for (let i = 1; i < raw.length - 1; i += 1) {
+    const ch = raw[i];
+    if (ch !== '\\') {
+      decoded += ch;
+      continue;
+    }
+
+    if (i + 1 >= raw.length - 1) {
+      decoded += '\\';
+      break;
+    }
+
+    const esc = raw[i + 1];
+    i += 1;
+    if (esc === 'n') { decoded += '\n'; continue; }
+    if (esc === 'r') { decoded += '\r'; continue; }
+    if (esc === 't') { decoded += '\t'; continue; }
+    if (esc === 'b') { decoded += '\b'; continue; }
+    if (esc === 'f') { decoded += '\f'; continue; }
+    if (esc === 'v') { decoded += '\v'; continue; }
+    if (esc === '0') { decoded += '\0'; continue; }
+    if (esc === '\\') { decoded += '\\'; continue; }
+    if (esc === '\'') { decoded += '\''; continue; }
+    if (esc === '"') { decoded += '"'; continue; }
+    if (esc === '`') { decoded += '`'; continue; }
+
+    if (esc === 'x' && i + 2 < raw.length - 1) {
+      const hex = raw.slice(i + 1, i + 3);
+      const code = Number.parseInt(hex, 16);
+      if (!Number.isNaN(code)) {
+        decoded += String.fromCharCode(code);
+        i += 2;
+        continue;
+      }
+    }
+
+    if (esc === 'u' && i + 4 < raw.length - 1) {
+      const hex = raw.slice(i + 1, i + 5);
+      const code = Number.parseInt(hex, 16);
+      if (!Number.isNaN(code)) {
+        decoded += String.fromCharCode(code);
+        i += 4;
+        continue;
+      }
+    }
+
+    decoded += esc;
+  }
+
+  return JSON.stringify(decoded);
+}
+
 function lowerLiteralValue(node, compileContext) {
   for (const child of (node.children || [])) {
     if (child.kind !== 'nonterminal') { continue; }
     if (child.name === 'stringLiteral') {
       const t = (child.children || []).find((c) => c.kind === 'terminal' && c.token === 'StringLiteral');
-      return t ? t.value : null;
+      if (!t) {
+        return null;
+      }
+      return normalizeJsStringLiteralForCpp(t.value) || t.value;
     }
     if (child.name === 'numericLiteral') {
       const t = (child.children || []).find((c) => c.kind === 'terminal');
@@ -1741,7 +1807,8 @@ function lowerAssignmentExpressionValue(node, compileContext) {
       return null;
     }
 
-    return `${lhs} ${operatorToken.value} ${rhs}`;
+    const rhsValue = rhs === 'null' ? 'nullptr' : rhs;
+    return `${lhs} ${operatorToken.value} ${rhsValue}`;
   }
 
   const nonterminalChildren = children.filter((child) => child.kind === 'nonterminal');
@@ -1876,11 +1943,15 @@ function lowerExpressionValue(node, compileContext) {
   if (node.name === 'primaryExpression') {
     for (const child of (node.children || [])) {
       if (child.kind === 'terminal' && child.token === 'TOKEN_this') { return 'this'; }
+      if (child.kind === 'terminal' && child.token === 'TOKEN_null') { return 'nullptr'; }
       if (child.kind === 'nonterminal') {
         if (child.name === 'literal') { return lowerLiteralValue(child, compileContext); }
         if (child.name === 'objectLiteral') { return lowerObjectLiteralValue(child, compileContext); }
         if (child.name === 'arrayLiteral') { return lowerArrayLiteralValue(child, compileContext); }
-        if (child.name === 'identifier') { return findFirstIdentifierValue(child); }
+        if (child.name === 'identifier') {
+          const identifierValue = findFirstIdentifierValue(child);
+          return identifierValue === 'null' ? 'nullptr' : identifierValue;
+        }
       }
     }
   }
