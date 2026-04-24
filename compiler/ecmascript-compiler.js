@@ -141,9 +141,23 @@ function extractPathFromMemberExpression(memberExpressionNode) {
     return null;
   }
 
-  const base = findFirstIdentifierValue(children[0]);
+  // Support 'this' as the base of a member expression
+  let base = findFirstIdentifierValue(children[0]);
   if (!base) {
-    return null;
+    // Check for TOKEN_this inside the first child
+    const firstTerminal = (() => {
+      let found = null;
+      walk(children[0], (n) => {
+        if (found) return;
+        if (n.kind === 'terminal' && n.token === 'TOKEN_this') { found = 'this'; }
+      });
+      return found;
+    })();
+    if (firstTerminal) {
+      base = firstTerminal;
+    } else {
+      return null;
+    }
   }
 
   const pathSegments = [base];
@@ -292,6 +306,40 @@ function extractClassMethodDefinitions(classDeclarationNode) {
   }
 
   return methodDefinitions;
+}
+
+// Returns array of { methodDefinition, isStatic }
+function extractClassMethodEntries(classDeclarationNode) {
+  if (!classDeclarationNode || classDeclarationNode.kind !== 'nonterminal' || classDeclarationNode.name !== 'classDeclaration') {
+    return [];
+  }
+
+  const classTail = (classDeclarationNode.children || []).find(
+    (child) => child && child.kind === 'nonterminal' && child.name === 'classTail'
+  );
+  if (!classTail) { return []; }
+
+  const classBody = (classTail.children || []).find(
+    (child) => child && child.kind === 'nonterminal' && child.name === 'classBody'
+  );
+  if (!classBody) { return []; }
+
+  const entries = [];
+  for (const classElement of (classBody.children || [])) {
+    if (!classElement || classElement.kind !== 'nonterminal' || classElement.name !== 'classElement') {
+      continue;
+    }
+    const isStatic = (classElement.children || []).some(
+      (c) => c && c.kind === 'terminal' && c.token === 'TOKEN_static'
+    );
+    const methodDefinition = (classElement.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'methodDefinition'
+    );
+    if (methodDefinition) {
+      entries.push({ methodDefinition, isStatic });
+    }
+  }
+  return entries;
 }
 
 function extractMethodDefinitionName(methodDefinitionNode) {
@@ -1782,6 +1830,24 @@ function lowerIdentifierFromLeftHandSideExpression(node) {
     return null;
   }
 
+  // Check for memberExpression (handles this.x, foo.bar, etc.)
+  let memberExprNode = null;
+  walk(node, (n) => {
+    if (!memberExprNode && n && n.kind === 'nonterminal' && n.name === 'memberExpression') {
+      memberExprNode = n;
+    }
+  });
+  if (memberExprNode) {
+    const segments = extractPathFromMemberExpression(memberExprNode);
+    if (segments && segments.length >= 2) {
+      let result = segments[0];
+      for (let i = 1; i < segments.length; i++) {
+        result += (i === 1 && segments[0] === 'this') ? '->' + segments[i] : '.' + segments[i];
+      }
+      return result;
+    }
+  }
+
   const identifier = findFirstIdentifierValue(node);
   return identifier || null;
 }
@@ -1942,6 +2008,18 @@ function lowerExpressionValue(node, compileContext) {
   if (node.name === 'unaryExpression') { return lowerUnaryExpressionValue(node, compileContext); }
   if (node.name === 'postfixExpression') { return lowerPostfixExpressionValue(node, compileContext); }
   if (INFIX_EXPRESSION_NODES.has(node.name)) { return lowerInfixExpressionValue(node, compileContext); }
+  if (node.name === 'memberExpression') {
+    const segments = extractPathFromMemberExpression(node);
+    if (segments && segments.length >= 2) {
+      // Use -> after 'this' (C++ pointer semantics), then . for further chains
+      let result = segments[0];
+      for (let i = 1; i < segments.length; i++) {
+        result += (i === 1 && segments[0] === 'this') ? '->' + segments[i] : '.' + segments[i];
+      }
+      return result;
+    }
+    // Fall through to passthrough for single-child memberExpression
+  }
   if (EXPR_PASSTHROUGH_NODES.has(node.name)) {
     const ntc = (node.children || []).filter((c) => c.kind === 'nonterminal');
     return ntc.length === 1 ? lowerExpressionValue(ntc[0], compileContext) : null;
@@ -2615,6 +2693,23 @@ function lowerCallExpressionValue(node, compileContext) {
     return `${pathSegments[0]}(${args})`;
   }
 
+  // Member method call: this->method(args) or obj.method(args)
+  if (pathSegments.length >= 2) {
+    const isThisCall = pathSegments[0] === 'this';
+    const memberPath = pathSegments.slice(0, -1).reduce((acc, seg, i) => {
+      if (i === 0) return seg;
+      return acc + (i === 1 && pathSegments[0] === 'this' ? '->' : '.') + seg;
+    }, '');
+    const methodName = pathSegments[pathSegments.length - 1];
+    const callTarget = isThisCall
+      ? `this->${methodName}`
+      : `${pathSegments.slice(0, -1).join('.')}.${methodName}`;
+    // Only emit direct call if base is 'this' (local object) — otherwise fall through to host registry
+    if (isThisCall) {
+      return `${callTarget}(${args})`;
+    }
+  }
+
   const lambdaBindingState = getLambdaBindingStateAtCallNode(node, pathSegments, compileContext);
   if (compileContext
     && compileContext.hasLambdaCapturePayload
@@ -3254,7 +3349,7 @@ function emitTopLevelFunctionPrototypes(tree, compileContext) {
   return prototypes.join('\n');
 }
 
-function emitTopLevelClassDefinitions(tree) {
+function emitTopLevelClassDefinitions(tree, compileContext) {
   const classDefinitions = [];
 
   for (const classDeclaration of collectTopLevelClassDeclarations(tree)) {
@@ -3264,19 +3359,19 @@ function emitTopLevelClassDefinitions(tree) {
     }
 
     const heritageName = extractClassHeritageName(classDeclaration);
-    const methodDefinitions = extractClassMethodDefinitions(classDeclaration);
+    const methodEntries = extractClassMethodEntries(classDeclaration);
 
     const classBodyLines = [];
     if (heritageName) {
       classBodyLines.push(`  // extends ${heritageName} (inheritance semantics not yet lowered)`);
     }
 
-    if (methodDefinitions.length === 0) {
+    if (methodEntries.length === 0) {
       classBodyLines.push('  // [empty class body]');
     }
 
     let hasConstructor = false;
-    for (const methodDefinition of methodDefinitions) {
+    for (const { methodDefinition, isStatic } of methodEntries) {
       const methodName = extractMethodDefinitionName(methodDefinition);
       if (!methodName) {
         continue;
@@ -3287,17 +3382,35 @@ function emitTopLevelClassDefinitions(tree) {
         ? 'void'
         : params.map((name) => `int ${name}`).join(', ');
 
-      if (methodName === 'constructor') {
+      const staticQualifier = isStatic ? 'static ' : '';
+      const isConstructor = (methodName === 'constructor');
+
+      // Collect method body statement nodes (functionBody is in methodDefinition)
+      const methodStatements = collectFunctionBodyStatementNodes(methodDefinition);
+      const methodBodyLines = [];
+      const methodReturnType = isConstructor ? 'void' : 'int';
+      for (const stmtNode of methodStatements) {
+        methodBodyLines.push(...lowerStatementNode(stmtNode, compileContext, 2, { returnTypeCpp: methodReturnType }));
+      }
+      // Only add auto-return for non-void (non-constructor) methods that have no return
+      if (!isConstructor && !methodBodyLines.some((line) => /^\s*return\b/.test(line))) {
+        methodBodyLines.push(`    return ${defaultCppValue(methodReturnType)};`);
+      }
+
+      if (isConstructor) {
         hasConstructor = true;
         classBodyLines.push(`  ${className}(${cppParams}) {`);
-        classBodyLines.push('    // [constructor body lowering not yet implemented]');
+        for (const line of methodBodyLines) {
+          classBodyLines.push(line);
+        }
         classBodyLines.push('  }');
         continue;
       }
 
-      classBodyLines.push(`  int ${methodName}(${cppParams}) {`);
-      classBodyLines.push('    // [class method body lowering not yet implemented]');
-      classBodyLines.push('    return 0;');
+      classBodyLines.push(`  ${staticQualifier}${methodReturnType} ${methodName}(${cppParams}) {`);
+      for (const line of methodBodyLines) {
+        classBodyLines.push(line);
+      }
       classBodyLines.push('  }');
     }
 
@@ -3464,7 +3577,7 @@ function emitAsyncSchedulerHookDeclsCpp(machines) {
 
   const functionPrototypes = emitTopLevelFunctionPrototypes(tree, compileContext);
   const functionDefs = emitTopLevelFunctionDefinitions(tree, compileContext);
-  const classDefs = emitTopLevelClassDefinitions(tree);
+  const classDefs = emitTopLevelClassDefinitions(tree, compileContext);
   const sharedRuntimeFallbackHelpers = emitSharedRuntimeFallbackHelpersCpp(tree);
   const objectLiteralDecls = emitObjectLiteralRuntimeDeclsCpp(tree);
   const objectLiteralFallback = emitObjectLiteralRuntimeFallbackCpp(tree);

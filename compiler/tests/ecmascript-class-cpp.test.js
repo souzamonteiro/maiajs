@@ -32,10 +32,9 @@ test('class lowering: emits constructor and method stubs', () => {
 
   assert.match(cpp, /struct Point \{/, 'C++ must emit struct for class declaration');
   assert.match(cpp, /Point\(int x, int y\) \{/, 'C++ must emit constructor signature with parameters');
-  assert.match(cpp, /\/\/ \[constructor body lowering not yet implemented\]/, 'constructor body must be explicit stub');
+  assert.match(cpp, /this->x = x;/, 'constructor body must lower this-member assignment');
   assert.match(cpp, /int length\(int v\) \{/, 'C++ must emit class method signature');
-  assert.match(cpp, /\/\/ \[class method body lowering not yet implemented\]/, 'class method body must be explicit stub');
-  assert.match(cpp, /return 0;/, 'class method stub must return default int value');
+  assert.match(cpp, /return \(int\)\(v\);/, 'class method body must lower return statement');
 });
 
 test('class lowering: emits default constructor when none is declared', () => {
