@@ -3318,6 +3318,44 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     return lines;
   }
 
+  // breakStatement: break [label];
+  const breakStmtNode = (statementNode.children || []).find(
+    (c) => c && c.kind === 'nonterminal' && c.name === 'breakStatement'
+  );
+  if (breakStmtNode) {
+    const labelIdNode = (breakStmtNode.children || []).find(
+      (c) => c && c.kind === 'nonterminal' && c.name === 'identifier'
+    );
+    const label = labelIdNode ? findFirstIdentifierValue(labelIdNode) : null;
+    return [label ? `${indent}break ${label};` : `${indent}break;`];
+  }
+
+  // continueStatement: continue [label];
+  const continueStmtNode = (statementNode.children || []).find(
+    (c) => c && c.kind === 'nonterminal' && c.name === 'continueStatement'
+  );
+  if (continueStmtNode) {
+    const labelIdNode = (continueStmtNode.children || []).find(
+      (c) => c && c.kind === 'nonterminal' && c.name === 'identifier'
+    );
+    const label = labelIdNode ? findFirstIdentifierValue(labelIdNode) : null;
+    return [label ? `${indent}continue ${label};` : `${indent}continue;`];
+  }
+
+  // labelledStatement: label: statement
+  const labelledStmtNode = (statementNode.children || []).find(
+    (c) => c && c.kind === 'nonterminal' && c.name === 'labelledStatement'
+  );
+  if (labelledStmtNode) {
+    const labelChildren = labelledStmtNode.children || [];
+    const labelIdNode = labelChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'identifier');
+    const nestedStmt = labelChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+    const label = labelIdNode ? findFirstIdentifierValue(labelIdNode) : null;
+    if (label) { lines.push(`${indent}${label}:`); }
+    if (nestedStmt) { lines.push(...lowerStatementNode(nestedStmt, compileContext, indentLevel, options)); }
+    return lines;
+  }
+
   return [`${indent}// [statement not yet lowered]`];
 }
 
