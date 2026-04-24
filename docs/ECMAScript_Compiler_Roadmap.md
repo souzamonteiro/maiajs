@@ -1,13 +1,37 @@
-# ECMAScript Compiler Roadmap (ES8 -> C++98 -> WASM)
+# ECMAScript 2017 (ES8) Compiler - Roadmap & Scope
 
-Last updated: 2026-04-23
+**SCOPE: ECMAScript 2017 (ES8) ONLY - No ES2018+ features supported**
+
+Last updated: 2026-04-24
+
+## Scope Declaration
+
+**Supported:** ECMAScript 2017 (ES8) features only:
+- async/await, promises
+- Template literals
+- Classes (basic)
+- Arrow functions
+- Destructuring (basic)
+- Spread operator
+- for-of loops
+- Map, Set, WeakMap, WeakSet
+- Object.values(), Object.entries()
+- String padding
+- Trailing commas in parameters
+- All ES5/ES6/ES7 features
+
+**NOT Supported (explicitly out of scope):**
+- ❌ ES2020: Optional chaining (`?.`), Nullish coalescing (`??`), BigInt, Dynamic import
+- ❌ ES2021: Logical assignment (`??=`, `&&=`, `||=`), WeakRef
+- ❌ ES2022: Private fields/methods (`#field`), Top-level await, Error.cause
+- ❌ Any feature after ES2017
 
 ## Progress Snapshot
 
 - Overall status: Phase 3 — catch/finally routing in async checkpoints DONE
-- Estimated completion: 99%
-- Test baseline: 238 passing, 0 failing (`node --test compiler/tests/*.test.js`)
-- Current focus: full closure object/runtime semantics beyond the current local capture-payload fallback MVP + runtime packaging hardening for generated dist
+- Estimated completion: 99% (ES8 scope only)
+- Test baseline: 240 passing, 0 failing (`node --test compiler/tests/*.test.js`)
+- Current focus: full closure object/runtime semantics + loop/exception statement lowering within ES8
 
 ## Milestones
 
@@ -43,10 +67,10 @@ Blocking issues preventing compilation (in order of impact):
 - [ ] **Try-catch-finally blocks**: Parser recognizes but `lowerStatementNode()` returns fallback comment → exception handling skipped
 - [ ] **Switch statements**: Not lowered in `lowerStatementNode()` → switch blocks skipped
 - [ ] **Class bodies with methods**: Constructor + method stubs emitted but method bodies not lowered
-- [ ] **String literal escaping in C++ output**: Template literals with quotes generate invalid C++ syntax (e.g., `Unexpected character at position 1852: '''`)
-- [ ] **WeakMap/WeakSet collections**: No C++ lowering strategy exists → code generates invalid C++ (`weakKey = null;` without declaration)
-- [ ] **Destructuring in statement context**: Destructuring patterns in variable declarations not fully lowered in statement position
-- [ ] **Complex object/array literals in statements**: Literals with nested structures or computed properties not fully lowered
+- [ ] **String literal escaping in C++ output**: Template literals with quotes generate invalid C++ syntax (e.g., `Unexpected character at position 1852: '''`) - ES8 feature
+- [ ] **WeakMap/WeakSet collections**: No C++ lowering strategy exists → code generates invalid C++ (`weakKey = null;` without declaration) - ES8 feature
+- [ ] **Destructuring in statement context**: Destructuring patterns in variable declarations not fully lowered in statement position - ES8 feature
+- [ ] **Complex object/array literals in statements**: Literals with nested structures or computed properties not fully lowered - ES8 feature
 
 **MaiaCpp (C++ -> C)**:
 - [ ] Parser fails on invalid C++ syntax from above (escape sequences, syntax errors)
@@ -82,21 +106,38 @@ Priority 4 - **LOW** (nice-to-have, can be deferred):
 - Add all Priority 1+2 features
 - Result: Production-ready ES8→C++ for mainstream code
 
-Definition of Done for this objective:
+Definition of Done for this objective (ES8 scope only):
 - [ ] **PHASE 1 (Quick Win)**: String escaping + basic loops working
-  - [ ] Template literal quotes properly escaped in C++ output
-  - [ ] While/do-while loops generate valid C++ with condition checks
+  - [ ] Template literal quotes properly escaped in C++ output (ES8)
+  - [ ] While/do-while loops generate valid C++ with condition checks (ES8)
   - [ ] Generated C++ for simple benchmark compiles through MaiaCpp pipeline
   - [ ] Dist bootstrap tests (3/3) remain green
   
 - [ ] **PHASE 2 (High Priority)**: Loops + error handling complete
-  - [ ] For/for-in loops fully implemented
-  - [ ] Try-catch-finally lowering implemented with exception routing
+  - [ ] For/for-in loops fully implemented (ES8)
+  - [ ] Try-catch-finally lowering implemented with exception routing (ES8)
   - [ ] Generated C++ for `full_es8_test.js` is 300+ lines (not truncated)
   
 - [ ] **PHASE 3 (Medium Priority)**: Switch + complex literals
-  - [ ] Switch statements with proper fall-through semantics
-  - [ ] Nested object/array literals with computed properties
+  - [ ] Switch statements with proper fall-through semantics (ES8)
+  - [ ] Nested object/array literals with computed properties (ES8)
+
+---
+
+## Important Notes
+
+### No Post-ES8 Features
+This compiler is designed for **ES8 (ECMAScript 2017) only**. Features from ES2018 and later (ES2020, ES2021, ES2022, etc.) are explicitly out of scope and will NOT be added:
+
+- **Private fields** (`#field`) - ES2022 feature - WILL NOT BE ADDED
+- **Nullish coalescing** (`??`) - ES2020 feature - WILL NOT BE ADDED  
+- **Optional chaining** (`?.`) - ES2020 feature - WILL NOT BE ADDED
+- Any other post-ES8 features - OUT OF SCOPE
+
+If your code uses these features, it must be transpiled to ES8 before compilation with MaiaJS.
+
+### Preprocessor Policy
+No preprocessors or source transformations beyond what is necessary to handle context-free lexer limitations in ES8 features are permitted. Template literal support is ES8-native and should not require preprocessing.
   
 - [ ] **End State**: All 9 issues resolved
   - [ ] Generated C++ for `full_es8_test.js` is complete (400+ lines)
