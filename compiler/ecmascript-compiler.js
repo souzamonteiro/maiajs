@@ -1356,9 +1356,15 @@ function lowerObjectLiteralValue(objectLiteralNode, compileContext) {
     return '__maia_obj_literal0()';
   }
 
-  // Keep MVP bounded while preserving deterministic output for tests.
   if (properties.length > 4) {
-    return 'nullptr';
+    // Use builder pattern for large objects
+    let chain = '__maia_obj_builder_begin()';
+    for (const property of properties) {
+      const keyLiteral = JSON.stringify(property.key);
+      const loweredValue = lowerExpressionValue(property.valueExprNode, compileContext) || '0';
+      chain = `__maia_obj_builder_set_key(${chain}, ${keyLiteral}, (int)(${loweredValue}))`;
+    }
+    return `__maia_obj_builder_end(${chain})`;
   }
 
   const args = [];
@@ -2044,7 +2050,8 @@ function lowerExpressionValue(node, compileContext) {
 }
 
 function collectObjectLiteralArities(tree) {
-  const arities = new Set();
+  const simpleArities = new Set();
+  let requiresBuilderHooks = false;
 
   walk(tree, (node) => {
     if (!node || node.kind !== 'nonterminal' || node.name !== 'objectLiteral') {
@@ -2052,40 +2059,54 @@ function collectObjectLiteralArities(tree) {
     }
 
     const properties = extractObjectLiteralProperties(node);
-    arities.add(properties.length);
+    if (properties.length > 4) {
+      requiresBuilderHooks = true;
+    } else {
+      simpleArities.add(properties.length);
+    }
   });
 
-  return arities;
+  return { simpleArities, requiresBuilderHooks };
 }
 
 function emitObjectLiteralRuntimeDeclsCpp(tree) {
-  const arities = collectObjectLiteralArities(tree);
-  if (arities.size === 0) {
+  const { simpleArities, requiresBuilderHooks } = collectObjectLiteralArities(tree);
+  if (simpleArities.size === 0 && !requiresBuilderHooks) {
     return '';
   }
 
-  const maxArity = Math.min(4, Math.max(...Array.from(arities.values())));
   const decls = ['/* object literal runtime hooks (runtime-provided) */'];
 
-  for (let arity = 0; arity <= maxArity; arity += 1) {
-    if (arity === 0) {
-      decls.push('extern void* __maia_obj_literal0(void);');
-      continue;
+  if (simpleArities.size > 0) {
+    const maxArity = Math.max(...Array.from(simpleArities.values()));
+    for (let arity = 0; arity <= maxArity; arity += 1) {
+      if (arity === 0) {
+        decls.push('extern void* __maia_obj_literal0(void);');
+        continue;
+      }
+      const params = [];
+      for (let i = 1; i <= arity; i += 1) {
+        params.push(`const char* k${i}`);
+        params.push(`int v${i}`);
+      }
+      decls.push(`extern void* __maia_obj_literal${arity}(${params.join(', ')});`);
     }
+  } else {
+    decls.push('extern void* __maia_obj_literal0(void);');
+  }
 
-    const params = [];
-    for (let i = 1; i <= arity; i += 1) {
-      params.push(`const char* k${i}`);
-      params.push(`int v${i}`);
-    }
-    decls.push(`extern void* __maia_obj_literal${arity}(${params.join(', ')});`);
+  if (requiresBuilderHooks) {
+    decls.push('extern void* __maia_obj_builder_begin(void);');
+    decls.push('extern void* __maia_obj_builder_set_key(void* builder, const char* key, int value);');
+    decls.push('extern void* __maia_obj_builder_end(void* builder);');
   }
 
   return decls.join('\n');
 }
 
 function emitSharedRuntimeFallbackHelpersCpp(tree) {
-  const hasObjectFallback = collectObjectLiteralArities(tree).size > 0;
+  const objArities = collectObjectLiteralArities(tree);
+  const hasObjectFallback = objArities.simpleArities.size > 0 || objArities.requiresBuilderHooks;
   const arrayStats = collectArrayLiteralArities(tree);
   const hasArrayFallback = arrayStats.simpleArities.size > 0 || arrayStats.requiresBuilderHooks;
   const lambdaStats = collectLambdaSignatures(tree);
@@ -2347,12 +2368,12 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
 }
 
 function emitObjectLiteralRuntimeFallbackCpp(tree) {
-  const arities = collectObjectLiteralArities(tree);
-  if (arities.size === 0) {
+  const { simpleArities, requiresBuilderHooks } = collectObjectLiteralArities(tree);
+  if (simpleArities.size === 0 && !requiresBuilderHooks) {
     return '';
   }
 
-  const maxArity = Math.min(4, Math.max(...Array.from(arities.values())));
+  const maxArity = simpleArities.size > 0 ? Math.max(...Array.from(simpleArities.values())) : 0;
   const lines = [
     '/* local fallback runtime for object literal hooks */',
     '#ifndef MAIA_RUNTIME_PROVIDES_OBJECT_HOOKS'
@@ -2374,6 +2395,27 @@ function emitObjectLiteralRuntimeFallbackCpp(tree) {
       lines.push(`  (void)v${i};`);
     }
     lines.push(`  return __maia_runtime_alloc_value(1, ${arity}, 0, 0);`);
+    lines.push('}');
+  }
+
+  if (requiresBuilderHooks) {
+    lines.push('void* __maia_obj_builder_begin(void) {');
+    lines.push('  return __maia_runtime_alloc_value(5, 0, 0, 0);');
+    lines.push('}');
+    lines.push('void* __maia_obj_builder_set_key(void* builder, const char* key, int value) {');
+    lines.push('  (void)key;');
+    lines.push('  (void)value;');
+    lines.push('  __maia_runtime_value* b = (__maia_runtime_value*)builder;');
+    lines.push('  if (!b) { return builder; }');
+    lines.push('  b->a += 1;');
+    lines.push('  return builder;');
+    lines.push('}');
+    lines.push('void* __maia_obj_builder_end(void* builder) {');
+    lines.push('  __maia_runtime_value* b = (__maia_runtime_value*)builder;');
+    lines.push('  if (!b) { return __maia_obj_literal0(); }');
+    lines.push('  void* obj = __maia_runtime_alloc_value(1, b->a, 0, 0);');
+    lines.push('  delete b;');
+    lines.push('  return obj;');
     lines.push('}');
   }
 

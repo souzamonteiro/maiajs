@@ -50,8 +50,10 @@ test('object literal lowering: lowers identifier values in property initializers
   assert.match(cpp, /void\* o = __maia_obj_literal1\("a", \(int\)\(x\)\);/, 'C++ must lower identifier property value through helper call');
 });
 
-test('object literal lowering: falls back for unsupported arity > 4', () => {
+test('object literal lowering: uses builder for arity > 4', () => {
   const cpp = runCompilerCpp('let o = { a: 1, b: 2, c: 3, d: 4, e: 5 };\n');
 
-  assert.match(cpp, /void\* o = nullptr;/, 'C++ must emit deterministic fallback for large object literal arity');
+  assert.match(cpp, /__maia_obj_builder_begin\(\)/, 'C++ must use builder pattern for object literal arity > 4');
+  assert.match(cpp, /__maia_obj_builder_set_key\(/, 'C++ must chain set_key calls for each property');
+  assert.match(cpp, /__maia_obj_builder_end\(/, 'C++ must close with builder end');
 });
