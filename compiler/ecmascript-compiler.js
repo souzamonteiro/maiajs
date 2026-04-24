@@ -904,7 +904,14 @@ const EXPR_PASSTHROUGH_NODES = new Set([
   'bitwiseXORExpression', 'bitwiseANDExpression', 'equalityExpression',
   'relationalExpression', 'shiftExpression', 'additiveExpression',
   'multiplicativeExpression', 'exponentiationExpression', 'unaryExpression',
-  'postfixExpression', 'leftHandSideExpression', 'newExpression', 'memberExpression'
+  'postfixExpression', 'leftHandSideExpression', 'newExpression', 'memberExpression',
+  // NoIn variants (for use in for-loops and for-in expressions)
+  'expressionNoIn', 'assignmentExpressionNoIn', 'conditionalExpressionNoIn',
+  'logicalORExpressionNoIn', 'logicalANDExpressionNoIn', 'bitwiseORExpressionNoIn',
+  'bitwiseXORExpressionNoIn', 'bitwiseANDExpressionNoIn', 'equalityExpressionNoIn',
+  'relationalExpressionNoIn', 'shiftExpressionNoIn', 'additiveExpressionNoIn',
+  'multiplicativeExpressionNoIn', 'exponentiationExpressionNoIn', 'unaryExpressionNoIn',
+  'postfixExpressionNoIn', 'leftHandSideExpressionNoIn', 'newExpressionNoIn', 'memberExpressionNoIn'
 ]);
 
 const INFIX_EXPRESSION_NODES = new Set([
@@ -2823,6 +2830,164 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     }
     const lowered = lowerExpressionValue(exprNode, compileContext);
     return [lowered !== null ? `${indent}${lowered};` : `${indent}// [expression not yet lowered]`];
+  }
+
+  const iterationStmtNode = (statementNode.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'iterationStatement');
+  if (iterationStmtNode) {
+    const iterChildren = iterationStmtNode.children || [];
+    const firstToken = iterChildren.find((c) => c && c.kind === 'terminal');
+    
+    if (!firstToken) {
+      return [`${indent}// [iteration statement with no token]`];
+    }
+
+    const loopType = firstToken.token;
+
+    // WHILE LOOP: 'while' '(' expression ')' statement
+    if (loopType === 'TOKEN_while') {
+      const condExpr = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'expression');
+      const bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+
+      const loweredCond = condExpr ? lowerExpressionValue(condExpr, compileContext) : null;
+      lines.push(`${indent}while (${loweredCond || '/* condition */'}) {`);
+      
+      if (bodyStmt) {
+        lines.push(...lowerStatementNode(bodyStmt, compileContext, indentLevel + 1, options));
+      } else {
+        lines.push(`${indentation(indentLevel + 1)}// [while body not yet lowered]`);
+      }
+      
+      lines.push(`${indent}}`);
+      return lines;
+    }
+
+    // DO-WHILE LOOP: 'do' statement 'while' '(' expression ')' semicolon
+    if (loopType === 'TOKEN_do') {
+      const bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+      const condExpr = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'expression');
+
+      lines.push(`${indent}do {`);
+      
+      if (bodyStmt) {
+        lines.push(...lowerStatementNode(bodyStmt, compileContext, indentLevel + 1, options));
+      } else {
+        lines.push(`${indentation(indentLevel + 1)}// [do-while body not yet lowered]`);
+      }
+      
+      const loweredCond = condExpr ? lowerExpressionValue(condExpr, compileContext) : null;
+      lines.push(`${indent}} while (${loweredCond || '/* condition */)'});`);
+      
+      return lines;
+    }
+
+    // FOR LOOP: 'for' '(' init? ';' condition? ';' increment? ')' statement
+    if (loopType === 'TOKEN_for') {
+      // The structure of FOR loop is:
+      // for ( [var/let/const] init? ; condition? ; increment? ) statement
+      // In AST: for TOKEN__28_ [TOKEN_var/TOKEN_let/TOKEN_const] [declarations/expression] TOKEN__3B_ [expression] TOKEN__3B_ [expression] TOKEN__29_ statement
+      
+      // Find all semicolons to use as delimiters
+      const semicolonIndices = [];
+      for (let i = 0; i < iterChildren.length; i++) {
+        const child = iterChildren[i];
+        if (child && child.kind === 'terminal' && child.token === 'TOKEN__3B_') {
+          semicolonIndices.push(i);
+        }
+      }
+      
+      // Should have exactly 2 semicolons
+      if (semicolonIndices.length !== 2) {
+        return [`${indent}// [for loop with unexpected semicolon count: ${semicolonIndices.length}]`];
+      }
+
+      // Extract init (between opening paren and first semicolon)
+      let initCode = '';
+      let varKeyword = '';
+      for (let i = 2; i < semicolonIndices[0]; i++) {
+        const child = iterChildren[i];
+        if (!child) continue;
+        
+        if (child.kind === 'terminal' && (child.token === 'TOKEN_var' || child.token === 'TOKEN_let' || child.token === 'TOKEN_const')) {
+          varKeyword = child.value + ' ';
+        } else if (child.kind === 'nonterminal' && child.name === 'variableDeclarationListNoIn') {
+          // Extract variable declarations from variableDeclarationListNoIn
+          const declNoInList = (child.children || []).filter((c) => c && c.kind === 'nonterminal' && c.name === 'variableDeclarationNoIn');
+          const varParts = [];
+          
+          for (const declNoIn of declNoInList) {
+            const bindingId = (declNoIn.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'bindingIdentifier');
+            const initializer = (declNoIn.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'initializerNoIn');
+            
+            const varName = bindingId ? findFirstIdentifierValue(bindingId) : null;
+            if (!varName) continue;
+            
+            let varDecl = varName;
+            if (initializer) {
+              // Extract the expression from initializerNoIn (after the '=' token)
+              const initExpr = (initializer.children || []).find((c) => c && c.kind === 'nonterminal');
+              const loweredInitExpr = initExpr ? lowerExpressionValue(initExpr, compileContext) : null;
+              if (loweredInitExpr) {
+                varDecl += ' = ' + loweredInitExpr;
+              }
+            }
+            varParts.push(varDecl);
+          }
+          
+          initCode = varParts.join(', ');
+        } else if (child.kind === 'nonterminal' && child.name === 'expression') {
+          const loweredExpr = lowerExpressionValue(child, compileContext);
+          if (loweredExpr) {
+            initCode += loweredExpr;
+          }
+        }
+      }
+
+      // Extract condition (between first and second semicolon)
+      let condCode = '';
+      for (let i = semicolonIndices[0] + 1; i < semicolonIndices[1]; i++) {
+        const child = iterChildren[i];
+        if (!child || child.kind === 'terminal') continue;
+        
+        if (child.kind === 'nonterminal' && child.name === 'expression') {
+          const loweredExpr = lowerExpressionValue(child, compileContext);
+          if (loweredExpr) {
+            condCode = loweredExpr;
+          }
+        }
+      }
+
+      // Extract increment (between second semicolon and closing paren)
+      let incrCode = '';
+      for (let i = semicolonIndices[1] + 1; i < iterChildren.length; i++) {
+        const child = iterChildren[i];
+        if (!child) continue;
+        if (child.kind === 'terminal' && (child.token === 'TOKEN__29_' || child.token === 'TOKEN__3B_')) break;
+        
+        if (child.kind === 'nonterminal' && child.name === 'expression') {
+          const loweredExpr = lowerExpressionValue(child, compileContext);
+          if (loweredExpr) {
+            incrCode = loweredExpr;
+          }
+        }
+      }
+
+      const bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+
+      // Build for loop
+      const forHeader = `${indent}for (${varKeyword}${initCode}; ${condCode}; ${incrCode}) {`;
+      lines.push(forHeader);
+      
+      if (bodyStmt) {
+        lines.push(...lowerStatementNode(bodyStmt, compileContext, indentLevel + 1, options));
+      } else {
+        lines.push(`${indentation(indentLevel + 1)}// [for body not yet lowered]`);
+      }
+      
+      lines.push(`${indent}}`);
+      return lines;
+    }
+
+    return [`${indent}// [iteration statement type not yet lowered: ${loopType}]`];
   }
 
   return [`${indent}// [statement not yet lowered]`];
