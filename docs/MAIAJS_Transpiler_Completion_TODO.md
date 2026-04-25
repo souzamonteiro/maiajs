@@ -129,14 +129,20 @@ Acceptance gate:
 
 Goal: keep ABI contract stable while expanding lowering coverage.
 
-- [ ] Verify host mapping remains `__obj__method` contract-compatible.
-- [ ] Ensure capture-aware lambda dispatch remains excluded from host extern emission.
-- [ ] Add regression tests for host vs local-call classification in new lowering paths.
+- [x] Verify host mapping remains `__obj__method` contract-compatible.
+- [x] Ensure capture-aware lambda dispatch remains excluded from host extern emission.
+- [x] Add regression tests for host vs local-call classification in new lowering paths.
+  - function-expression binding NOT emitted as host extern.
+  - constructor call uses `__new__Name` helper, not `__Name` host extern.
+  - local fn-expr + host call (`console.log`) keep separate routing paths.
+  - MaiaC `generateHostEnvSource`: 9 new tests incl. `__new__X → new X(...)` contract.
 
 Acceptance gate:
 
-- [ ] Existing host interop tests remain green.
-- [ ] No regressions in lambda/host routing tests.
+- [x] Existing host interop tests remain green (36/36 in ecmascript-host-interop-ast.test.js).
+- [x] No regressions in lambda/host routing tests.
+- [x] Full suite: 270/270 pass.
+- [x] End-to-end dist build: `All steps OK`.
 
 ### Phase 7 - End-to-end hard gate: real sample behavior
 
