@@ -95,7 +95,7 @@ test('inline function expressions in object literals and call arguments lower to
   assert.doesNotMatch(cpp, /__rangeValues__forEach\(nullptr\)/, 'inline callback must not degrade to nullptr');
 });
 
-test('method calls on lowered non-path bases stay callable', () => {
+test('JS-runtime method calls on lowered non-path bases (array literal) are safely dropped', () => {
   const cpp = runCompilerCpp(
     'const setLike = [1, 2, 3, 3, 4].filter(function(v, i, arr) {\n'
     + '  return arr.indexOf(v) === i;\n'
@@ -103,8 +103,8 @@ test('method calls on lowered non-path bases stay callable', () => {
   );
 
   assert.match(cpp, /int __maia_fn_arg_call_0\(int v, int i, int arr\)/, 'array-literal callback should still emit a synthesized helper');
-  assert.match(cpp, /const void\* setLike = __maia_arr_builder_end\([^\n]*\.filter\(__maia_fn_arg_call_0\);/, 'array-literal method call should lower instead of degrading to nullptr');
-  assert.doesNotMatch(cpp, /const void\* setLike = nullptr;/, 'non-path base method call must not degrade to nullptr');
+  assert.match(cpp, /const void\* setLike = nullptr;/, 'JS-only .filter() on array literal should fall back to nullptr (no C++98 equivalent)');
+  assert.doesNotMatch(cpp, /\.filter\(/, 'JS-only .filter() on literal must not appear in C++ output');
 });
 
 test('arguments identifier lowers to safe fallback instead of raw JS token', () => {

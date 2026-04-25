@@ -3,11 +3,10 @@
   "shouldTranspile": true,
   "cppContains": [
     "int __maia_fn_arg_call_0(int v, int i, int arr)",
-    "const void* setLike = __maia_arr_builder_end",
-    ".filter(__maia_fn_arg_call_0);"
+    "const void* setLike = nullptr;"
   ],
   "cppExclude": [
-    "const void* setLike = nullptr;",
+    ".filter(",
     "[statement not yet lowered]"
   ]
 }

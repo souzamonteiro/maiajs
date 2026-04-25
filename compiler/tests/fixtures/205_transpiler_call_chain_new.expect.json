@@ -3,9 +3,11 @@
   "shouldTranspile": true,
   "cppContains": [
     "__new__Animal(\"Rex\");",
-    "__Promise__resolve(5).then(__maia_lambda1()).then(__maia_lambda1());"
+    "__Promise__resolve(5);"
   ],
   "cppExclude": [
+    ".then(",
+    ".catch(",
     "[expression not yet lowered]",
     "[return expression not yet lowered]",
     "/* expr */"

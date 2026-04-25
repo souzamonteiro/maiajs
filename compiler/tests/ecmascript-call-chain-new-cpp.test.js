@@ -27,10 +27,11 @@ function runCompilerCpp(sourceCode) {
   return fs.readFileSync(cppOut, 'utf8');
 }
 
-test('call-chain lowering: preserves trailing chained method calls', () => {
+test('call-chain lowering: JS-runtime .then() chain is truncated (not emitted as C++)', () => {
   const cpp = runCompilerCpp('Promise.resolve(5).then(x => x).then(y => y);\n');
 
-  assert.match(cpp, /__Promise__resolve\(5\)\.then\(__maia_lambda1\(\)\)\.then\(__maia_lambda1\(\)\);/, 'C++ must preserve chained call segments after first call');
+  assert.match(cpp, /__Promise__resolve\(5\);/, 'base host call must still be emitted after chain truncation');
+  assert.doesNotMatch(cpp, /\.then\(/, 'JS-only .then() chain must not appear in C++ output');
 });
 
 test('new-expression lowering: lowers constructor call to __new__ helper symbol', () => {

@@ -1264,6 +1264,32 @@ const EXPR_PASSTHROUGH_NODES = new Set([
   'postfixExpressionNoIn', 'leftHandSideExpressionNoIn', 'newExpressionNoIn', 'memberExpressionNoIn'
 ]);
 
+// JS-only runtime methods that have no direct C++98 equivalent and must not be
+// emitted as member function calls on opaque (void* / int / const char*) values.
+// When a call chain hits one of these and it is not in the host registry, the
+// chain is truncated and the method call is dropped, yielding a safe fallback.
+const JS_RUNTIME_METHODS = new Set([
+  // Promise
+  'then', 'catch', 'finally',
+  // Array.prototype
+  'filter', 'map', 'reduce', 'reduceRight', 'forEach', 'find', 'findIndex',
+  'some', 'every', 'includes', 'indexOf', 'lastIndexOf', 'flat', 'flatMap',
+  'push', 'pop', 'shift', 'unshift', 'splice', 'slice', 'join', 'sort',
+  'reverse', 'fill', 'copyWithin', 'at', 'findLast', 'findLastIndex',
+  // Object.prototype / iterator
+  'keys', 'values', 'entries',
+  // String.prototype (non-constant-foldable at runtime)
+  'padStart', 'padEnd', 'trim', 'trimStart', 'trimEnd', 'split',
+  'startsWith', 'endsWith', 'replace', 'replaceAll', 'match', 'matchAll',
+  'search', 'normalize', 'charAt', 'charCodeAt', 'codePointAt',
+  'toUpperCase', 'toLowerCase', 'toLocaleUpperCase', 'toLocaleLowerCase',
+  'substring', 'substr',
+  // Map / Set
+  'add', 'delete', 'has', 'clear', 'get', 'set',
+  // EventEmitter / Observable
+  'on', 'off', 'emit', 'subscribe', 'unsubscribe'
+]);
+
 const INFIX_EXPRESSION_NODES = new Set([
   'logicalORExpression',
   'logicalANDExpression',
@@ -3226,9 +3252,14 @@ function lowerCallExpressionValue(node, compileContext) {
   }
 
   if (!loweredCall && (!pathSegments || pathSegments.length === 0) && baseExpressionNode && directPropertyName) {
-    const loweredBase = lowerExpressionValue(baseExpressionNode, compileContext);
-    if (loweredBase !== null) {
-      loweredCall = `${loweredBase}.${directPropertyName}(${args})`;
+    // Only emit base.method(args) when the method is NOT a JS-runtime-only method.
+    // JS-runtime methods (Promise.then, Array.filter, etc.) have no C++98 equivalent
+    // on void* / primitive types and would produce invalid C++98 if emitted verbatim.
+    if (!JS_RUNTIME_METHODS.has(directPropertyName)) {
+      const loweredBase = lowerExpressionValue(baseExpressionNode, compileContext);
+      if (loweredBase !== null) {
+        loweredCall = `${loweredBase}.${directPropertyName}(${args})`;
+      }
     }
   }
 
@@ -3249,8 +3280,13 @@ function lowerCallExpressionValue(node, compileContext) {
   }
 
   // Preserve call chains after the first invocation, e.g. a().b().c().
+  // JS-runtime methods (Promise.then, Array.filter, etc.) have no C++98 equivalent
+  // and must not be emitted as chained member calls. When encountered, truncate the
+  // chain at that point — the statement retains the side-effects of the base call.
   const firstArgsIndex = children.indexOf(argsNode);
+  let chainTruncated = false;
   for (let i = firstArgsIndex + 1; i < children.length; i += 1) {
+    if (chainTruncated) { break; }
     const child = children[i];
     if (!child) {
       continue;
@@ -3261,14 +3297,19 @@ function lowerCallExpressionValue(node, compileContext) {
       if (propertyNode && propertyNode.kind === 'nonterminal' && propertyNode.name === 'propertyIdentifierName') {
         const propertyName = findFirstIdentifierValue(propertyNode);
         if (propertyName) {
-          loweredCall = `${loweredCall}.${propertyName}`;
+          if (JS_RUNTIME_METHODS.has(propertyName)) {
+            // Truncate: this is a JS-only method; drop the rest of the chain.
+            chainTruncated = true;
+          } else {
+            loweredCall = `${loweredCall}.${propertyName}`;
+          }
         }
         i += 1;
       }
       continue;
     }
 
-    if (child.kind === 'nonterminal' && child.name === 'arguments') {
+    if (!chainTruncated && child.kind === 'nonterminal' && child.name === 'arguments') {
       const chainedArgs = lowerArgumentsNode(child, compileContext);
       loweredCall = `${loweredCall}(${chainedArgs})`;
     }
