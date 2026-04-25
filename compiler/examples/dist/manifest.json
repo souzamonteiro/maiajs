@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-04-25T19:50:41.343Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.FKYYnVBxDl/test.c",
+  "generatedAt": "2026-04-25T20:50:15.263Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.azrBQnNFap/test.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/dist",
   "appName": "test",
   "artifacts": {
@@ -13,7 +13,24 @@
     "nodeRunnerShell": "node-runner.sh"
   },
   "linkedLibraries": [],
-  "copiedLibraries": [],
+  "copiedLibraries": [
+    "ctype",
+    "setjmp",
+    "stdlib",
+    "string",
+    "__builtins",
+    "cwchar",
+    "cwctype",
+    "exception",
+    "fstream",
+    "ios",
+    "iostream",
+    "memory",
+    "new",
+    "sstream",
+    "stdexcept",
+    "typeinfo"
+  ],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
   "sourceBytes": 17769,

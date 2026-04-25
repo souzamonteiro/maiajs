@@ -606,9 +606,9 @@ void* __new__Dog(int name, int breed) {
 }
 
 int main() {
-  __console__log("=".repeat(60));
+  __console__log("============================================================");
   __console__log("ES8 SYNTAX TESTER - compatibility mode");
-  __console__log("=".repeat(60));
+  __console__log("============================================================");
   __console__log("\n--- SECTION 1: OPERATORS ---");
   double a = 10;
   double b = 3;
@@ -686,8 +686,8 @@ int main() {
   __console__log("Dog speak: " + __dog__speak());
   __console__log(0);
   __console__log("\n--- SECTION 8: PROMISES ---");
-  delay(10, "A").then(__maia_lambda1()).then(__maia_lambda1());
-  __Promise__resolve(5).then(__maia_lambda1()).then(__maia_lambda1()).then(__maia_lambda1());
+  delay(10, "A");
+  __Promise__resolve(5);
   __console__log("\n--- SECTION 9: EXCEPTIONS ---");
   try {
     throw __new__Error("Custom error thrown");
@@ -713,12 +713,12 @@ int main() {
   const void* reflectObj = __maia_obj_literal1("a", (int)(1));
   __Reflect(reflectObj, "b", 2);
   __console__log("Reflect keys count: " + __Reflect__ownKeys(reflectObj).length);
-  const void* setLike = __maia_arr_builder_end(__maia_arr_builder_push_value(__maia_arr_builder_push_value(__maia_arr_builder_push_value(__maia_arr_builder_push_value(__maia_arr_builder_push_value(__maia_arr_builder_begin(), (int)(1)), (int)(2)), (int)(3)), (int)(3)), (int)(4))).filter(__maia_fn_arg_call_0);
+  const void* setLike = nullptr;
   const void* mapLike = __maia_obj_literal1("key1", (int)("value1"));
   __console__log("Set-like size: " + setLike.length);
   __console__log("Map-like key1: " + mapLike.key1);
-  __console__log("\n" + "=".repeat(60));
+  __console__log("\n" + "============================================================");
   __console__log("ES8 SYNTAX TEST COMPLETE (compatibility mode)");
-  __console__log("=".repeat(60));
+  __console__log("============================================================");
   return 0;
 }

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-DEFAULT_WASM="$SCRIPT_DIR/full_es8_test.wasm"
+DEFAULT_WASM="$SCRIPT_DIR/marker.wasm"
 
 if [[ $# -eq 0 ]]; then
   exec node "$SCRIPT_DIR/node-runner.js" "$DEFAULT_WASM"

@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-04-23T21:38:24.386Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.78YIulQIGB/full_es8_test.c",
+  "generatedAt": "2026-04-25T20:01:12.985Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.tyQKDodv0y/marker.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/dist",
-  "appName": "full_es8_test",
+  "appName": "marker",
   "artifacts": {
-    "wasm": "full_es8_test.wasm",
-    "wrapper": "full_es8_test.js",
+    "wasm": "marker.wasm",
+    "wrapper": "marker.js",
     "wat": null,
     "browserRunner": "browser-runner.html",
     "browserMemoryFileStore": "browser-memory-file-store.js",
@@ -16,5 +16,5 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 1362
+  "sourceBytes": 906
 }
