@@ -3212,6 +3212,19 @@ function lowerCallExpressionValue(node, compileContext) {
     }
   }
 
+  // Constant-fold: stringLiteral.repeat(numericLiteral) → C string literal (C++98-safe)
+  if (!loweredCall && directPropertyName === 'repeat' && baseExpressionNode && argExprs.length === 1) {
+    const loweredBase = lowerExpressionValue(baseExpressionNode, compileContext);
+    const loweredCount = lowerExpressionValue(argExprs[0], compileContext);
+    if (loweredBase !== null && loweredCount !== null) {
+      const strMatch = loweredBase.match(/^"((?:[^"\\]|\\.)*)"$/);
+      const n = parseInt(loweredCount, 10);
+      if (strMatch && Number.isFinite(n) && n >= 0 && n <= 10000) {
+        loweredCall = `"${strMatch[1].repeat(n)}"`;
+      }
+    }
+  }
+
   if (!loweredCall && (!pathSegments || pathSegments.length === 0) && baseExpressionNode && directPropertyName) {
     const loweredBase = lowerExpressionValue(baseExpressionNode, compileContext);
     if (loweredBase !== null) {

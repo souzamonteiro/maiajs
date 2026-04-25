@@ -50,10 +50,11 @@ test('return fallback: unresolved return expression no longer emits return place
   assert.doesNotMatch(cpp, /\[return expression not yet lowered\]/, 'C++ output must not contain return placeholder markers');
 });
 
-test('call argument lowering: string-literal method calls no longer degrade to numeric fallback', () => {
+test('call argument lowering: string-literal.repeat(n) constant-folds to C string literal', () => {
   const cpp = runCompilerCpp('console.log("=".repeat(5));\n');
 
-  assert.match(cpp, /__console__log\("="\.repeat\(5\)\);/, 'string-literal method call argument should stay callable');
+  assert.match(cpp, /__console__log\("====="\);/, 'string-literal.repeat(n) should constant-fold to a repeated C string literal');
+  assert.doesNotMatch(cpp, /"="\.repeat\(/, 'constant-folded output must not contain JS .repeat() call');
   assert.doesNotMatch(cpp, /\/\* expr \*\//, 'C++ output must not contain expr placeholder markers');
 });
 
