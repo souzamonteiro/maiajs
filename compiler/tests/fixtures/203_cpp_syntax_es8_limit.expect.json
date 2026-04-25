@@ -1,0 +1,11 @@
+{
+  "stages": ["transpiler", "cpp-syntax"],
+  "shouldTranspile": true,
+  "shouldCppSyntax": false,
+  "cppContains": [
+    "const void* x = nullptr;"
+  ],
+  "cppSyntaxOutputContains": [
+    "nullptr"
+  ]
+}

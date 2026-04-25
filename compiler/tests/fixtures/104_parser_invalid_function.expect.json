@@ -1,0 +1,7 @@
+{
+  "stages": ["parser"],
+  "shouldParse": false,
+  "parseErrorContains": [
+    "Expected 'EOF', got 'TOKEN_function'"
+  ]
+}

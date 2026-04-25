@@ -1,0 +1,9 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "struct Animal",
+    "// Host-call map: a.speak -> __a__speak",
+    "const void* a = nullptr;"
+  ]
+}

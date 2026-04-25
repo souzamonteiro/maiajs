@@ -120,7 +120,12 @@ patch_manifest_copied_libs() {
   [[ -f "$manifest" ]] || return 0
 
   local has_patch=0
-  if [[ ${#COPIED_LIB_NAMES[@]} -gt 0 ]]; then
+  local copied_lib_count=0
+  if declare -p COPIED_LIB_NAMES >/dev/null 2>&1; then
+    copied_lib_count=${#COPIED_LIB_NAMES[@]}
+  fi
+
+  if [[ $copied_lib_count -gt 0 ]]; then
     has_patch=1
   fi
   if [[ -f "$ir_json_path" ]]; then
@@ -129,9 +134,13 @@ patch_manifest_copied_libs() {
   [[ $has_patch -eq 1 ]] || return 0
 
   local names_json
-  names_json="$(printf '"%s",' "${COPIED_LIB_NAMES[@]}"; echo)"
-  names_json="[${names_json%,}"
-  names_json="${names_json%%$'\n'*}]"
+  if [[ $copied_lib_count -gt 0 ]]; then
+    names_json="$(printf '"%s",' "${COPIED_LIB_NAMES[@]}")"
+    names_json="[${names_json%,}]"
+  else
+    names_json='[]'
+  fi
+
   node -e "
     const fs = require('fs');
     const p = process.argv[1];

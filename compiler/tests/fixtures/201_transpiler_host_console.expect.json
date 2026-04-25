@@ -1,0 +1,12 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "extern void __hostGetNumber(void);",
+    "extern void __console__log(void*);"
+  ],
+  "compilerOutputExclude": [
+    "[expression not yet lowered]",
+    "[statement not yet lowered]"
+  ]
+}

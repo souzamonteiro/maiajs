@@ -235,9 +235,9 @@ asyncFunctionExpression ::= 'async' 'function' identifier? '(' formalParameterLi
 
 classExpression ::= 'class' identifier? classTail
 
-formalParameterList ::= functionRestParameter
+formalParameterList ::= formalsList ',' functionRestParameter
+           | functionRestParameter
            | formalsList
-           | formalsList ',' functionRestParameter
 
 formalsList ::= formalParameter ( ',' formalParameter )*
 
@@ -387,10 +387,7 @@ templateLiteral ::= NoSubstitutionTemplate
            | TemplateHead expression templateSpans
 
 templateSpans ::= TemplateTail
-           | templateMiddleList TemplateTail
-
-templateMiddleList ::= TemplateMiddle expression
-           | templateMiddleList TemplateMiddle expression
+           | TemplateMiddle expression templateSpans
 
 importDeclaration ::= 'import' importClause fromClause semicolon
            | 'import' moduleSpecifier semicolon
@@ -953,10 +950,10 @@ TemplateMiddle ::= '}' TemplateCharacter* '${'
 TemplateTail ::= '}' TemplateCharacter* '`'
 
 TemplateCharacter ::= '$' ( . - '{' )
-           | '\\' EscapeSequence
+           | '\' EscapeSequence
            | LineContinuation
            | LineTerminatorSequence
-           | ( SourceCharacter - ( '`' | '\\' | '$' | LineTerminator ) )
+           | ( SourceCharacter - ( '`' | '\' | '$' | LineTerminator ) )
 
 DecimalLiteral ::= DecimalIntegerLiteral '.' DecimalDigit* ExponentPart?
            | '.' DecimalDigit+ ExponentPart?

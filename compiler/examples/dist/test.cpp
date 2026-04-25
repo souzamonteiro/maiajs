@@ -18,10 +18,80 @@
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
+// Host-call map: Array.prototype.slice.call -> __Array__prototype__slice__call
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: expressionFunc -> __expressionFunc
+// Host-call map: console.log -> __console__log
+// Host-call map: arrowFunc -> __arrowFunc
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: Object.values -> __Object__values
+// Host-call map: Object.entries -> __Object__entries
+// Host-call map: Object.getOwnPropertyDescriptors -> __Object__getOwnPropertyDescriptors
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: str.padStart -> __str__padStart
+// Host-call map: console.log -> __console__log
+// Host-call map: str.padEnd -> __str__padEnd
+// Host-call map: console.log -> __console__log
+// Host-call map: numbers.map -> __numbers__map
+// Host-call map: numbers.filter -> __numbers__filter
+// Host-call map: numbers.reduce -> __numbers__reduce
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: numbers.includes -> __numbers__includes
+// Host-call map: console.log -> __console__log
+// Host-call map: _animalPrivate -> ___animalPrivate
+// Host-call map: _animalPrivate -> ___animalPrivate
+// Host-call map: Animal.call -> __Animal__call
+// Host-call map: Object.create -> __Object__create
+// Host-call map: console.log -> __console__log
+// Host-call map: genericAnimal.speak -> __genericAnimal__speak
+// Host-call map: console.log -> __console__log
+// Host-call map: genericAnimal.getDescription -> __genericAnimal__getDescription
+// Host-call map: genericAnimal.setNickname -> __genericAnimal__setNickname
+// Host-call map: console.log -> __console__log
+// Host-call map: genericAnimal.getNickname -> __genericAnimal__getNickname
+// Host-call map: console.log -> __console__log
+// Host-call map: Animal.classify -> __Animal__classify
+// Host-call map: console.log -> __console__log
+// Host-call map: genericAnimal.accessPrivate -> __genericAnimal__accessPrivate
+// Host-call map: console.log -> __console__log
+// Host-call map: dog.speak -> __dog__speak
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: setTimeout -> __setTimeout
+// Host-call map: resolve -> __resolve
+// Host-call map: console.log -> __console__log
+// Host-call map: Promise.resolve -> __Promise__resolve
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: trailingCommas -> __trailingCommas
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: Symbol -> __Symbol
+// Host-call map: Symbol -> __Symbol
+// Host-call map: console.log -> __console__log
+// Host-call map: rangeValues.forEach -> __rangeValues__forEach
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: Reflect -> __Reflect
+// Host-call map: console.log -> __console__log
+// Host-call map: Reflect.ownKeys -> __Reflect__ownKeys
+// Host-call map: arr.indexOf -> __arr__indexOf
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
@@ -29,37 +99,537 @@
 // Host-call map: console.log -> __console__log
 
 extern void __console__log(void*);
+extern void __Array__prototype__slice__call(void*, double);
+extern void __expressionFunc(const char*);
+extern void __arrowFunc(const char*);
+extern void __Object__values(void*);
+extern void __Object__entries(void*);
+extern void __Object__getOwnPropertyDescriptors(void*);
+extern void __str__padStart(double, const char*);
+extern void __str__padEnd(double, const char*);
+extern void __numbers__map(void*);
+extern void __numbers__filter(void*);
+extern void __numbers__reduce(void*, double);
+extern void __numbers__includes(double);
+extern void ___animalPrivate(void*, void*);
+extern void __Animal__call(void*, void*, const char*);
+extern void __Object__create(void*);
+extern void __genericAnimal__speak(void);
+extern void __genericAnimal__getDescription(void);
+extern void __genericAnimal__setNickname(const char*);
+extern void __genericAnimal__getNickname(void);
+extern void __Animal__classify(void);
+extern void __genericAnimal__accessPrivate(void);
+extern void __dog__speak(void);
+extern void __setTimeout(void*, void*);
+extern void __resolve(void*);
+extern void __Promise__resolve(double);
+extern void __trailingCommas(const char*, const char*, const char*);
+extern void __Symbol(const char*);
+extern void __rangeValues__forEach(void*);
+extern void __Reflect(void*, const char*, double);
+extern void __Reflect__ownKeys(void*);
+extern void __arr__indexOf(void*);
+
+/* shared local runtime helpers for literal/lambda fallbacks */
+#ifndef MAIA_RUNTIME_LOCAL_HELPERS_DEFINED
+#define MAIA_RUNTIME_LOCAL_HELPERS_DEFINED 1
+struct __maia_runtime_value {
+  int tag;
+  int a;
+  int b;
+  int c;
+};
+static void* __maia_runtime_alloc_value(int tag, int a, int b, int c) {
+  __maia_runtime_value* v = new __maia_runtime_value();
+  v->tag = tag;
+  v->a = a;
+  v->b = b;
+  v->c = c;
+  return (void*)v;
+}
+/* lambda closure/env fallback contract (local MVP)
+ * - function_id is deterministic per lowered lambda hook signature.
+ * - capture_count is the canonical total capture count via env/value API.
+ * - __maia_runtime_lambda_get_capture_at returns capture value by index or 0 if out-of-range.
+ * - mirror fields (capture1..capture4, extra_*) are legacy-only compatibility projections; env-backed accessors are canonical.
+ */
+struct __maia_runtime_lambda_env {
+  int capture_count;
+  int truncated_captures;
+  int capture1;
+  int capture2;
+  int capture3;
+  int capture4;
+  int extra_capture_count;
+  int* extra_captures;
+};
+static void* __maia_runtime_alloc_lambda_env(int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, const int* extra_captures) {
+  __maia_runtime_lambda_env* env = new __maia_runtime_lambda_env();
+  env->capture_count = capture_count;
+  env->truncated_captures = 0;
+  env->capture1 = c1;
+  env->capture2 = c2;
+  env->capture3 = c3;
+  env->capture4 = c4;
+  env->extra_capture_count = extra_capture_count;
+  env->extra_captures = 0;
+  if (extra_capture_count > 0 && extra_captures) {
+    env->extra_captures = new int[extra_capture_count];
+    for (int i = 0; i < extra_capture_count; i += 1) {
+      env->extra_captures[i] = extra_captures[i];
+    }
+  }
+  return (void*)env;
+}
+struct __maia_runtime_lambda_value {
+  int function_id;
+  int arity;
+  int is_async;
+  void* env;
+  int capture_count;
+  int truncated_captures;
+  int capture1;
+  int capture2;
+  int capture3;
+  int capture4;
+  int extra_capture_count;
+  int* extra_captures;
+};
+static int __maia_runtime_lambda_env_capture_at(__maia_runtime_lambda_env* env, int index) {
+  if (!env || index < 0) { return 0; }
+  if (index == 0) { return env->capture1; }
+  if (index == 1) { return env->capture2; }
+  if (index == 2) { return env->capture3; }
+  if (index == 3) { return env->capture4; }
+  int extraIndex = index - 4;
+  if (extraIndex < 0 || extraIndex >= env->extra_capture_count || !env->extra_captures) { return 0; }
+  return env->extra_captures[extraIndex];
+}
+static int __maia_runtime_lambda_value_capture_at(__maia_runtime_lambda_value* fn, int index) {
+  if (!fn || index < 0) { return 0; }
+  __maia_runtime_lambda_env* env = (__maia_runtime_lambda_env*)fn->env;
+  if (env) { return __maia_runtime_lambda_env_capture_at(env, index); }
+  if (index == 0) { return fn->capture1; }
+  if (index == 1) { return fn->capture2; }
+  if (index == 2) { return fn->capture3; }
+  if (index == 3) { return fn->capture4; }
+  int extraIndex = index - 4;
+  if (extraIndex < 0 || extraIndex >= fn->extra_capture_count || !fn->extra_captures) { return 0; }
+  return fn->extra_captures[extraIndex];
+}
+static int __maia_runtime_lambda_get_capture_count(void* lambda_value) {
+  __maia_runtime_lambda_value* fn = (__maia_runtime_lambda_value*)lambda_value;
+  if (!fn) { return 0; }
+  __maia_runtime_lambda_env* env = (__maia_runtime_lambda_env*)fn->env;
+  if (env) { return env->capture_count; }
+  return fn->capture_count;
+}
+static int __maia_runtime_lambda_get_capture_at(void* lambda_value, int index) {
+  __maia_runtime_lambda_value* fn = (__maia_runtime_lambda_value*)lambda_value;
+  return __maia_runtime_lambda_value_capture_at(fn, index);
+}
+static int __maia_runtime_lambda_get_function_id(void* lambda_value) {
+  __maia_runtime_lambda_value* fn = (__maia_runtime_lambda_value*)lambda_value;
+  if (!fn) { return 0; }
+  return fn->function_id;
+}
+static int __maia_runtime_lambda_get_arity(void* lambda_value) {
+  __maia_runtime_lambda_value* fn = (__maia_runtime_lambda_value*)lambda_value;
+  if (!fn) { return 0; }
+  return fn->arity;
+}
+static int __maia_runtime_lambda_get_is_async(void* lambda_value) {
+  __maia_runtime_lambda_value* fn = (__maia_runtime_lambda_value*)lambda_value;
+  if (!fn) { return 0; }
+  return fn->is_async;
+}
+static int __maia_runtime_lambda_can_invoke(void* lambda_value, int argc, int async_call) {
+  __maia_runtime_lambda_value* fn = (__maia_runtime_lambda_value*)lambda_value;
+  if (!fn || argc < 0) { return 0; }
+  if (fn->arity != argc) { return 0; }
+  if (fn->is_async != (async_call ? 1 : 0)) { return 0; }
+  return 1;
+}
+static int __maia_runtime_lambda_select_function_id(void* lambda_value, int argc, int async_call) {
+  if (!__maia_runtime_lambda_can_invoke(lambda_value, argc, async_call)) { return 0; }
+  return __maia_runtime_lambda_get_function_id(lambda_value);
+}
+static int __maia_runtime_lambda_known_case_token(void* lambda_value, int function_id) {
+  switch (function_id) {
+    case 2:
+      return (__maia_runtime_lambda_get_arity(lambda_value) * 10) + 2 + 20 + 100 + (__maia_runtime_lambda_get_capture_count(lambda_value) * 1000);
+    case 1001:
+      return (__maia_runtime_lambda_get_arity(lambda_value) * 10) + 1 + 10 + 100 + (__maia_runtime_lambda_get_capture_count(lambda_value) * 1000);
+    default:
+      return 0;
+  }
+}
+static int __maia_runtime_lambda_known_case_polarity(int function_id) {
+  switch (function_id) {
+    case 2:
+      return 1;
+    case 1001:
+      return 1;
+    default:
+      return 0;
+  }
+}
+static int __maia_runtime_lambda_known_case_weighted_capture_value(void* lambda_value, int function_id) {
+  switch (function_id) {
+    case 2:
+      return (__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4);
+    case 1001:
+      return (__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4);
+    default:
+      return 0;
+  }
+}
+static int __maia_runtime_lambda_known_case_matches_function_id(void* lambda_value, int function_id) {
+  switch (function_id) {
+    case 2:
+      if (__maia_runtime_lambda_get_arity(lambda_value) != 0) { return 0; }
+      if (__maia_runtime_lambda_get_is_async(lambda_value) != 0) { return 0; }
+      return 1;
+    case 1001:
+      if (__maia_runtime_lambda_get_arity(lambda_value) != 1) { return 0; }
+      if (__maia_runtime_lambda_get_is_async(lambda_value) != 0) { return 0; }
+      return 1;
+    default:
+      return 0;
+  }
+}
+static int __maia_runtime_lambda_has_known_case(int function_id) {
+  switch (function_id) {
+    case 2:
+      return 1;
+    case 1001:
+      return 1;
+    default:
+      return 0;
+  }
+}
+static int __maia_runtime_lambda_invoke_known_case(void* lambda_value, int function_id, int argc) {
+  if (!__maia_runtime_lambda_has_known_case(function_id)) { return 0; }
+  int known_case_token = __maia_runtime_lambda_known_case_token(lambda_value, function_id);
+  if (!known_case_token) { return 0; }
+  int known_case_polarity = __maia_runtime_lambda_known_case_polarity(function_id);
+  if (!known_case_polarity) { return 0; }
+  int weighted_capture_value = __maia_runtime_lambda_known_case_weighted_capture_value(lambda_value, function_id);
+  if (!__maia_runtime_lambda_known_case_matches_function_id(lambda_value, function_id)) { return 0; }
+  return known_case_polarity * (weighted_capture_value + argc + known_case_token);
+}
+static int __maia_runtime_lambda_invoke_function_id(void* lambda_value, int argc, int async_call) {
+  if (!__maia_runtime_lambda_can_invoke(lambda_value, argc, async_call)) { return 0; }
+  int function_id = __maia_runtime_lambda_select_function_id(lambda_value, argc, async_call);
+  if (!function_id) { return 0; }
+  return __maia_runtime_lambda_invoke_known_case(lambda_value, function_id, argc);
+}
+static void* __maia_runtime_alloc_lambda_value(int function_id, int arity, int is_async, int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, const int* extra_captures) {
+  __maia_runtime_lambda_value* fn = new __maia_runtime_lambda_value();
+  __maia_runtime_lambda_env* env = (__maia_runtime_lambda_env*)__maia_runtime_alloc_lambda_env(capture_count, c1, c2, c3, c4, extra_capture_count, extra_captures);
+  fn->function_id = function_id;
+  fn->arity = arity;
+  fn->is_async = is_async;
+  fn->env = (void*)env;
+  fn->capture_count = __maia_runtime_lambda_get_capture_count((void*)fn);
+  fn->truncated_captures = env ? env->truncated_captures : 0;
+  /* legacy-only mirror projection seed from constructor arguments */
+  fn->capture1 = c1;
+  fn->capture2 = c2;
+  fn->capture3 = c3;
+  fn->capture4 = c4;
+  fn->extra_capture_count = env ? env->extra_capture_count : extra_capture_count;
+  fn->extra_captures = env ? env->extra_captures : 0;
+  /* legacy-only mirror projection from canonical runtime capture API */
+  fn->capture1 = __maia_runtime_lambda_get_capture_at((void*)fn, 0);
+  fn->capture2 = __maia_runtime_lambda_get_capture_at((void*)fn, 1);
+  fn->capture3 = __maia_runtime_lambda_get_capture_at((void*)fn, 2);
+  fn->capture4 = __maia_runtime_lambda_get_capture_at((void*)fn, 3);
+  return (void*)fn;
+}
+#endif
+
+/* object literal runtime hooks (runtime-provided) */
+extern void* __maia_obj_literal0(void);
+extern void* __maia_obj_literal1(const char* k1, int v1);
+extern void* __maia_obj_literal2(const char* k1, int v1, const char* k2, int v2);
+extern void* __maia_obj_literal3(const char* k1, int v1, const char* k2, int v2, const char* k3, int v3);
+extern void* __maia_obj_literal4(const char* k1, int v1, const char* k2, int v2, const char* k3, int v3, const char* k4, int v4);
+
+/* local fallback runtime for object literal hooks */
+#ifndef MAIA_RUNTIME_PROVIDES_OBJECT_HOOKS
+void* __maia_obj_literal0(void) {
+  return __maia_runtime_alloc_value(1, 0, 0, 0);
+}
+void* __maia_obj_literal1(const char* k1, int v1) {
+  (void)k1;
+  (void)v1;
+  return __maia_runtime_alloc_value(1, 1, 0, 0);
+}
+void* __maia_obj_literal2(const char* k1, int v1, const char* k2, int v2) {
+  (void)k1;
+  (void)v1;
+  (void)k2;
+  (void)v2;
+  return __maia_runtime_alloc_value(1, 2, 0, 0);
+}
+void* __maia_obj_literal3(const char* k1, int v1, const char* k2, int v2, const char* k3, int v3) {
+  (void)k1;
+  (void)v1;
+  (void)k2;
+  (void)v2;
+  (void)k3;
+  (void)v3;
+  return __maia_runtime_alloc_value(1, 3, 0, 0);
+}
+void* __maia_obj_literal4(const char* k1, int v1, const char* k2, int v2, const char* k3, int v3, const char* k4, int v4) {
+  (void)k1;
+  (void)v1;
+  (void)k2;
+  (void)v2;
+  (void)k3;
+  (void)v3;
+  (void)k4;
+  (void)v4;
+  return __maia_runtime_alloc_value(1, 4, 0, 0);
+}
+#endif
+
+/* array literal runtime hooks (runtime-provided) */
+extern void* __maia_arr_literal0(void);
+extern void* __maia_arr_literal1(int v1);
+extern void* __maia_arr_literal2(int v1, int v2);
+extern void* __maia_arr_literal3(int v1, int v2, int v3);
+extern void* __maia_arr_literal4(int v1, int v2, int v3, int v4);
+extern void* __maia_arr_builder_begin(void);
+extern void* __maia_arr_builder_push_value(void* builder, int value);
+extern void* __maia_arr_builder_push_hole(void* builder);
+extern void* __maia_arr_builder_spread(void* builder, void* source_array);
+extern void* __maia_arr_builder_end(void* builder);
+
+/* local fallback runtime for array literal hooks */
+#ifndef MAIA_RUNTIME_PROVIDES_ARRAY_HOOKS
+void* __maia_arr_literal0(void) {
+  return __maia_runtime_alloc_value(2, 0, 0, 0);
+}
+void* __maia_arr_literal1(int v1) {
+  return __maia_runtime_alloc_value(2, 1, 0, 0);
+}
+void* __maia_arr_literal2(int v1, int v2) {
+  return __maia_runtime_alloc_value(2, 2, 0, 0);
+}
+void* __maia_arr_literal3(int v1, int v2, int v3) {
+  return __maia_runtime_alloc_value(2, 3, 0, 0);
+}
+void* __maia_arr_literal4(int v1, int v2, int v3, int v4) {
+  return __maia_runtime_alloc_value(2, 4, 0, 0);
+}
+void* __maia_arr_builder_begin(void) {
+  return __maia_runtime_alloc_value(4, 0, 0, 0);
+}
+void* __maia_arr_builder_push_value(void* builder, int value) {
+  (void)value;
+  __maia_runtime_value* b = (__maia_runtime_value*)builder;
+  if (!b) { return builder; }
+  b->a += 1;
+  return builder;
+}
+void* __maia_arr_builder_push_hole(void* builder) {
+  __maia_runtime_value* b = (__maia_runtime_value*)builder;
+  if (!b) { return builder; }
+  b->a += 1;
+  b->b += 1;
+  return builder;
+}
+void* __maia_arr_builder_spread(void* builder, void* source_array) {
+  __maia_runtime_value* b = (__maia_runtime_value*)builder;
+  if (!b) { return builder; }
+  b->c += 1;
+  __maia_runtime_value* src = (__maia_runtime_value*)source_array;
+  if (src && src->tag == 2) { b->a += src->a; }
+  return builder;
+}
+void* __maia_arr_builder_end(void* builder) {
+  __maia_runtime_value* b = (__maia_runtime_value*)builder;
+  if (!b) { return __maia_arr_literal0(); }
+  void* arr = __maia_runtime_alloc_value(2, b->a, b->b, b->c);
+  delete b;
+  return arr;
+}
+#endif
+
+/* lambda runtime hooks (runtime-provided, non-closure MVP) */
+extern void* __maia_lambda0_capture2(int c1, int c2);
+extern void* __maia_lambda1(void);
+extern void* __maia_lambda1_capture1(int c1);
+extern void* __maia_lambda2(void);
+
+/* local fallback runtime for lambda hooks */
+#ifndef MAIA_RUNTIME_PROVIDES_LAMBDA_HOOKS
+void* __maia_lambda0_capture2(int c1, int c2) {
+  return __maia_runtime_alloc_lambda_value(2, 0, 0, 2, c1, c2, 0, 0, 0, 0);
+}
+void* __maia_lambda1(void) {
+  return __maia_runtime_alloc_value(3, 1, 0, 0);
+}
+void* __maia_lambda1_capture1(int c1) {
+  return __maia_runtime_alloc_lambda_value(1001, 1, 0, 1, c1, 0, 0, 0, 0, 0);
+}
+void* __maia_lambda2(void) {
+  return __maia_runtime_alloc_value(3, 2, 0, 0);
+}
+#endif
+
+const char* classicFunction(int param);
+const char* withDefault(int name, int greeting);
+int restParams(int first);
+int delay(int ms, int value);
+
+const char* classicFunction(int param) {
+  return (const char*)("Classic function: " + param);
+}
+
+const char* withDefault(int name, int greeting) {
+  if (name === undefined) {
+    name = "Guest";
+  }
+  if (greeting === undefined) {
+    greeting = "Hello";
+  }
+  return (const char*)(greeting + ", " + name + "!");
+}
+
+int restParams(int first) {
+  const void* rest = __Array__prototype__slice__call(arguments, 1);
+  __console__log("Rest params - first: " + first + ", rest size: " + rest.length);
+  return (int)(rest);
+}
+
+int delay(int ms, int value) {
+  // [return expression not yet lowered]
+  return 0;
+}
 
 int main() {
   __console__log(/* expr */);
-  __console__log('ES8 SYNTAX TESTER - Running comprehensive tests');
+  __console__log("ES8 SYNTAX TESTER - compatibility mode");
   __console__log(/* expr */);
-  __console__log('\n--- SECTION 1: LITERALS & OPERATORS ---');
+  __console__log("\n--- SECTION 1: OPERATORS ---");
   double a = 10;
   double b = 3;
   __console__log(/* expr */);
-  weakKey = null;
   __console__log(/* expr */);
-  __console__log('ES8 SYNTAX TEST COMPLETE');
   __console__log(/* expr */);
-  __console__log('Tested features:');
-  __console__log('  ✓ Arithmetic, assignment, comparison, logical, bitwise operators');
-  __console__log('  ✓ var, let, const declarations');
-  __console__log('  ✓ All function forms (declaration, expression, arrow, generator, IIFE)');
-  __console__log('  ✓ Object.values(), Object.entries(), Object.getOwnPropertyDescriptors()');
-  __console__log('  ✓ String.padStart(), String.padEnd()');
-  __console__log('  ✓ Array methods (map, filter, reduce, etc.)');
-  __console__log('  ✓ Classes (inheritance, getters/setters, static, private fields)');
-  __console__log('  ✓ Promises and async/await');
-  __console__log('  ✓ Exception handling (try/catch/finally, custom errors)');
-  __console__log('  ✓ SharedArrayBuffer and Atomics');
-  __console__log('  ✓ Trailing commas in functions, arrays, objects');
-  __console__log('  ✓ Destructuring (arrays, objects, parameters)');
-  __console__log('  ✓ Symbols and iterators');
-  __console__log('  ✓ Module syntax (simulated)');
-  __console__log('  ✓ typeof, instanceof, in, delete, void, new');
-  __console__log('  ✓ eval and Reflect API');
-  __console__log('  ✓ Set, Map, WeakSet, WeakMap');
-  __console__log('\nAll syntax elements validated successfully!');
+  __console__log(/* expr */);
+  __console__log(/* expr */);
+  __console__log(/* expr */);
+  double x = 5;
+  x += 3;
+  x -= 2;
+  x *= 4;
+  x /= 2;
+  x %= 3;
+  x **= 2;
+  __console__log("Assignment chain result: " + x);
+  __console__log(/* expr */);
+  __console__log(/* expr */);
+  __console__log(/* expr */);
+  __console__log(/* expr */);
+  __console__log("\n--- SECTION 2: DECLARATIONS ---");
+  const char* oldVar = "var";
+  const char* blockScoped = "let";
+  const char* CONSTANT_VALUE = "const";
+  __console__log("vars: " + oldVar + ", " + blockScoped + ", " + CONSTANT_VALUE);
+  __console__log("\n--- SECTION 3: FUNCTIONS ---");
+  const void* expressionFunc = nullptr;
+  const void* arrowFunc = __maia_lambda1();
+  __console__log(classicFunction("Hello"));
+  __console__log(__expressionFunc("World"));
+  __console__log(__arrowFunc("ES8"));
+  __console__log(withDefault());
+  __console__log(withDefault("Jane", "Hi"));
+  restParams(1, 2, 3, 4, 5);
+  __console__log("\n--- SECTION 4: OBJECTS ---");
+  const void* person = __maia_obj_literal4("name", (int)("Alice"), "age", (int)(30), "city", (int)("New York"), "greet", (int)(0));
+  const void* values = __Object__values(person);
+  const void* entries = __Object__entries(person);
+  const void* descriptors = __Object__getOwnPropertyDescriptors(person);
+  __console__log("Object.values length: " + values.length);
+  __console__log("Object.entries length: " + entries.length);
+  __console__log("Descriptor has enumerable: " + descriptors.name.enumerable);
+  __console__log("\n--- SECTION 5: STRING METHODS ---");
+  const char* str = "5";
+  __console__log("padStart: " + __str__padStart(2, "0"));
+  __console__log("padEnd: " + __str__padEnd(4, "abc"));
+  __console__log("\n--- SECTION 6: ARRAYS ---");
+  const void* numbers = __maia_arr_builder_end(__maia_arr_builder_push_value(__maia_arr_builder_push_value(__maia_arr_builder_push_value(__maia_arr_builder_push_value(__maia_arr_builder_push_value(__maia_arr_builder_begin(), (int)(1)), (int)(2)), (int)(3)), (int)(4)), (int)(5)));
+  const void* doubled = __numbers__map(__maia_lambda1());
+  const void* evens = __numbers__filter(__maia_lambda1());
+  const void* sum = __numbers__reduce(__maia_lambda2(), 0);
+  __console__log("map size: " + doubled.length);
+  __console__log("filter size: " + evens.length);
+  __console__log("reduce sum: " + sum);
+  __console__log("includes(3): " + __numbers__includes(3));
+  __console__log("\n--- SECTION 7: CONSTRUCTORS ---");
+  const void* _animalPrivate = nullptr;
+  const void* Animal = nullptr;
+  // [expression not yet lowered]
+  // [expression not yet lowered]
+  // [expression not yet lowered]
+  // [expression not yet lowered]
+  // [expression not yet lowered]
+  // [expression not yet lowered]
+  const void* Dog = nullptr;
+  Dog.prototype = __Object__create(Animal.prototype);
+  Dog.prototype.constructor = Dog;
+  // [expression not yet lowered]
+  const void* genericAnimal = nullptr;
+  const void* dog = nullptr;
+  __console__log("Animal speak: " + __genericAnimal__speak());
+  __console__log("Animal description: " + __genericAnimal__getDescription());
+  __genericAnimal__setNickname("Gen");
+  __console__log("Animal nickname: " + __genericAnimal__getNickname());
+  __console__log("Animal classify: " + __Animal__classify());
+  __console__log("Animal private: " + __genericAnimal__accessPrivate());
+  __console__log("Dog speak: " + __dog__speak());
+  __console__log(/* expr */);
+  __console__log("\n--- SECTION 8: PROMISES ---");
+  delay(10, "A");
+  __Promise__resolve(5);
+  __console__log("\n--- SECTION 9: EXCEPTIONS ---");
+  try {
+    // [statement not yet lowered]
+  }
+  catch (const char* error) {
+    __console__log("Caught: " + error.message);
+  }
+  // [finally clause not yet fully lowered in C++98]
+    __console__log("Finally executed");
+  __console__log("\n--- SECTION 10: TRAILING COMMAS ---");
+  const void* trailingCommas = nullptr;
+  __console__log("Trailing commas (compat call): " + __trailingCommas("a", "b", "c"));
+  __console__log("\n--- SECTION 11: DESTRUCTURING ---");
+  const void* arrD = __maia_arr_literal4((int)(10), (int)(20), (int)(30), (int)(40));
+  const void* first = nullptr;
+  const void* second = nullptr;
+  __console__log("Destructured values: " + first + ", " + second);
+  __console__log("\n--- SECTION 12: SYMBOLS + ITERATORS ---");
+  const void* sym1 = __Symbol("unique");
+  const void* sym2 = __Symbol("unique");
+  __console__log(/* expr */);
+  const void* rangeValues = __maia_arr_literal3((int)(1), (int)(2), (int)(3));
+  __rangeValues__forEach(/* expr */);
+  __console__log("\n--- SECTION 13: REFLECT + COLLECTIONS ---");
+  const void* reflectObj = __maia_obj_literal1("a", (int)(1));
+  __Reflect(reflectObj, "b", 2);
+  __console__log("Reflect keys count: " + __Reflect__ownKeys(reflectObj));
+  const void* setLike = nullptr;
+  const void* mapLike = __maia_obj_literal1("key1", (int)("value1"));
+  __console__log("Set-like size: " + setLike.length);
+  __console__log("Map-like key1: " + mapLike.key1);
+  __console__log(/* expr */);
+  __console__log("ES8 SYNTAX TEST COMPLETE (compatibility mode)");
+  __console__log(/* expr */);
   return 0;
 }

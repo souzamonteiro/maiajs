@@ -1,0 +1,15 @@
+{
+  "stages": ["lexer"],
+  "shouldLex": true,
+  "tokenTypesInclude": [
+    "TOKEN_const",
+    "Identifier",
+    "TOKEN__3D_",
+    "DecimalLiteral"
+  ],
+  "tokenValuesInclude": [
+    "const",
+    "alpha",
+    "1"
+  ]
+}

@@ -5,6 +5,8 @@ This folder contains the parser validation suite for the generated parser at ../
 ## Files
 
 - parser-test-helpers.js: shared parser/collector helpers used by all tests.
+- FIXTURES.md: fixture-system guide for lexer/parser/transpiler/cpp-syntax coverage.
+- run_fixtures.js: CLI runner for fixtures in compiler/tests/fixtures.
 - ecmascript-parser-supported.test.js: stable regression tests for grammar currently accepted by the generated parser.
 - ecmascript-parser-capability-matrix.test.js: documents what is currently supported and what is intentionally failing in the baseline.
 - ecmascript-es6-target-baseline.test.js: ES2015 feature coverage tests; this file now tracks expanded ES2015 support beyond the initial baseline.
@@ -18,6 +20,12 @@ From repository root:
 
 ```sh
 node --test compiler/tests/*.test.js
+```
+
+Fixture-only run:
+
+```sh
+node compiler/tests/run_fixtures.js
 ```
 
 ## ES6 Upgrade Workflow

@@ -1,0 +1,15 @@
+{
+  "stages": ["lexer"],
+  "shouldLex": true,
+  "tokenTypesInclude": [
+    "TOKEN_async",
+    "TOKEN_function",
+    "TOKEN__2E__2E__2E_",
+    "TOKEN_await"
+  ],
+  "tokenValuesInclude": [
+    "async",
+    "function",
+    "await"
+  ]
+}

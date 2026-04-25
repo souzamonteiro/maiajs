@@ -1,0 +1,15 @@
+{
+  "stages": ["lexer"],
+  "shouldLex": true,
+  "tokenTypesInclude": [
+    "TOKEN_const",
+    "Identifier",
+    "TemplateHead",
+    "TemplateTail"
+  ],
+  "tokenValuesInclude": [
+    "const",
+    "msg",
+    "name"
+  ]
+}
