@@ -22,7 +22,6 @@
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
-// Host-call map: expressionFunc -> __expressionFunc
 // Host-call map: console.log -> __console__log
 // Host-call map: arrowFunc -> __arrowFunc
 // Host-call map: console.log -> __console__log
@@ -78,7 +77,6 @@
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
-// Host-call map: trailingCommas -> __trailingCommas
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
@@ -100,7 +98,6 @@
 
 extern void __console__log(void*);
 extern void __Array__prototype__slice__call(void*, double);
-extern void __expressionFunc(const char*);
 extern void __arrowFunc(const char*);
 extern void __Object__values(void*);
 extern void __Object__entries(void*);
@@ -124,7 +121,6 @@ extern void __dog__speak(void);
 extern void __setTimeout(void*, void*);
 extern void __resolve(void*);
 extern void __Promise__resolve(double);
-extern void __trailingCommas(const char*, const char*, const char*);
 extern void __Symbol(const char*);
 extern void __rangeValues__forEach(void*);
 extern void __Reflect(void*, const char*, double);
@@ -350,6 +346,26 @@ static void* __maia_runtime_alloc_lambda_value(int function_id, int arity, int i
 }
 #endif
 
+/* local helper for ES exponentiation-assignment lowering (C++98-safe) */
+static int __maia_pow_i32(int base, int exponent) {
+  if (exponent < 0) {
+    return 0;
+  }
+  int result = 1;
+  int current = base;
+  int power = exponent;
+  while (power > 0) {
+    if ((power & 1) != 0) {
+      result *= current;
+    }
+    power >>= 1;
+    if (power > 0) {
+      current *= current;
+    }
+  }
+  return result;
+}
+
 /* object literal runtime hooks (runtime-provided) */
 extern void* __maia_obj_literal0(void);
 extern void* __maia_obj_literal1(const char* k1, int v1);
@@ -485,73 +501,150 @@ const char* classicFunction(int param);
 const char* withDefault(int name, int greeting);
 int restParams(int first);
 int delay(int ms, int value);
+const char* expressionFunc(int param);
+const char* trailingCommas(int param1, int param2, int param3);
+const char* __maia_fn_Animal_prototype_speak(void);
+const char* __maia_fn_Animal_prototype_getDescription(void);
+int __maia_fn_Animal_prototype_setNickname(int nick);
+int __maia_fn_Animal_prototype_getNickname(void);
+const char* __maia_fn_Animal_classify(void);
+int __maia_fn_Animal_prototype_accessPrivate(void);
+const char* __maia_fn_Dog_prototype_speak(void);
+const char* __maia_fn_person_greet(void);
+int __maia_fn_arg_rangeValues_forEach_0(int num);
+int __maia_fn_arg_call_0(int v, int i, int arr);
+void* __new__Animal(int name, int species);
+void* __new__Dog(int name, int breed);
 
 const char* classicFunction(int param) {
   return (const char*)("Classic function: " + param);
 }
 
 const char* withDefault(int name, int greeting) {
-  if (name === undefined) {
+  if (name == nullptr) {
     name = "Guest";
   }
-  if (greeting === undefined) {
+  if (greeting == nullptr) {
     greeting = "Hello";
   }
   return (const char*)(greeting + ", " + name + "!");
 }
 
 int restParams(int first) {
-  const void* rest = __Array__prototype__slice__call(arguments, 1);
+  const void* rest = __Array__prototype__slice__call(nullptr, 1);
   __console__log("Rest params - first: " + first + ", rest size: " + rest.length);
   return (int)(rest);
 }
 
 int delay(int ms, int value) {
-  // [return expression not yet lowered]
+  return (int)(__new__Promise(__maia_lambda1_capture1((int)(ms))));
+}
+
+const char* expressionFunc(int param) {
+  return (const char*)("Function expression: " + param);
+}
+
+const char* trailingCommas(int param1, int param2, int param3) {
+  return (const char*)(param1 + ", " + param2 + ", " + param3);
+}
+
+const char* __maia_fn_Animal_prototype_speak(void) {
+  return (const char*)(this->name + " makes a sound");
+}
+
+const char* __maia_fn_Animal_prototype_getDescription(void) {
+  return (const char*)(this->name + " is a " + this->species);
+}
+
+int __maia_fn_Animal_prototype_setNickname(int nick) {
+  this->_nickname = nick;
   return 0;
 }
 
+int __maia_fn_Animal_prototype_getNickname(void) {
+  return (int)(this->_nickname || this->name);
+}
+
+const char* __maia_fn_Animal_classify(void) {
+  return (const char*)("All animals are living organisms");
+}
+
+int __maia_fn_Animal_prototype_accessPrivate(void) {
+  return (int)(___animalPrivate(this).privateField);
+}
+
+const char* __maia_fn_Dog_prototype_speak(void) {
+  return (const char*)(this->name + " barks! Woof!");
+}
+
+const char* __maia_fn_person_greet(void) {
+  return (const char*)("Hello, I am " + this->name);
+}
+
+int __maia_fn_arg_rangeValues_forEach_0(int num) {
+  __console__log("Iter value: " + num);
+  return 0;
+}
+
+int __maia_fn_arg_call_0(int v, int i, int arr) {
+  return (int)(__arr__indexOf(v) == i);
+}
+
+void* __new__Animal(int name, int species) {
+  const void* __maia_this = __maia_obj_literal0();
+  __Reflect(__maia_this, "name", name);
+  __Reflect(__maia_this, "species", species);
+  ___animalPrivate(__maia_this, __maia_obj_literal1("privateField", (int)("private value")));
+  return (void*)__maia_this;
+}
+
+void* __new__Dog(int name, int breed) {
+  const void* __maia_this = __maia_obj_literal0();
+  __Animal__call(__maia_this, name, "Canine");
+  __Reflect(__maia_this, "breed", breed);
+  return (void*)__maia_this;
+}
+
 int main() {
-  __console__log(/* expr */);
+  __console__log("=".repeat(60));
   __console__log("ES8 SYNTAX TESTER - compatibility mode");
-  __console__log(/* expr */);
+  __console__log("=".repeat(60));
   __console__log("\n--- SECTION 1: OPERATORS ---");
   double a = 10;
   double b = 3;
-  __console__log(/* expr */);
-  __console__log(/* expr */);
-  __console__log(/* expr */);
-  __console__log(/* expr */);
-  __console__log(/* expr */);
-  __console__log(/* expr */);
+  __console__log(0);
+  __console__log(0);
+  __console__log(0);
+  __console__log(0);
+  __console__log(0);
+  __console__log(0);
   double x = 5;
   x += 3;
   x -= 2;
   x *= 4;
   x /= 2;
   x %= 3;
-  x **= 2;
+  x = __maia_pow_i32((int)(x), (int)(2));
   __console__log("Assignment chain result: " + x);
-  __console__log(/* expr */);
-  __console__log(/* expr */);
-  __console__log(/* expr */);
-  __console__log(/* expr */);
+  __console__log(0);
+  __console__log(0);
+  __console__log(0);
+  __console__log(0);
   __console__log("\n--- SECTION 2: DECLARATIONS ---");
   const char* oldVar = "var";
   const char* blockScoped = "let";
   const char* CONSTANT_VALUE = "const";
   __console__log("vars: " + oldVar + ", " + blockScoped + ", " + CONSTANT_VALUE);
   __console__log("\n--- SECTION 3: FUNCTIONS ---");
-  const void* expressionFunc = nullptr;
   const void* arrowFunc = __maia_lambda1();
   __console__log(classicFunction("Hello"));
-  __console__log(__expressionFunc("World"));
+  __console__log(expressionFunc("World"));
   __console__log(__arrowFunc("ES8"));
   __console__log(withDefault());
   __console__log(withDefault("Jane", "Hi"));
   restParams(1, 2, 3, 4, 5);
   __console__log("\n--- SECTION 4: OBJECTS ---");
-  const void* person = __maia_obj_literal4("name", (int)("Alice"), "age", (int)(30), "city", (int)("New York"), "greet", (int)(0));
+  const void* person = __maia_obj_literal4("name", (int)("Alice"), "age", (int)(30), "city", (int)("New York"), "greet", (int)(__maia_fn_person_greet));
   const void* values = __Object__values(person);
   const void* entries = __Object__entries(person);
   const void* descriptors = __Object__getOwnPropertyDescriptors(person);
@@ -572,20 +665,18 @@ int main() {
   __console__log("reduce sum: " + sum);
   __console__log("includes(3): " + __numbers__includes(3));
   __console__log("\n--- SECTION 7: CONSTRUCTORS ---");
-  const void* _animalPrivate = nullptr;
-  const void* Animal = nullptr;
-  // [expression not yet lowered]
-  // [expression not yet lowered]
-  // [expression not yet lowered]
-  // [expression not yet lowered]
-  // [expression not yet lowered]
-  // [expression not yet lowered]
-  const void* Dog = nullptr;
+  const void* _animalPrivate = __new__WeakMap();
+  Animal.prototype.speak = __maia_fn_Animal_prototype_speak;
+  Animal.prototype.getDescription = __maia_fn_Animal_prototype_getDescription;
+  Animal.prototype.setNickname = __maia_fn_Animal_prototype_setNickname;
+  Animal.prototype.getNickname = __maia_fn_Animal_prototype_getNickname;
+  Animal.classify = __maia_fn_Animal_classify;
+  Animal.prototype.accessPrivate = __maia_fn_Animal_prototype_accessPrivate;
   Dog.prototype = __Object__create(Animal.prototype);
   Dog.prototype.constructor = Dog;
-  // [expression not yet lowered]
-  const void* genericAnimal = nullptr;
-  const void* dog = nullptr;
+  Dog.prototype.speak = __maia_fn_Dog_prototype_speak;
+  const void* genericAnimal = __new__Animal("Generic", "Unknown");
+  const void* dog = __new__Dog("Rex", "German Shepherd");
   __console__log("Animal speak: " + __genericAnimal__speak());
   __console__log("Animal description: " + __genericAnimal__getDescription());
   __genericAnimal__setNickname("Gen");
@@ -593,22 +684,20 @@ int main() {
   __console__log("Animal classify: " + __Animal__classify());
   __console__log("Animal private: " + __genericAnimal__accessPrivate());
   __console__log("Dog speak: " + __dog__speak());
-  __console__log(/* expr */);
+  __console__log(0);
   __console__log("\n--- SECTION 8: PROMISES ---");
-  delay(10, "A");
-  __Promise__resolve(5);
+  delay(10, "A").then(__maia_lambda1()).then(__maia_lambda1());
+  __Promise__resolve(5).then(__maia_lambda1()).then(__maia_lambda1()).then(__maia_lambda1());
   __console__log("\n--- SECTION 9: EXCEPTIONS ---");
   try {
-    // [statement not yet lowered]
+    throw __new__Error("Custom error thrown");
   }
   catch (const char* error) {
     __console__log("Caught: " + error.message);
   }
-  // [finally clause not yet fully lowered in C++98]
-    __console__log("Finally executed");
+  __console__log("Finally executed");
   __console__log("\n--- SECTION 10: TRAILING COMMAS ---");
-  const void* trailingCommas = nullptr;
-  __console__log("Trailing commas (compat call): " + __trailingCommas("a", "b", "c"));
+  __console__log("Trailing commas (compat call): " + trailingCommas("a", "b", "c"));
   __console__log("\n--- SECTION 11: DESTRUCTURING ---");
   const void* arrD = __maia_arr_literal4((int)(10), (int)(20), (int)(30), (int)(40));
   const void* first = nullptr;
@@ -617,19 +706,19 @@ int main() {
   __console__log("\n--- SECTION 12: SYMBOLS + ITERATORS ---");
   const void* sym1 = __Symbol("unique");
   const void* sym2 = __Symbol("unique");
-  __console__log(/* expr */);
+  __console__log(0);
   const void* rangeValues = __maia_arr_literal3((int)(1), (int)(2), (int)(3));
-  __rangeValues__forEach(/* expr */);
+  __rangeValues__forEach(__maia_fn_arg_rangeValues_forEach_0);
   __console__log("\n--- SECTION 13: REFLECT + COLLECTIONS ---");
   const void* reflectObj = __maia_obj_literal1("a", (int)(1));
   __Reflect(reflectObj, "b", 2);
-  __console__log("Reflect keys count: " + __Reflect__ownKeys(reflectObj));
-  const void* setLike = nullptr;
+  __console__log("Reflect keys count: " + __Reflect__ownKeys(reflectObj).length);
+  const void* setLike = __maia_arr_builder_end(__maia_arr_builder_push_value(__maia_arr_builder_push_value(__maia_arr_builder_push_value(__maia_arr_builder_push_value(__maia_arr_builder_push_value(__maia_arr_builder_begin(), (int)(1)), (int)(2)), (int)(3)), (int)(3)), (int)(4))).filter(__maia_fn_arg_call_0);
   const void* mapLike = __maia_obj_literal1("key1", (int)("value1"));
   __console__log("Set-like size: " + setLike.length);
   __console__log("Map-like key1: " + mapLike.key1);
-  __console__log(/* expr */);
+  __console__log("\n" + "=".repeat(60));
   __console__log("ES8 SYNTAX TEST COMPLETE (compatibility mode)");
-  __console__log(/* expr */);
+  __console__log("=".repeat(60));
   return 0;
 }

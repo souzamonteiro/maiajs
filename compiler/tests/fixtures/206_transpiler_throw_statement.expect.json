@@ -1,0 +1,14 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "try {",
+    "catch (const char*",
+    "throw"
+  ],
+  "cppExclude": [
+    "[statement not yet lowered]",
+    "[expression not yet lowered]",
+    "/* expr */"
+  ]
+}

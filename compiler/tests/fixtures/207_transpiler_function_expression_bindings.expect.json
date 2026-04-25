@@ -1,0 +1,20 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "const char* expressionFunc(int param)",
+    "void* __new__Animal(int name, int species)",
+    "__Reflect(__maia_this, \"name\", name);",
+    "__Reflect(__maia_this, \"species\", species);",
+    "const char* trailingCommas(int a, int b, int c)",
+    "__console__log(expressionFunc(\"World\"));",
+    "const void* genericAnimal = __new__Animal(\"Generic\", \"Unknown\");",
+    "__console__log(trailingCommas(\"a\", \"b\", \"c\"));"
+  ],
+  "cppExclude": [
+    "const void* expressionFunc = nullptr;",
+    "const void* Animal = nullptr;",
+    "const void* trailingCommas = nullptr;",
+    "[statement not yet lowered]"
+  ]
+}

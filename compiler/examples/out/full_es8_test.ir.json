@@ -122,18 +122,18 @@
         "callIndex": 21
       },
       {
-        "source": "expressionFunc",
-        "host": "__expressionFunc",
-        "callIndex": 22
-      },
-      {
         "source": "console.log",
         "host": "__console__log",
-        "callIndex": 23
+        "callIndex": 22
       },
       {
         "source": "arrowFunc",
         "host": "__arrowFunc",
+        "callIndex": 23
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
         "callIndex": 24
       },
       {
@@ -147,23 +147,23 @@
         "callIndex": 26
       },
       {
-        "source": "console.log",
-        "host": "__console__log",
-        "callIndex": 27
-      },
-      {
         "source": "Object.values",
         "host": "__Object__values",
-        "callIndex": 28
+        "callIndex": 27
       },
       {
         "source": "Object.entries",
         "host": "__Object__entries",
-        "callIndex": 29
+        "callIndex": 28
       },
       {
         "source": "Object.getOwnPropertyDescriptors",
         "host": "__Object__getOwnPropertyDescriptors",
+        "callIndex": 29
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
         "callIndex": 30
       },
       {
@@ -187,43 +187,43 @@
         "callIndex": 34
       },
       {
-        "source": "console.log",
-        "host": "__console__log",
+        "source": "str.padStart",
+        "host": "__str__padStart",
         "callIndex": 35
       },
       {
-        "source": "str.padStart",
-        "host": "__str__padStart",
-        "callIndex": 36
-      },
-      {
         "source": "console.log",
         "host": "__console__log",
-        "callIndex": 37
+        "callIndex": 36
       },
       {
         "source": "str.padEnd",
         "host": "__str__padEnd",
-        "callIndex": 38
+        "callIndex": 37
       },
       {
         "source": "console.log",
         "host": "__console__log",
-        "callIndex": 39
+        "callIndex": 38
       },
       {
         "source": "numbers.map",
         "host": "__numbers__map",
-        "callIndex": 40
+        "callIndex": 39
       },
       {
         "source": "numbers.filter",
         "host": "__numbers__filter",
-        "callIndex": 41
+        "callIndex": 40
       },
       {
         "source": "numbers.reduce",
         "host": "__numbers__reduce",
+        "callIndex": 41
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
         "callIndex": 42
       },
       {
@@ -242,18 +242,18 @@
         "callIndex": 45
       },
       {
-        "source": "console.log",
-        "host": "__console__log",
+        "source": "numbers.includes",
+        "host": "__numbers__includes",
         "callIndex": 46
       },
       {
-        "source": "numbers.includes",
-        "host": "__numbers__includes",
+        "source": "console.log",
+        "host": "__console__log",
         "callIndex": 47
       },
       {
-        "source": "console.log",
-        "host": "__console__log",
+        "source": "_animalPrivate",
+        "host": "___animalPrivate",
         "callIndex": 48
       },
       {
@@ -262,83 +262,83 @@
         "callIndex": 49
       },
       {
-        "source": "_animalPrivate",
-        "host": "___animalPrivate",
-        "callIndex": 50
-      },
-      {
         "source": "Animal.call",
         "host": "__Animal__call",
-        "callIndex": 51
+        "callIndex": 50
       },
       {
         "source": "Object.create",
         "host": "__Object__create",
-        "callIndex": 52
+        "callIndex": 51
       },
       {
         "source": "console.log",
         "host": "__console__log",
-        "callIndex": 53
+        "callIndex": 52
       },
       {
         "source": "genericAnimal.speak",
         "host": "__genericAnimal__speak",
-        "callIndex": 54
+        "callIndex": 53
       },
       {
         "source": "console.log",
         "host": "__console__log",
-        "callIndex": 55
+        "callIndex": 54
       },
       {
         "source": "genericAnimal.getDescription",
         "host": "__genericAnimal__getDescription",
-        "callIndex": 56
+        "callIndex": 55
       },
       {
         "source": "genericAnimal.setNickname",
         "host": "__genericAnimal__setNickname",
-        "callIndex": 57
+        "callIndex": 56
       },
       {
         "source": "console.log",
         "host": "__console__log",
-        "callIndex": 58
+        "callIndex": 57
       },
       {
         "source": "genericAnimal.getNickname",
         "host": "__genericAnimal__getNickname",
-        "callIndex": 59
+        "callIndex": 58
       },
       {
         "source": "console.log",
         "host": "__console__log",
-        "callIndex": 60
+        "callIndex": 59
       },
       {
         "source": "Animal.classify",
         "host": "__Animal__classify",
-        "callIndex": 61
+        "callIndex": 60
       },
       {
         "source": "console.log",
         "host": "__console__log",
-        "callIndex": 62
+        "callIndex": 61
       },
       {
         "source": "genericAnimal.accessPrivate",
         "host": "__genericAnimal__accessPrivate",
-        "callIndex": 63
+        "callIndex": 62
       },
       {
         "source": "console.log",
         "host": "__console__log",
-        "callIndex": 64
+        "callIndex": 63
       },
       {
         "source": "dog.speak",
         "host": "__dog__speak",
+        "callIndex": 64
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
         "callIndex": 65
       },
       {
@@ -347,28 +347,28 @@
         "callIndex": 66
       },
       {
-        "source": "console.log",
-        "host": "__console__log",
-        "callIndex": 67
-      },
-      {
         "source": "setTimeout",
         "host": "__setTimeout",
-        "callIndex": 68
+        "callIndex": 67
       },
       {
         "source": "resolve",
         "host": "__resolve",
-        "callIndex": 69
+        "callIndex": 68
       },
       {
         "source": "console.log",
         "host": "__console__log",
-        "callIndex": 70
+        "callIndex": 69
       },
       {
         "source": "Promise.resolve",
         "host": "__Promise__resolve",
+        "callIndex": 70
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
         "callIndex": 71
       },
       {
@@ -402,8 +402,8 @@
         "callIndex": 77
       },
       {
-        "source": "trailingCommas",
-        "host": "__trailingCommas",
+        "source": "console.log",
+        "host": "__console__log",
         "callIndex": 78
       },
       {
@@ -412,23 +412,23 @@
         "callIndex": 79
       },
       {
-        "source": "console.log",
-        "host": "__console__log",
+        "source": "Symbol",
+        "host": "__Symbol",
         "callIndex": 80
       },
       {
-        "source": "console.log",
-        "host": "__console__log",
+        "source": "Symbol",
+        "host": "__Symbol",
         "callIndex": 81
       },
       {
-        "source": "Symbol",
-        "host": "__Symbol",
+        "source": "console.log",
+        "host": "__console__log",
         "callIndex": 82
       },
       {
-        "source": "Symbol",
-        "host": "__Symbol",
+        "source": "rangeValues.forEach",
+        "host": "__rangeValues__forEach",
         "callIndex": 83
       },
       {
@@ -437,13 +437,13 @@
         "callIndex": 84
       },
       {
-        "source": "rangeValues.forEach",
-        "host": "__rangeValues__forEach",
+        "source": "console.log",
+        "host": "__console__log",
         "callIndex": 85
       },
       {
-        "source": "console.log",
-        "host": "__console__log",
+        "source": "Reflect",
+        "host": "__Reflect",
         "callIndex": 86
       },
       {
@@ -452,23 +452,23 @@
         "callIndex": 87
       },
       {
-        "source": "Reflect",
-        "host": "__Reflect",
-        "callIndex": 88
-      },
-      {
-        "source": "console.log",
-        "host": "__console__log",
-        "callIndex": 89
-      },
-      {
         "source": "Reflect.ownKeys",
         "host": "__Reflect__ownKeys",
-        "callIndex": 90
+        "callIndex": 88
       },
       {
         "source": "arr.indexOf",
         "host": "__arr__indexOf",
+        "callIndex": 89
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 90
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
         "callIndex": 91
       },
       {
@@ -485,16 +485,6 @@
         "source": "console.log",
         "host": "__console__log",
         "callIndex": 94
-      },
-      {
-        "source": "console.log",
-        "host": "__console__log",
-        "callIndex": 95
-      },
-      {
-        "source": "console.log",
-        "host": "__console__log",
-        "callIndex": 96
       }
     ]
   },

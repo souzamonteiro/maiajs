@@ -1,0 +1,18 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "const char* __maia_fn_Animal_prototype_speak(void)",
+    "const char* __maia_fn_Animal_classify(void)",
+    "const char* __maia_fn_Dog_prototype_speak(void)",
+    "Animal.prototype.speak = __maia_fn_Animal_prototype_speak;",
+    "Animal.classify = __maia_fn_Animal_classify;",
+    "Dog.prototype.speak = __maia_fn_Dog_prototype_speak;"
+  ],
+  "cppExclude": [
+    "Animal.prototype.speak = nullptr;",
+    "Animal.classify = nullptr;",
+    "Dog.prototype.speak = nullptr;",
+    "[statement not yet lowered]"
+  ]
+}

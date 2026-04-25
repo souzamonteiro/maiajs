@@ -156,11 +156,13 @@ test('C++ lowering emits multiple let declarations from comma-separated list', (
 });
 
 test('C++ lowering emits assignment and compound assignment statements', () => {
-  const cpp = runCompilerCpp('let x = 1;\nx = 2;\nx += 3;\nconsole.log(x);\n');
+  const cpp = runCompilerCpp('let x = 1;\nx = 2;\nx += 3;\nx **= 2;\nconsole.log(x);\n');
 
   assert.match(cpp, /double x = 1;/, 'C++ must include lowered declaration');
   assert.match(cpp, /x = 2;/, 'C++ must lower plain assignment');
   assert.match(cpp, /x \+= 3;/, 'C++ must lower compound assignment');
+  assert.match(cpp, /x = __maia_pow_i32\(\(int\)\(x\), \(int\)\(2\)\);/, 'C++ must lower exponentiation assignment with helper');
+  assert.match(cpp, /static int __maia_pow_i32\(int base, int exponent\)/, 'C++ must emit exponentiation helper when needed');
   assert.match(cpp, /__console__log\(x\);/, 'C++ must preserve following host call');
 });
 
@@ -328,4 +330,37 @@ test('C++ lowering infers return type from inside for body', () => {
 
   assert.match(cpp, /double first\(void\);/, 'C++ must infer double return type through for body');
   assert.match(cpp, /return \(double\)\(0\);/, 'C++ must widen trailing return to double');
+});
+
+// ---------------------------------------------------------------------------
+// Phase 6: host interop ABI contract regressions
+// ---------------------------------------------------------------------------
+
+test('Phase 6: function-expression binding does not emit host extern for its name', () => {
+  // `const f = function(){ return 1; }; f();`
+  // f is a locally-defined binding – calling f() must NOT produce an extern __f declaration.
+  const cpp = runCompilerCpp('const f = function(){ return 1; };\nf();\n');
+
+  assert.doesNotMatch(cpp, /extern[^;]*\b__f\b/, 'function-expression binding must not be routed through host extern __f');
+  // The call itself must still be emitted
+  assert.match(cpp, /\bf\(\)/, 'call to local function-expression binding must be emitted');
+});
+
+test('Phase 6: constructor call uses __new__Name helper, not a __Name host extern', () => {
+  // `new Animal(1)` must use the __new__Animal constructor helper injected by the
+  // MaiaJS transpiler (Phase 4), and must NOT emit a host extern for __Animal.
+  const cpp = runCompilerCpp('function Animal(x){ return x; }\nconst a = new Animal(1);\nconsole.log(a);\n');
+
+  assert.match(cpp, /__new__Animal/, 'constructor call must use __new__Animal helper');
+  assert.doesNotMatch(cpp, /extern[^;]*\b__Animal\b[^_]/, 'constructor name must not appear as a plain host extern symbol');
+});
+
+test('Phase 6: local function-expression binding plus host call in same program keep separate routes', () => {
+  // The function-expression binding must stay local; console.log must still be a host extern.
+  const cpp = runCompilerCpp('const greet = function(name){ return name; };\nconsole.log(greet("hi"));\n');
+
+  // greet must not become a host call
+  assert.doesNotMatch(cpp, /extern[^;]*\b__greet\b/, 'local function-expression must not be emitted as host extern');
+  // console.log must still be a host extern
+  assert.match(cpp, /extern[^;]*\b__console__log\b/, 'host method console.log must still be declared as extern');
 });

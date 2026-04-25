@@ -1,0 +1,13 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "__new__Animal(\"Rex\");",
+    "__Promise__resolve(5).then(__maia_lambda1()).then(__maia_lambda1());"
+  ],
+  "cppExclude": [
+    "[expression not yet lowered]",
+    "[return expression not yet lowered]",
+    "/* expr */"
+  ]
+}

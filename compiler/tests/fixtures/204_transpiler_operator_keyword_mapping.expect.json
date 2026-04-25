@@ -1,0 +1,13 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "a == nullptr",
+    "a != nullptr"
+  ],
+  "cppExclude": [
+    "===",
+    "!==",
+    "undefined"
+  ]
+}

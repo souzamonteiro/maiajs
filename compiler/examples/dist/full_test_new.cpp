@@ -531,7 +531,7 @@ const char* withDefault(int name, int greeting) {
 }
 
 int restParams(int first) {
-  const void* rest = __Array__prototype__slice__call(nullptr, 1);
+  const void* rest = __Array__prototype__slice__call(arguments, 1);
   __console__log("Rest params - first: " + first + ", rest size: " + rest.length);
   return (int)(rest);
 }

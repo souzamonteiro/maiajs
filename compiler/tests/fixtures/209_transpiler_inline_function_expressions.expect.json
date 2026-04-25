@@ -1,0 +1,15 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "const char* __maia_fn_person_greet(void)",
+    "const void* person = __maia_obj_literal1(\"greet\", (int)(__maia_fn_person_greet));",
+    "int __maia_fn_arg_rangeValues_forEach_0(int num)",
+    "__rangeValues__forEach(__maia_fn_arg_rangeValues_forEach_0);"
+  ],
+  "cppExclude": [
+    "\"greet\", (int)(nullptr)",
+    "__rangeValues__forEach(nullptr)",
+    "[statement not yet lowered]"
+  ]
+}
