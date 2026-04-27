@@ -7,6 +7,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 
+rm -rf "$SCRIPT_DIR/dist"
+rm -rf "$SCRIPT_DIR/out"
+
 cd "$SCRIPT_DIR"
 
 echo "==> webjs: compile"

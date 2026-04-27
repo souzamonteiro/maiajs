@@ -4648,7 +4648,8 @@ function main() {
   const parser = new Parser(source, collector);
 
   try {
-    parser.parse();
+    //parser.parse();
+    collector.parse(parser, source);
   } catch (e) {
     err(`parse failed: ${e.message}`);
   }

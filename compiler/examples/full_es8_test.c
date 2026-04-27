@@ -1,6 +1,3 @@
-Parsing: /Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/full_es8_test.cpp
-Parser falhou (Parser timeout (5000ms) during Parser: ok).
-Usando fallback simples.
 /* Generated from C++98 source */
 /* Target: C89 */
 
@@ -211,136 +208,274 @@ void* new_Dog__ii(int name, int breed);
 int main(void);
 
 void* maia_runtime_alloc_value__iiii(int tag, int a, int b, int c) {
-  (void)tag;
-  (void)a;
-  (void)b;
-  (void)c;
-  return (void*)0;
+  __maia_runtime_value* v = new __maia_runtime_value();
+  v->tag = tag;
+  v->a = a;
+  v->b = b;
+  v->c = c;
+  return (void*)v;
 }
 
 void* maia_runtime_alloc_lambda_env__iiiiiipv(int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, int* extra_captures) {
-  (void)capture_count;
-  (void)c1;
-  (void)c2;
-  (void)c3;
-  (void)c4;
-  (void)extra_capture_count;
-  (void)extra_captures;
-  return (void*)0;
+  int i;
+  __maia_runtime_lambda_env* env = new __maia_runtime_lambda_env();
+  env->capture_count = capture_count;
+  env->truncated_captures = 0;
+  env->capture1 = c1;
+  env->capture2 = c2;
+  env->capture3 = c3;
+  env->capture4 = c4;
+  env->extra_capture_count = extra_capture_count;
+  env->extra_captures = 0;
+  if (extra_capture_count > 0 && extra_captures) {
+    env->extra_captures = new int[extra_capture_count];
+    for (i = 0; i < extra_capture_count; i += 1) {
+      env->extra_captures[i] = extra_captures[i];
+    }
+  }
+  return (void*)env;
 }
 
 int maia_runtime_lambda_env_capture_at__pvi(__maia_runtime_lambda_env* env, int index) {
-  (void)env;
-  (void)index;
-  return (int)0;
+  if (!env || index < 0) {
+    return 0;
+  }
+  if (index == 0) {
+    return env->capture1;
+  }
+  if (index == 1) {
+    return env->capture2;
+  }
+  if (index == 2) {
+    return env->capture3;
+  }
+  if (index == 3) {
+    return env->capture4;
+  }
+  int extraIndex = index - 4;
+  if (extraIndex < 0 || extraIndex >= env->extra_capture_count || !env->extra_captures) {
+    return 0;
+  }
+  return env->extra_captures[extraIndex];
 }
 
 int maia_runtime_lambda_value_capture_at__pvi(__maia_runtime_lambda_value* fn, int index) {
-  (void)fn;
-  (void)index;
-  return (int)0;
+  if (!fn || index < 0) {
+    return 0;
+  }
+  __maia_runtime_lambda_env* env = (__maia_runtime_lambda_env*)fn->env;
+  if (env) {
+    return __maia_runtime_lambda_env_capture_at(env, index);
+  }
+  if (index == 0) {
+    return fn->capture1;
+  }
+  if (index == 1) {
+    return fn->capture2;
+  }
+  if (index == 2) {
+    return fn->capture3;
+  }
+  if (index == 3) {
+    return fn->capture4;
+  }
+  int extraIndex = index - 4;
+  if (extraIndex < 0 || extraIndex >= fn->extra_capture_count || !fn->extra_captures) {
+    return 0;
+  }
+  return fn->extra_captures[extraIndex];
 }
 
 int maia_runtime_lambda_get_capture_count__pv(void* lambda_value) {
-  (void)lambda_value;
-  return (int)0;
+  __maia_runtime_lambda_value* fn = (__maia_runtime_lambda_value*)lambda_value;
+  if (!fn) {
+    return 0;
+  }
+  __maia_runtime_lambda_env* env = (__maia_runtime_lambda_env*)fn->env;
+  if (env) {
+    return env->capture_count;
+  }
+  return fn->capture_count;
 }
 
 int maia_runtime_lambda_get_capture_at__pvi(void* lambda_value, int index) {
-  (void)lambda_value;
-  (void)index;
-  return (int)0;
+  __maia_runtime_lambda_value* fn = (__maia_runtime_lambda_value*)lambda_value;
+  return __maia_runtime_lambda_value_capture_at(fn, index);
 }
 
 int maia_runtime_lambda_get_function_id__pv(void* lambda_value) {
-  (void)lambda_value;
-  return (int)0;
+  __maia_runtime_lambda_value* fn = (__maia_runtime_lambda_value*)lambda_value;
+  if (!fn) {
+    return 0;
+  }
+  return fn->function_id;
 }
 
 int maia_runtime_lambda_get_arity__pv(void* lambda_value) {
-  (void)lambda_value;
-  return (int)0;
+  __maia_runtime_lambda_value* fn = (__maia_runtime_lambda_value*)lambda_value;
+  if (!fn) {
+    return 0;
+  }
+  return fn->arity;
 }
 
 int maia_runtime_lambda_get_is_async__pv(void* lambda_value) {
-  (void)lambda_value;
-  return (int)0;
+  __maia_runtime_lambda_value* fn = (__maia_runtime_lambda_value*)lambda_value;
+  if (!fn) {
+    return 0;
+  }
+  return fn->is_async;
 }
 
 int maia_runtime_lambda_can_invoke__pvii(void* lambda_value, int argc, int async_call) {
-  (void)lambda_value;
-  (void)argc;
-  (void)async_call;
-  return (int)0;
+  __maia_runtime_lambda_value* fn = (__maia_runtime_lambda_value*)lambda_value;
+  if (!fn || argc < 0) {
+    return 0;
+  }
+  if (fn->arity != argc) {
+    return 0;
+  }
+  if (fn->is_async != (async_call ? 1 : 0)) {
+    return 0;
+  }
+  return 1;
 }
 
 int maia_runtime_lambda_select_function_id__pvii(void* lambda_value, int argc, int async_call) {
-  (void)lambda_value;
-  (void)argc;
-  (void)async_call;
-  return (int)0;
+  if (!__maia_runtime_lambda_can_invoke(lambda_value, argc, async_call)) {
+    return 0;
+  }
+  return __maia_runtime_lambda_get_function_id(lambda_value);
 }
 
 int maia_runtime_lambda_known_case_token__pvi(void* lambda_value, int function_id) {
-  (void)lambda_value;
-  (void)function_id;
-  return (int)0;
+  switch (function_id) {
+  case 2:
+  return (__maia_runtime_lambda_get_arity(lambda_value) * 10) + 2 + 20 + 100 + (__maia_runtime_lambda_get_capture_count(lambda_value) * 1000);
+  case 1001:
+  return (__maia_runtime_lambda_get_arity(lambda_value) * 10) + 1 + 10 + 100 + (__maia_runtime_lambda_get_capture_count(lambda_value) * 1000);
+  default:
+  return 0;
+  }
 }
 
 int maia_runtime_lambda_known_case_polarity__i(int function_id) {
-  (void)function_id;
-  return (int)0;
+  switch (function_id) {
+  case 2:
+  return 1;
+  case 1001:
+  return 1;
+  default:
+  return 0;
+  }
 }
 
 int maia_runtime_lambda_known_case_weighted_capture_value__pvi(void* lambda_value, int function_id) {
-  (void)lambda_value;
-  (void)function_id;
-  return (int)0;
+  switch (function_id) {
+  case 2:
+  return (__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4);
+  case 1001:
+  return (__maia_runtime_lambda_get_capture_at(lambda_value, 0) * 1) + (__maia_runtime_lambda_get_capture_at(lambda_value, 1) * 2) + (__maia_runtime_lambda_get_capture_at(lambda_value, 2) * 3) + (__maia_runtime_lambda_get_capture_at(lambda_value, 3) * 4);
+  default:
+  return 0;
+  }
 }
 
 int maia_runtime_lambda_known_case_matches_function_id__pvi(void* lambda_value, int function_id) {
-  (void)lambda_value;
-  (void)function_id;
-  return (int)0;
+  switch (function_id) {
+  case 2:
+  if (__maia_runtime_lambda_get_arity(lambda_value) != 0) { return 0; }
+  if (__maia_runtime_lambda_get_is_async(lambda_value) != 0) { return 0; }
+  return 1;
+  case 1001:
+  if (__maia_runtime_lambda_get_arity(lambda_value) != 1) { return 0; }
+  if (__maia_runtime_lambda_get_is_async(lambda_value) != 0) { return 0; }
+  return 1;
+  default:
+  return 0;
+  }
 }
 
 int maia_runtime_lambda_has_known_case__i(int function_id) {
-  (void)function_id;
-  return (int)0;
+  switch (function_id) {
+  case 2:
+  return 1;
+  case 1001:
+  return 1;
+  default:
+  return 0;
+  }
 }
 
 int maia_runtime_lambda_invoke_known_case__pvii(void* lambda_value, int function_id, int argc) {
-  (void)lambda_value;
-  (void)function_id;
-  (void)argc;
-  return (int)0;
+  if (!__maia_runtime_lambda_has_known_case(function_id)) {
+    return 0;
+  }
+  int known_case_token = __maia_runtime_lambda_known_case_token(lambda_value, function_id);
+  if (!known_case_token) {
+    return 0;
+  }
+  int known_case_polarity = __maia_runtime_lambda_known_case_polarity(function_id);
+  if (!known_case_polarity) {
+    return 0;
+  }
+  int weighted_capture_value = __maia_runtime_lambda_known_case_weighted_capture_value(lambda_value, function_id);
+  if (!__maia_runtime_lambda_known_case_matches_function_id(lambda_value, function_id)) {
+    return 0;
+  }
+  return known_case_polarity * (weighted_capture_value + argc + known_case_token);
 }
 
 int maia_runtime_lambda_invoke_function_id__pvii(void* lambda_value, int argc, int async_call) {
-  (void)lambda_value;
-  (void)argc;
-  (void)async_call;
-  return (int)0;
+  if (!__maia_runtime_lambda_can_invoke(lambda_value, argc, async_call)) {
+    return 0;
+  }
+  int function_id = __maia_runtime_lambda_select_function_id(lambda_value, argc, async_call);
+  if (!function_id) {
+    return 0;
+  }
+  return __maia_runtime_lambda_invoke_known_case(lambda_value, function_id, argc);
 }
 
 void* maia_runtime_alloc_lambda_value__iiiiiiiiipv(int function_id, int arity, int is_async, int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, int* extra_captures) {
-  (void)function_id;
-  (void)arity;
-  (void)is_async;
-  (void)capture_count;
-  (void)c1;
-  (void)c2;
-  (void)c3;
-  (void)c4;
-  (void)extra_capture_count;
-  (void)extra_captures;
-  return (void*)0;
+  __maia_runtime_lambda_value* fn = new __maia_runtime_lambda_value();
+  __maia_runtime_lambda_env* env = (__maia_runtime_lambda_env*)__maia_runtime_alloc_lambda_env(capture_count, c1, c2, c3, c4, extra_capture_count, extra_captures);
+  fn->function_id = function_id;
+  fn->arity = arity;
+  fn->is_async = is_async;
+  fn->env = (void*)env;
+  fn->capture_count = __maia_runtime_lambda_get_capture_count((void*)fn);
+  fn->truncated_captures = env ? env->truncated_captures : 0;
+  fn->capture1 = c1;
+  fn->capture2 = c2;
+  fn->capture3 = c3;
+  fn->capture4 = c4;
+  fn->extra_capture_count = env ? env->extra_capture_count : extra_capture_count;
+  fn->extra_captures = env ? env->extra_captures : 0;
+  fn->capture1 = __maia_runtime_lambda_get_capture_at((void*)fn, 0);
+  fn->capture2 = __maia_runtime_lambda_get_capture_at((void*)fn, 1);
+  fn->capture3 = __maia_runtime_lambda_get_capture_at((void*)fn, 2);
+  fn->capture4 = __maia_runtime_lambda_get_capture_at((void*)fn, 3);
+  return (void*)fn;
 }
 
 int maia_pow_i32__ii(int base, int exponent) {
-  (void)base;
-  (void)exponent;
-  return (int)0;
+  if (exponent < 0) {
+    return 0;
+  }
+  int result = 1;
+  int current = base;
+  int power = exponent;
+  while (power > 0) {
+    if ((power & 1) != 0) {
+      result *= current;
+    }
+    power >>= 1;
+    if (power > 0) {
+      current *= current;
+    }
+  }
+  return result;
 }
 
 void* maia_obj_literal0(void) {
@@ -350,7 +485,7 @@ void* maia_obj_literal0(void) {
 void* maia_obj_literal1__pvi(char* k1, int v1) {
   (void)k1;
   (void)v1;
-  return (void*)0;
+  return __maia_runtime_alloc_value(1, 1, 0, 0);
 }
 
 void* maia_obj_literal2__pvipvi(char* k1, int v1, char* k2, int v2) {
@@ -358,7 +493,7 @@ void* maia_obj_literal2__pvipvi(char* k1, int v1, char* k2, int v2) {
   (void)v1;
   (void)k2;
   (void)v2;
-  return (void*)0;
+  return __maia_runtime_alloc_value(1, 2, 0, 0);
 }
 
 void* maia_obj_literal3__pvipvipvi(char* k1, int v1, char* k2, int v2, char* k3, int v3) {
@@ -368,7 +503,7 @@ void* maia_obj_literal3__pvipvipvi(char* k1, int v1, char* k2, int v2, char* k3,
   (void)v2;
   (void)k3;
   (void)v3;
-  return (void*)0;
+  return __maia_runtime_alloc_value(1, 3, 0, 0);
 }
 
 void* maia_obj_literal4__pvipvipvipvi(char* k1, int v1, char* k2, int v2, char* k3, int v3, char* k4, int v4) {
@@ -380,7 +515,7 @@ void* maia_obj_literal4__pvipvipvipvi(char* k1, int v1, char* k2, int v2, char* 
   (void)v3;
   (void)k4;
   (void)v4;
-  return (void*)0;
+  return __maia_runtime_alloc_value(1, 4, 0, 0);
 }
 
 void* maia_arr_literal0(void) {
@@ -408,25 +543,46 @@ void* maia_arr_builder_begin(void) {
 }
 
 void* maia_arr_builder_push_value__pvi(void* builder, int value) {
-  (void)builder;
   (void)value;
-  return (void*)0;
+  __maia_runtime_value* b = (__maia_runtime_value*)builder;
+  if (!b) {
+    return builder;
+  }
+  b->a += 1;
+  return builder;
 }
 
 void* maia_arr_builder_push_hole__pv(void* builder) {
-  (void)builder;
-  return (void*)0;
+  __maia_runtime_value* b = (__maia_runtime_value*)builder;
+  if (!b) {
+    return builder;
+  }
+  b->a += 1;
+  b->b += 1;
+  return builder;
 }
 
 void* maia_arr_builder_spread__pvpv(void* builder, void* source_array) {
-  (void)builder;
-  (void)source_array;
-  return (void*)0;
+  __maia_runtime_value* b = (__maia_runtime_value*)builder;
+  if (!b) {
+    return builder;
+  }
+  b->c += 1;
+  __maia_runtime_value* src = (__maia_runtime_value*)source_array;
+  if (src && src->tag == 2) {
+    b->a += src->a;
+  }
+  return builder;
 }
 
 void* maia_arr_builder_end__pv(void* builder) {
-  (void)builder;
-  return (void*)0;
+  __maia_runtime_value* b = (__maia_runtime_value*)builder;
+  if (!b) {
+    return __maia_arr_literal0();
+  }
+  void* arr = __maia_runtime_alloc_value(2, b->a, b->b, b->c);
+  delete b;
+  return arr;
 }
 
 void* maia_lambda0_capture2__ii(int c1, int c2) {
@@ -446,124 +602,122 @@ void* maia_lambda2(void) {
 }
 
 char* classicFunction__i(int param) {
-  (void)param;
-  return (char*)0;
+  return (const char*)("Classic function: " + param);
 }
 
 char* withDefault__ii(int name, int greeting) {
-  (void)name;
-  (void)greeting;
-  return (char*)0;
+  if (name == nullptr) {
+    name = "Guest";
+  }
+  if (greeting == nullptr) {
+    greeting = "Hello";
+  }
+  return (const char*)(greeting + ", " + name + "!");
 }
 
 int restParams__i(int first) {
-  (void)first;
-  return (int)0;
+  const void* rest = __Array__prototype__slice__call(nullptr, 1);
+  __console__log("Rest params - first: " + first + ", rest size: " + rest.length);
+  return (int)(rest);
 }
 
 int delay__ii(int ms, int value) {
-  (void)ms;
-  (void)value;
-  return (int)0;
+  return (int)(__new__Promise(__maia_lambda1_capture1((int)(ms))));
 }
 
 char* expressionFunc__i(int param) {
-  (void)param;
-  return (char*)0;
+  return (const char*)("Function expression: " + param);
 }
 
 char* trailingCommas__iii(int param1, int param2, int param3) {
-  (void)param1;
-  (void)param2;
-  (void)param3;
-  return (char*)0;
+  return (const char*)(param1 + ", " + param2 + ", " + param3);
 }
 
 char* maia_fn_Animal_prototype_speak(void) {
-  return (char*)0;
+  return (const char*)(this->name + " makes a sound");
 }
 
 char* maia_fn_Animal_prototype_getDescription(void) {
-  return (char*)0;
+  return (const char*)(this->name + " is a " + this->species);
 }
 
 int maia_fn_Animal_prototype_setNickname__i(int nick) {
-  (void)nick;
-  return (int)0;
+  this->_nickname = nick;
+  return 0;
 }
 
 int maia_fn_Animal_prototype_getNickname(void) {
-  return (int)0;
+  return (int)(this->_nickname || this->name);
 }
 
 char* maia_fn_Animal_classify(void) {
-  return (char*)0;
+  return (const char*)("All animals are living organisms");
 }
 
 int maia_fn_Animal_prototype_accessPrivate(void) {
-  return (int)0;
+  return (int)(___animalPrivate(this).privateField);
 }
 
 char* maia_fn_Dog_prototype_speak(void) {
-  return (char*)0;
+  return (const char*)(this->name + " barks! Woof!");
 }
 
 char* maia_fn_person_greet(void) {
-  return (char*)0;
+  return (const char*)("Hello, I am " + this->name);
 }
 
 int maia_fn_arg_rangeValues_forEach_0__i(int num) {
-  (void)num;
-  return (int)0;
+  __console__log("Iter value: " + num);
+  return 0;
 }
 
 int maia_fn_arg_call_0__iii(int v, int i, int arr) {
-  (void)v;
-  (void)i;
-  (void)arr;
-  return (int)0;
+  return (int)(__arr__indexOf(v) == i);
 }
 
 void* new_Animal__ii(int name, int species) {
-  (void)name;
-  (void)species;
-  return (void*)0;
+  const void* __maia_this = __maia_obj_literal0();
+  __Reflect(__maia_this, "name", name);
+  __Reflect(__maia_this, "species", species);
+  ___animalPrivate(__maia_this, __maia_obj_literal1("privateField", (int)("private value")));
+  return (void*)__maia_this;
 }
 
 void* new_Dog__ii(int name, int breed) {
-  (void)name;
-  (void)breed;
-  return (void*)0;
+  const void* __maia_this = __maia_obj_literal0();
+  __Animal__call(__maia_this, name, "Canine");
+  __Reflect(__maia_this, "breed", breed);
+  return (void*)__maia_this;
 }
 
 int main(void) {
   return (int)0;
 }
 
-/* Lowering diagnostics: 47 event(s) (stub-fallback=47) */
-/* - __maia_runtime_alloc_value: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_alloc_lambda_env: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_env_capture_at: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_value_capture_at: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_get_capture_count: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_get_capture_at: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_get_function_id: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_get_arity: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_get_is_async: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_can_invoke: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_select_function_id: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_known_case_token: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_known_case_polarity: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_known_case_weighted_capture_value: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_known_case_matches_function_id: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_has_known_case: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_invoke_known_case: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_lambda_invoke_function_id: stub-fallback (no-supported-lowering) */
-/* - __maia_runtime_alloc_lambda_value: stub-fallback (no-supported-lowering) */
-/* - __maia_pow_i32: stub-fallback (no-supported-lowering) */
-/* - __maia_obj_literal1: stub-fallback (no-supported-lowering) */
-/* - __maia_obj_literal2: stub-fallback (no-supported-lowering) */
-/* - __maia_obj_literal3: stub-fallback (no-supported-lowering) */
-/* - __maia_obj_literal4: stub-fallback (no-supported-lowering) */
+/* Lowering diagnostics: 47 event(s) (structured-cstyle-body=46, stub-fallback=1) */
+/* - __maia_runtime_alloc_value: structured-cstyle-body (6 stmt(s)) */
+/* - __maia_runtime_alloc_lambda_env: structured-cstyle-body (11 stmt(s)) */
+/* - __maia_runtime_lambda_env_capture_at: structured-cstyle-body (8 stmt(s)) */
+/* - __maia_runtime_lambda_value_capture_at: structured-cstyle-body (10 stmt(s)) */
+/* - __maia_runtime_lambda_get_capture_count: structured-cstyle-body (5 stmt(s)) */
+/* - __maia_runtime_lambda_get_capture_at: structured-cstyle-body (2 stmt(s)) */
+/* - __maia_runtime_lambda_get_function_id: structured-cstyle-body (3 stmt(s)) */
+/* - __maia_runtime_lambda_get_arity: structured-cstyle-body (3 stmt(s)) */
+/* - __maia_runtime_lambda_get_is_async: structured-cstyle-body (3 stmt(s)) */
+/* - __maia_runtime_lambda_can_invoke: structured-cstyle-body (5 stmt(s)) */
+/* - __maia_runtime_lambda_select_function_id: structured-cstyle-body (2 stmt(s)) */
+/* - __maia_runtime_lambda_known_case_token: structured-cstyle-body (raw-body 8 line(s)) */
+/* - __maia_runtime_lambda_known_case_polarity: structured-cstyle-body (raw-body 8 line(s)) */
+/* - __maia_runtime_lambda_known_case_weighted_capture_value: structured-cstyle-body (raw-body 8 line(s)) */
+/* - __maia_runtime_lambda_known_case_matches_function_id: structured-cstyle-body (raw-body 12 line(s)) */
+/* - __maia_runtime_lambda_has_known_case: structured-cstyle-body (raw-body 8 line(s)) */
+/* - __maia_runtime_lambda_invoke_known_case: structured-cstyle-body (8 stmt(s)) */
+/* - __maia_runtime_lambda_invoke_function_id: structured-cstyle-body (4 stmt(s)) */
+/* - __maia_runtime_alloc_lambda_value: structured-cstyle-body (19 stmt(s)) */
+/* - __maia_pow_i32: structured-cstyle-body (6 stmt(s)) */
+/* - __maia_obj_literal1: structured-cstyle-body (3 stmt(s)) */
+/* - __maia_obj_literal2: structured-cstyle-body (5 stmt(s)) */
+/* - __maia_obj_literal3: structured-cstyle-body (7 stmt(s)) */
+/* - __maia_obj_literal4: structured-cstyle-body (9 stmt(s)) */
 /* - ... 23 more event(s) */
 
