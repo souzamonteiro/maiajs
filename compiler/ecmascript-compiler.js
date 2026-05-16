@@ -33,6 +33,23 @@ function ensureParentDir(filePath) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
+const PROFILE_ENABLED = process.env.MAIAJS_PROFILE === '1';
+
+function profileLog(message) {
+  if (!PROFILE_ENABLED) return;
+  const ts = new Date().toISOString();
+  process.stderr.write(`[MAIAJS_PROFILE ${ts}] ${message}\n`);
+}
+
+function profileStep(label, fn) {
+  const started = Date.now();
+  profileLog(`START ${label}`);
+  const result = fn();
+  const elapsed = Date.now() - started;
+  profileLog(`END ${label} (${elapsed}ms)`);
+  return result;
+}
+
 function toJsonTree(node) {
   if (Array.isArray(node)) {
     return node.map(toJsonTree);
@@ -4571,7 +4588,7 @@ function emitExponentiationAssignmentHelpersCpp(tree) {
   ].join('\n');
 }
 
-  const signatures = collectHostSignatures(tree, compileContext);
+  const signatures = profileStep('collectHostSignatures', () => collectHostSignatures(tree, compileContext));
   const hostDecls = Array.from(signatures.entries())
     .map(([fn, argTypes]) => {
       const cppArgs = argTypes.length === 0 ? 'void' : argTypes.map(cppArgType).join(', ');
@@ -4579,36 +4596,36 @@ function emitExponentiationAssignmentHelpersCpp(tree) {
     })
     .join('\n');
 
-  const functionPrototypes = emitTopLevelFunctionPrototypes(tree, compileContext);
-  const functionDefs = emitTopLevelFunctionDefinitions(tree, compileContext);
-  const classDefs = emitTopLevelClassDefinitions(tree, compileContext);
-  const sharedRuntimeFallbackHelpers = emitSharedRuntimeFallbackHelpersCpp(tree);
-  const exponentiationAssignmentHelpers = emitExponentiationAssignmentHelpersCpp(tree);
-  const objectLiteralDecls = emitObjectLiteralRuntimeDeclsCpp(tree);
-  const objectLiteralFallback = emitObjectLiteralRuntimeFallbackCpp(tree);
-  const arrayLiteralDecls = emitArrayLiteralRuntimeDeclsCpp(tree);
-  const arrayLiteralFallback = emitArrayLiteralRuntimeFallbackCpp(tree);
-  const lambdaDecls = emitLambdaRuntimeDeclsCpp(tree);
-  const lambdaFallback = emitLambdaRuntimeFallbackCpp(tree);
+  const functionPrototypes = profileStep('emitTopLevelFunctionPrototypes', () => emitTopLevelFunctionPrototypes(tree, compileContext));
+  const functionDefs = profileStep('emitTopLevelFunctionDefinitions', () => emitTopLevelFunctionDefinitions(tree, compileContext));
+  const classDefs = profileStep('emitTopLevelClassDefinitions', () => emitTopLevelClassDefinitions(tree, compileContext));
+  const sharedRuntimeFallbackHelpers = profileStep('emitSharedRuntimeFallbackHelpersCpp', () => emitSharedRuntimeFallbackHelpersCpp(tree));
+  const exponentiationAssignmentHelpers = profileStep('emitExponentiationAssignmentHelpersCpp', () => emitExponentiationAssignmentHelpersCpp(tree));
+  const objectLiteralDecls = profileStep('emitObjectLiteralRuntimeDeclsCpp', () => emitObjectLiteralRuntimeDeclsCpp(tree));
+  const objectLiteralFallback = profileStep('emitObjectLiteralRuntimeFallbackCpp', () => emitObjectLiteralRuntimeFallbackCpp(tree));
+  const arrayLiteralDecls = profileStep('emitArrayLiteralRuntimeDeclsCpp', () => emitArrayLiteralRuntimeDeclsCpp(tree));
+  const arrayLiteralFallback = profileStep('emitArrayLiteralRuntimeFallbackCpp', () => emitArrayLiteralRuntimeFallbackCpp(tree));
+  const lambdaDecls = profileStep('emitLambdaRuntimeDeclsCpp', () => emitLambdaRuntimeDeclsCpp(tree));
+  const lambdaFallback = profileStep('emitLambdaRuntimeFallbackCpp', () => emitLambdaRuntimeFallbackCpp(tree));
 
-  const asyncIr = buildAsyncIR(tree, {
+  const asyncIr = profileStep('buildAsyncIR', () => buildAsyncIR(tree, {
     lowerAwaitOperand: (node) => lowerExpressionValue(node, compileContext)
-  });
-  const asyncRuntimeBridgePlan = buildAsyncRuntimeBridgePlan(asyncIr.asyncFunctions);
+  }));
+  const asyncRuntimeBridgePlan = profileStep('buildAsyncRuntimeBridgePlan', () => buildAsyncRuntimeBridgePlan(asyncIr.asyncFunctions));
   const bridgePlanByFunctionName = new Map(
     asyncRuntimeBridgePlan.map((entry) => [entry.functionName, entry])
   );
-  const asyncSchedulerHooks = emitAsyncSchedulerHookDeclsCpp(asyncIr.asyncFunctions);
-  const asyncCpp = emitAsyncStateMachinesCpp(asyncIr.asyncFunctions, bridgePlanByFunctionName);
+  const asyncSchedulerHooks = profileStep('emitAsyncSchedulerHookDeclsCpp', () => emitAsyncSchedulerHookDeclsCpp(asyncIr.asyncFunctions));
+  const asyncCpp = profileStep('emitAsyncStateMachinesCpp', () => emitAsyncStateMachinesCpp(asyncIr.asyncFunctions, bridgePlanByFunctionName));
 
   const hostMapComments = hostCalls.length === 0
     ? '// Host-call map: (none detected)'
     : hostCalls.map((call) => `// Host-call map: ${call.source} -> ${call.host}`).join('\n');
 
-  const statements = lowerProgramToCppStatements(tree, compileContext, {
+  const statements = profileStep('lowerProgramToCppStatements', () => lowerProgramToCppStatements(tree, compileContext, {
     includeFunctionDeclarations: false,
     includeClassDeclarations: false
-  });
+  }));
   const body = statements.length > 0 ? statements.join('\n') : '  // empty program';
 
   return `// Auto-generated by ecmascript-compiler.js\n`
@@ -4642,21 +4659,20 @@ function main() {
     err(`input file not found: ${inputPath}`);
   }
 
-  const source = fs.readFileSync(inputPath, 'utf8');
+  const source = profileStep('readSource', () => fs.readFileSync(inputPath, 'utf8'));
   const hostRegistry = new HostRegistry();
   const collector = new ParseTreeCollector();
   const parser = new Parser(source, collector);
 
   try {
-    //parser.parse();
-    collector.parse(parser, source);
+    profileStep('parse', () => collector.parse(parser, source));
   } catch (e) {
     err(`parse failed: ${e.message}`);
   }
 
   const tree = collector.root;
-  const compileContext = buildCompileContext(tree, hostRegistry);
-  const hostCalls = extractHostCallsFromTree(tree, compileContext);
+  const compileContext = profileStep('buildCompileContext', () => buildCompileContext(tree, hostRegistry));
+  const hostCalls = profileStep('extractHostCallsFromTree', () => extractHostCallsFromTree(tree, compileContext));
 
   if (!tree) {
     err('parser completed but parse tree collector has no root node');
@@ -4667,22 +4683,26 @@ function main() {
   }
 
   if (options.astXmlOut) {
-    ensureParentDir(options.astXmlOut);
-    fs.writeFileSync(options.astXmlOut, collector.toXml({ includeDeclaration: true }));
+    profileStep('writeAstXml', () => {
+      ensureParentDir(options.astXmlOut);
+      fs.writeFileSync(options.astXmlOut, collector.toXml({ includeDeclaration: true }));
+    });
   }
 
-  const astJson = JSON.stringify(toJsonTree(tree), null, 2) + '\n';
+  const astJson = profileStep('serializeAstJson', () => JSON.stringify(toJsonTree(tree), null, 2) + '\n');
 
   if (options.astJsonOut) {
-    ensureParentDir(options.astJsonOut);
-    fs.writeFileSync(options.astJsonOut, astJson);
+    profileStep('writeAstJson', () => {
+      ensureParentDir(options.astJsonOut);
+      fs.writeFileSync(options.astJsonOut, astJson);
+    });
   }
 
   if (options.irJsonOut) {
-    const asyncIr = buildAsyncIR(tree, {
+    const asyncIr = profileStep('ir.buildAsyncIR', () => buildAsyncIR(tree, {
       lowerAwaitOperand: (node) => lowerExpressionValue(node, compileContext)
-    });
-    const resumeBridges = buildAsyncRuntimeBridgePlan(asyncIr.asyncFunctions);
+    }));
+    const resumeBridges = profileStep('ir.buildAsyncRuntimeBridgePlan', () => buildAsyncRuntimeBridgePlan(asyncIr.asyncFunctions));
     const ir = {
       version: 1,
       kind: 'placeholder-ir',
@@ -4700,13 +4720,17 @@ function main() {
         'Replace with semantic/lowering pipeline described in docs/ECMAScript_Compiler_Architecture.md'
       ]
     };
-    ensureParentDir(options.irJsonOut);
-    fs.writeFileSync(options.irJsonOut, JSON.stringify(ir, null, 2) + '\n');
+    profileStep('writeIrJson', () => {
+      ensureParentDir(options.irJsonOut);
+      fs.writeFileSync(options.irJsonOut, JSON.stringify(ir, null, 2) + '\n');
+    });
   }
 
   if (options.cppOut) {
-    ensureParentDir(options.cppOut);
-    fs.writeFileSync(options.cppOut, generateCpp(inputPath, tree, hostCalls, compileContext));
+    profileStep('writeCpp', () => {
+      ensureParentDir(options.cppOut);
+      fs.writeFileSync(options.cppOut, generateCpp(inputPath, tree, hostCalls, compileContext));
+    });
   }
 }
 

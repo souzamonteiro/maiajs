@@ -283,13 +283,26 @@ if [[ -z "$IR_JSON_OUT" ]]; then
   IR_JSON_OUT="$OUT_DIR/$NAME.ir.json"
 fi
 
+if [[ $NO_WEBCPP -eq 1 && -z "${WEBJS_FORCE_AST_OUTPUTS:-}" ]]; then
+  AST_XML_OUT=""
+  AST_JSON_OUT=""
+  IR_JSON_OUT=""
+fi
+
 compiler_args=(
   --file "$INPUT_FILE"
   --cpp-out "$CPP_OUT"
-  --ast-xml-out "$AST_XML_OUT"
-  --ast-json-out "$AST_JSON_OUT"
-  --ir-json-out "$IR_JSON_OUT"
 )
+
+if [[ -n "$AST_XML_OUT" ]]; then
+  compiler_args+=(--ast-xml-out "$AST_XML_OUT")
+fi
+if [[ -n "$AST_JSON_OUT" ]]; then
+  compiler_args+=(--ast-json-out "$AST_JSON_OUT")
+fi
+if [[ -n "$IR_JSON_OUT" ]]; then
+  compiler_args+=(--ir-json-out "$IR_JSON_OUT")
+fi
 
 if [[ $AST_SHOW -eq 1 ]]; then
   compiler_args+=(--ast-show)

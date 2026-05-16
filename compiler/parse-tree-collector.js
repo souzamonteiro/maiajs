@@ -30,16 +30,38 @@ class ParseTreeCollector {
   }
 
   checkpoint() {
+    // Hot path: parser backtracking calls checkpoint/restore very frequently.
+    // A full structuredClone of the whole tree causes severe quadratic
+    // behavior on ambiguous inputs. We only need enough state to rollback
+    // mutations performed after this checkpoint.
     return {
-      stack: structuredClone(this.stack),
-      root: structuredClone(this.root)
+      stackLength: this.stack.length,
+      root: this.root,
+      childLengths: this.stack.map((node) =>
+        Array.isArray(node && node.children) ? node.children.length : 0
+      )
     };
   }
 
   restore(mark) {
     if (!mark) return;
-    this.stack = mark.stack;
-    this.root = mark.root;
+
+    const targetLen = Number.isInteger(mark.stackLength) ? mark.stackLength : 0;
+    const childLengths = Array.isArray(mark.childLengths) ? mark.childLengths : [];
+
+    const sharedLen = Math.min(this.stack.length, childLengths.length, targetLen);
+    for (let i = 0; i < sharedLen; i += 1) {
+      const node = this.stack[i];
+      if (node && Array.isArray(node.children)) {
+        node.children.length = childLengths[i];
+      }
+    }
+
+    if (this.stack.length > targetLen) {
+      this.stack.length = targetLen;
+    }
+
+    this.root = Object.prototype.hasOwnProperty.call(mark, 'root') ? mark.root : this.root;
   }
 
   startNonterminal(name) {
