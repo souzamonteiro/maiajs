@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const app = require('./marker.js');
+const app = require('./es8_regex_smoke.js');
 
 function createMachineAwareBridgeResolver(runtimeBridgeEntries, availableBridgeSymbols) {
   const pointerToBridge = new Map();
@@ -69,8 +69,13 @@ async function main() {
 
   const wasmPath = process.argv[2]
     ? path.resolve(process.argv[2])
-    : path.join(__dirname, 'marker.wasm');
-  const exitCode = await app.run(wasmPath, { resolveResumeExportName });
+    : path.join(__dirname, 'es8_regex_smoke.wasm');
+  // Args after the wasm path are forwarded to the C program as argv[1+].
+  const _progName  = path.basename(wasmPath, '.wasm');
+  const _extraArgs = process.argv.slice(3);
+  const _argv = [_progName].concat(_extraArgs);
+  const _env  = Object.keys(process.env).map(function(k) { return k + '=' + process.env[k]; });
+  const exitCode = await app.run(wasmPath, { resolveResumeExportName, argv: _argv, env: _env });
   process.stdout.write('\n[node-runner] program returned: ' + exitCode + '\n');
   process.exitCode = Number.isInteger(exitCode) ? exitCode : 0;
 }

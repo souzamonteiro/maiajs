@@ -1,0 +1,16 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "struct __async_run {",
+    "case 1: /* await checkpoint 1: __fetch(value) */",
+    "__async_schedule((void*)__sm, 1);",
+    "if (__exc_active() && __exc_matches(__exc_type(), 1)) {",
+    "catch handler for err",
+    "finally handler transition"
+  ],
+  "cppExclude": [
+    "[expression not yet lowered]",
+    "[return expression not yet lowered]"
+  ]
+}

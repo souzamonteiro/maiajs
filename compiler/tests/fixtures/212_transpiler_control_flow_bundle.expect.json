@@ -1,0 +1,19 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "if (x) {",
+    "while (x) {",
+    "do {",
+    "for (var i = 0; i < 3; i++) {",
+    "switch (x) {",
+    "__console__log(i);",
+    "__console__log(\"zero\");",
+    "__console__log(\"other\");"
+  ],
+  "cppExclude": [
+    "[expression not yet lowered]",
+    "[return expression not yet lowered]",
+    "[statement not yet lowered]"
+  ]
+}

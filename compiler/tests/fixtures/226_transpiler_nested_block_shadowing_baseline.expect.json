@@ -1,0 +1,17 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "int shadow(int x);",
+    "void* y = x;",
+    "double y = 3;",
+    "__console__log(y);",
+    "return (int)(y);",
+    "__console__log(shadow(1));"
+  ],
+  "cppExclude": [
+    "[expression not yet lowered]",
+    "[return expression not yet lowered]",
+    "[statement not yet lowered]"
+  ]
+}

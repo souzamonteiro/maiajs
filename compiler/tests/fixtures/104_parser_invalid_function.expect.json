@@ -2,6 +2,6 @@
   "stages": ["parser"],
   "shouldParse": false,
   "parseErrorContains": [
-    "Expected 'EOF', got 'TOKEN_function'"
+    "Expected 'TOKEN__29_', got 'TOKEN__7B_'"
   ]
 }

@@ -37,6 +37,13 @@ const es8Supported = [
       { name: 'call with two positional arguments', source: 'f(a, b);' },
       { name: 'call with numeric arguments', source: 'f(1, 2);' }
     ]
+  },
+  {
+    feature: 'regex literals',
+    cases: [
+      { name: 'basic regex literal', source: 'const ok = /ab+c/.test("abbbc");' },
+      { name: 'regex literal with flags', source: 'const ok = /ab+c/i.test("ABBC");' }
+    ]
   }
 ];
 

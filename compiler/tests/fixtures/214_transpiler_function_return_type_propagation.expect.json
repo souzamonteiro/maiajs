@@ -1,0 +1,15 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "const char* source(void);",
+    "const char* wrap(void);",
+    "return (const char*)(source());",
+    "__console__log(wrap());"
+  ],
+  "cppExclude": [
+    "[expression not yet lowered]",
+    "[return expression not yet lowered]",
+    "[statement not yet lowered]"
+  ]
+}

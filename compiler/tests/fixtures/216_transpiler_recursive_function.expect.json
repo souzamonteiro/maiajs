@@ -1,0 +1,17 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "int fact(int n);",
+    "if (n <= 1) {",
+    "return (int)(1);",
+    "return (int)(n * fact(n - 1));",
+    "fact(5);"
+  ],
+  "cppExclude": [
+    "__fact(",
+    "[expression not yet lowered]",
+    "[return expression not yet lowered]",
+    "[statement not yet lowered]"
+  ]
+}

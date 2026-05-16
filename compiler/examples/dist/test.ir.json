@@ -1,0 +1,501 @@
+{
+  "version": 1,
+  "kind": "placeholder-ir",
+  "source": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/full_es8_test.js",
+  "hostInterop": {
+    "strategy": {
+      "mode": "dynamic-prefix",
+      "hostPrefix": "__",
+      "separator": "__",
+      "internalHostSymbols": []
+    },
+    "mappings": [],
+    "detectedCalls": [
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 0
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 1
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 2
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 3
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 4
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 5
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 6
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 7
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 8
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 9
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 10
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 11
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 12
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 13
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 14
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 15
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 16
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 17
+      },
+      {
+        "source": "Array.prototype.slice.call",
+        "host": "__Array__prototype__slice__call",
+        "callIndex": 18
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 19
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 20
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 21
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 22
+      },
+      {
+        "source": "arrowFunc",
+        "host": "__arrowFunc",
+        "callIndex": 23
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 24
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 25
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 26
+      },
+      {
+        "source": "Object.values",
+        "host": "__Object__values",
+        "callIndex": 27
+      },
+      {
+        "source": "Object.entries",
+        "host": "__Object__entries",
+        "callIndex": 28
+      },
+      {
+        "source": "Object.getOwnPropertyDescriptors",
+        "host": "__Object__getOwnPropertyDescriptors",
+        "callIndex": 29
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 30
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 31
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 32
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 33
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 34
+      },
+      {
+        "source": "str.padStart",
+        "host": "__str__padStart",
+        "callIndex": 35
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 36
+      },
+      {
+        "source": "str.padEnd",
+        "host": "__str__padEnd",
+        "callIndex": 37
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 38
+      },
+      {
+        "source": "numbers.map",
+        "host": "__numbers__map",
+        "callIndex": 39
+      },
+      {
+        "source": "numbers.filter",
+        "host": "__numbers__filter",
+        "callIndex": 40
+      },
+      {
+        "source": "numbers.reduce",
+        "host": "__numbers__reduce",
+        "callIndex": 41
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 42
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 43
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 44
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 45
+      },
+      {
+        "source": "numbers.includes",
+        "host": "__numbers__includes",
+        "callIndex": 46
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 47
+      },
+      {
+        "source": "_animalPrivate",
+        "host": "___animalPrivate",
+        "callIndex": 48
+      },
+      {
+        "source": "_animalPrivate",
+        "host": "___animalPrivate",
+        "callIndex": 49
+      },
+      {
+        "source": "Animal.call",
+        "host": "__Animal__call",
+        "callIndex": 50
+      },
+      {
+        "source": "Object.create",
+        "host": "__Object__create",
+        "callIndex": 51
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 52
+      },
+      {
+        "source": "genericAnimal.speak",
+        "host": "__genericAnimal__speak",
+        "callIndex": 53
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 54
+      },
+      {
+        "source": "genericAnimal.getDescription",
+        "host": "__genericAnimal__getDescription",
+        "callIndex": 55
+      },
+      {
+        "source": "genericAnimal.setNickname",
+        "host": "__genericAnimal__setNickname",
+        "callIndex": 56
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 57
+      },
+      {
+        "source": "genericAnimal.getNickname",
+        "host": "__genericAnimal__getNickname",
+        "callIndex": 58
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 59
+      },
+      {
+        "source": "Animal.classify",
+        "host": "__Animal__classify",
+        "callIndex": 60
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 61
+      },
+      {
+        "source": "genericAnimal.accessPrivate",
+        "host": "__genericAnimal__accessPrivate",
+        "callIndex": 62
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 63
+      },
+      {
+        "source": "dog.speak",
+        "host": "__dog__speak",
+        "callIndex": 64
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 65
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 66
+      },
+      {
+        "source": "setTimeout",
+        "host": "__setTimeout",
+        "callIndex": 67
+      },
+      {
+        "source": "resolve",
+        "host": "__resolve",
+        "callIndex": 68
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 69
+      },
+      {
+        "source": "Promise.resolve",
+        "host": "__Promise__resolve",
+        "callIndex": 70
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 71
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 72
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 73
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 74
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 75
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 76
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 77
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 78
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 79
+      },
+      {
+        "source": "Symbol",
+        "host": "__Symbol",
+        "callIndex": 80
+      },
+      {
+        "source": "Symbol",
+        "host": "__Symbol",
+        "callIndex": 81
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 82
+      },
+      {
+        "source": "rangeValues.forEach",
+        "host": "__rangeValues__forEach",
+        "callIndex": 83
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 84
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 85
+      },
+      {
+        "source": "Reflect",
+        "host": "__Reflect",
+        "callIndex": 86
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 87
+      },
+      {
+        "source": "Reflect.ownKeys",
+        "host": "__Reflect__ownKeys",
+        "callIndex": 88
+      },
+      {
+        "source": "arr.indexOf",
+        "host": "__arr__indexOf",
+        "callIndex": 89
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 90
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 91
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 92
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 93
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 94
+      }
+    ]
+  },
+  "asyncIR": {
+    "version": "0.1.0",
+    "asyncFunctions": []
+  },
+  "asyncRuntime": {
+    "resumeBridges": []
+  },
+  "notes": [
+    "Replace with semantic/lowering pipeline described in docs/ECMAScript_Compiler_Architecture.md"
+  ]
+}

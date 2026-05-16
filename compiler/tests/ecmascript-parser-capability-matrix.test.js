@@ -31,7 +31,13 @@ const capabilityMatrix = [
       { name: 'non-empty array literal expression', source: '[1,2];' },
       { name: 'spread array literal expression', source: '[...x];' }
     ],
-    unsupported: []
+    unsupported: [
+      {
+        name: 'object spread literal (ES2018+)',
+        source: 'const y = {...x};',
+        errorLike: 'Object spread/rest in object literals is not supported yet'
+      }
+    ]
   },
   {
     area: 'Comments and trivia',

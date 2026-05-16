@@ -1,0 +1,6 @@
+PASS strlen_empty
+PASS strlen_5
+PASS strcmp_eq
+PASS char_count
+PASS strcat
+ALL PASS

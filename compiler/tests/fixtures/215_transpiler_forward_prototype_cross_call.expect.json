@@ -1,0 +1,17 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "int f(void);",
+    "int g(void);",
+    "return (int)(g());",
+    "return (int)(7);",
+    "f();"
+  ],
+  "cppExclude": [
+    "__g(",
+    "[expression not yet lowered]",
+    "[return expression not yet lowered]",
+    "[statement not yet lowered]"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "double source(void);",
+    "double middle(void);",
+    "double sink(void);",
+    "return (double)(source());",
+    "return (double)(middle());",
+    "__console__log(sink());"
+  ],
+  "cppExclude": [
+    "[expression not yet lowered]",
+    "[return expression not yet lowered]",
+    "[statement not yet lowered]"
+  ]
+}

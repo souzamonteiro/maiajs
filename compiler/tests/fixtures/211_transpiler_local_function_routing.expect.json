@@ -1,0 +1,16 @@
+{
+  "stages": ["transpiler"],
+  "shouldTranspile": true,
+  "cppContains": [
+    "int add(int a, int b)",
+    "int wrap(int v)",
+    "return (int)(add(v, 2));",
+    "wrap(1);"
+  ],
+  "cppExclude": [
+    "__add(",
+    "[expression not yet lowered]",
+    "[return expression not yet lowered]",
+    "[statement not yet lowered]"
+  ]
+}
