@@ -32,6 +32,19 @@ copy_tree_files() {
   local copied=0
   while IFS= read -r -d '' src; do
     local rel="${src#$src_root/}"
+
+    # Keep MaiaJS-specific orchestration/docs in place.
+    case "$rel" in
+      build_all.sh|run_all.sh|README.md|DIAGNOSTICS.md|FINAL_RESULTS.md)
+        continue
+        ;;
+    esac
+
+    # Do not copy generated/runtime JS artifacts as source ports.
+    if [[ "$src" == *.js && "$src" != *.port.js ]]; then
+      continue
+    fi
+
     local dst="$dst_root/$rel"
     mkdir -p "$(dirname "$dst")"
     cp "$src" "$dst"

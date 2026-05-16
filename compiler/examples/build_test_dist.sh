@@ -12,6 +12,18 @@ rm -rf "$SCRIPT_DIR/out"
 
 cd "$SCRIPT_DIR"
 
+run_timed() {
+	local secs="$1"
+	shift
+	if command -v timeout >/dev/null 2>&1; then
+		timeout "$secs" "$@"
+	elif command -v gtimeout >/dev/null 2>&1; then
+		gtimeout "$secs" "$@"
+	else
+		"$@"
+	fi
+}
+
 echo "==> webjs: compile"
 "$ROOT_DIR/bin/webjs.sh" \
 	--file "$ROOT_DIR/compiler/examples/full_es8_test.js" \
@@ -22,6 +34,10 @@ echo "==> webjs: create dist (browser + node)"
 "$ROOT_DIR/bin/webjs.sh" "$ROOT_DIR/compiler/examples/full_es8_test.js" --dist --out-dir dist --name test
 
 echo "==> dist node runner"
-bash dist/node-runner.sh
+DIST_TIMEOUT="${DIST_TIMEOUT:-20}"
+if ! run_timed "$DIST_TIMEOUT" bash dist/node-runner.sh; then
+	echo "ERROR: dist runner timeout/failure after ${DIST_TIMEOUT}s" >&2
+	exit 1
+fi
 
 echo "==> All steps OK"
