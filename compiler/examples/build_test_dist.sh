@@ -1,11 +1,33 @@
 #!/bin/bash
-# Build/test script for compiler/examples/test.cpp
+# Build/test script for compiler/examples/test.js
 # Run from the project root: bash compiler/examples/build_test_dist.sh
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+PROJECTS_ROOT="$(cd "$ROOT_DIR/.." && pwd -P)"
+
+resolve_webcpp() {
+	local local_path="$1"
+	local sibling_path="$2"
+	if [[ -f "$local_path" ]]; then
+		echo "$local_path"
+		return 0
+	fi
+	if [[ -f "$sibling_path" ]]; then
+		echo "$sibling_path"
+		return 0
+	fi
+	return 1
+}
+
+WEBCPP_SH="$(resolve_webcpp "$ROOT_DIR/maiacpp/bin/webcpp.sh" "$PROJECTS_ROOT/maiacpp/bin/webcpp.sh" || true)"
+
+if [[ -z "$WEBCPP_SH" ]]; then
+	echo "ERROR: webcpp.sh not found (checked local and sibling MaiaCpp checkouts)." >&2
+	exit 1
+fi
 
 rm -rf "$SCRIPT_DIR/dist"
 rm -rf "$SCRIPT_DIR/out"
@@ -26,12 +48,12 @@ run_timed() {
 
 echo "==> webjs: compile"
 "$ROOT_DIR/bin/webjs.sh" \
-	--file "$ROOT_DIR/compiler/examples/full_es8_test.js" \
-	--cpp-out "$SCRIPT_DIR/full_es8_test.cpp" \
+	--file "$ROOT_DIR/compiler/examples/test.js" \
+	--cpp-out "$SCRIPT_DIR/test.cpp" \
 	--no-webcpp
 
-echo "==> webjs: create dist (browser + node)"
-"$ROOT_DIR/bin/webjs.sh" "$ROOT_DIR/compiler/examples/full_es8_test.js" --dist --out-dir dist --name test
+echo "==> webcpp: create dist (browser + node)"
+"$WEBCPP_SH" "$SCRIPT_DIR/test.cpp" --dist --out-dir dist --name test
 
 echo "==> dist node runner"
 DIST_TIMEOUT="${DIST_TIMEOUT:-20}"

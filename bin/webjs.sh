@@ -42,9 +42,11 @@ Options:
   -h, --help           Show help.
 
 Dist behavior:
-  --dist / --dist-run  First runs the full MaiaJS compiler test suite
-                       (`node --test compiler/tests/*.test.js`). Dist output is
-                       generated only if that suite passes.
+  --dist / --dist-run  Generate distribution artifacts through MaiaCpp webcpp.sh.
+                       Tests are not run automatically.
+  --run-tests-before-dist
+                       Optional preflight: runs full MaiaJS compiler suite
+                       (`node --test compiler/tests/*.test.js`) before dist.
 
 Any unknown options are forwarded to MaiaCpp webcpp.sh (unless --no-webcpp).
 
@@ -180,6 +182,7 @@ CPP_OUT=""
 NAME=""
 NO_WEBCPP=0
 HAS_DIST=0
+RUN_TESTS_BEFORE_DIST=0
 FORWARD_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -225,6 +228,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-webcpp)
       NO_WEBCPP=1
+      shift
+      ;;
+    --run-tests-before-dist)
+      RUN_TESTS_BEFORE_DIST=1
       shift
       ;;
     -h|--help)
@@ -310,7 +317,7 @@ if [[ $AST_SHOW -eq 1 ]]; then
 fi
 
 echo "[webjs] transpiling JS -> C++: $INPUT_FILE"
-if [[ $HAS_DIST -eq 1 ]]; then
+if [[ $HAS_DIST -eq 1 && $RUN_TESTS_BEFORE_DIST -eq 1 ]]; then
   run_full_compiler_suite
 fi
 
@@ -326,7 +333,7 @@ fi
 [[ -n "$WEBCPP_SH" ]] || err "could not find MaiaCpp webcpp.sh"
 
 echo "[webjs] invoking MaiaCpp pipeline: $WEBCPP_SH"
-"$WEBCPP_SH" "$CPP_OUT" "${FORWARD_ARGS[@]}"
+"$WEBCPP_SH" "$CPP_OUT" "${FORWARD_ARGS[@]+"${FORWARD_ARGS[@]}"}"
 
 # If distribution was requested, copy WAT runtime libs to the dist folder
 if [[ $HAS_DIST -eq 1 ]]; then
