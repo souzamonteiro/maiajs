@@ -1,0 +1,58 @@
+{
+  "name": "maiajscompiler",
+  "version": "1.0.0",
+  "description": "MaiaJS (WebJS): ES8 JavaScript to WebAssembly compiler via C++ transpilation.",
+  "author": "The MaiaScript Team (https://www.maiascript.com)",
+  "license": "Apache-2.0",
+  "main": "compiler/ecmascript-compiler.js",
+  "bin": {
+    "webjs": "bin/webjs.sh"
+  },
+  "files": [
+    "bin/webjs.sh",
+    "compiler/ecmascript-compiler.js",
+    "compiler/ecmascript-parser.js",
+    "compiler/parse-tree-collector.js",
+    "grammar/EcmaScript.ebnf",
+    "grammar/EcmaScript.xml",
+    "docs/ECMAScript_Compiler_Architecture.md",
+    "docs/ECMAScript_Compiler_Roadmap.md",
+    "docs/Maia_Ecosystem_Synchronization_Protocol.md",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test compiler/tests/*.test.js",
+    "test:fixtures": "node compiler/tests/run_fixtures.js",
+    "test:suite:build": "bash compiler/examples/suite/build_all.sh",
+    "test:suite:run": "bash compiler/examples/suite/run_all.sh",
+    "test:course": "bash compiler/examples/programming_in_javascript_course_en/run_all.sh",
+    "test:dist": "bash compiler/examples/build_test_dist.sh",
+    "test:full": "npm run test && npm run test:suite:build && npm run test:suite:run && npm run test:course && npm run test:dist",
+    "build:parser": "bash compiler/build.sh",
+    "compile": "bin/webjs.sh",
+    "dist:es8": "bash compiler/examples/build_test_dist.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/souzamonteiro/maiajs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/souzamonteiro/maiajs/issues"
+  },
+  "homepage": "https://github.com/souzamonteiro/maiajs#readme",
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "javascript",
+    "compiler",
+    "transpiler",
+    "webassembly",
+    "wasm",
+    "es8",
+    "ecmascript",
+    "maiascript",
+    "maia"
+  ]
+}
