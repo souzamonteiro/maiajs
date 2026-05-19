@@ -2349,6 +2349,13 @@ const _buildHostEnv = // Auto-generated host env – do not edit manually
     "__exc_clear": () => { const target = __resolveHost(["exc_clear"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
     "__exc_matches": (p0, p1) => { const target = __resolveHost(["exc_matches"]); if (typeof target.fn !== 'function') return 0; const result = target.fn.call(target.thisValue, p0, p1); return (result ?? 0); },
     "__free": (p0) => __free(p0),
+    "__fn": (p0, p1) => { const target = __resolveHost(["fn"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue, p0, p1); return undefined; },
+    "__c__getValue": () => { const target = __resolveHost(["c","getValue"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
+    "__box__setAt": (p0, p1) => { const target = __resolveHost(["box","setAt"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue, p0, p1); return undefined; },
+    "__box__at": (p0) => { const target = __resolveHost(["box","at"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue, p0); return undefined; },
+    "__d__value": () => { const target = __resolveHost(["d","value"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
+    "__a__getValue": () => { const target = __resolveHost(["a","getValue"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
+    "__p__getValue": () => { const target = __resolveHost(["p","getValue"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
     "__console__log": (p0) => { const target = __resolveHost(["console","log"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue, readCString(p0)); return undefined; },
   };
 });
