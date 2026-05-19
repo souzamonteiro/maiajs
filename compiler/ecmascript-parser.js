@@ -45,118 +45,9 @@ class Lexer {
       this.templateDepth--;
     }
   }
-
-  previousSignificantToken() {
-    if (this.tokens.length === 0) return null;
-    return this.tokens[this.tokens.length - 1];
-  }
-
-  shouldTreatSlashAsRegex(prevToken) {
-    if (!prevToken) return true;
-
-    // After these token kinds, '/' is overwhelmingly a division operator.
-    const divisionLikelyAfter = new Set([
-      'Identifier',
-      'IdentifierName',
-      'DecimalLiteral',
-      'BinaryIntegerLiteral',
-      'HexIntegerLiteral',
-      'OctalIntegerLiteral',
-      'StringLiteral',
-      'RegularExpressionLiteral',
-      'NoSubstitutionTemplate',
-      'TemplateTail',
-      'TOKEN_this',
-      'TOKEN__29_', // )
-      'TOKEN__5D_', // ]
-      'TOKEN__7D_', // }
-      'TOKEN__2B__2B_', // ++
-      'TOKEN__2D__2D_'  // --
-    ]);
-
-    return !divisionLikelyAfter.has(prevToken.type);
-  }
-
-  tryReadRegexLiteral() {
-    const src = this.input;
-    const start = this.position;
-
-    if (src[start] !== '/') return null;
-    // Keep comment tokenization precedence.
-    if (src.startsWith('//', start) || src.startsWith('/*', start)) return null;
-
-    let i = start + 1;
-    let escaped = false;
-    let inClass = false;
-    let closed = false;
-
-    while (i < src.length) {
-      const ch = src[i];
-
-      if (escaped) {
-        escaped = false;
-        i++;
-        continue;
-      }
-
-      if (ch === '\\') {
-        escaped = true;
-        i++;
-        continue;
-      }
-
-      if (ch === '[' && !inClass) {
-        inClass = true;
-        i++;
-        continue;
-      }
-
-      if (ch === ']' && inClass) {
-        inClass = false;
-        i++;
-        continue;
-      }
-
-      if (ch === '/' && !inClass) {
-        closed = true;
-        i++;
-        break;
-      }
-
-      // Regex literals cannot contain unescaped line terminators.
-      if (ch === '\n' || ch === '\r' || ch === '\u2028' || ch === '\u2029') {
-        return null;
-      }
-
-      i++;
-    }
-
-    if (!closed) return null;
-
-    while (i < src.length && /[a-zA-Z]/.test(src[i])) {
-      i++;
-    }
-
-    return src.slice(start, i);
-  }
   
   tokenize() {
     while (this.position < this.input.length) {
-      const prev = this.previousSignificantToken();
-      if (this.input[this.position] === '/' && this.shouldTreatSlashAsRegex(prev)) {
-        const regexLiteral = this.tryReadRegexLiteral();
-        if (regexLiteral) {
-          this.tokens.push({
-            type: 'RegularExpressionLiteral',
-            value: regexLiteral,
-            start: this.position,
-            end: this.position + regexLiteral.length
-          });
-          this.position += regexLiteral.length;
-          continue;
-        }
-      }
-
       let bestPattern = null;
       let bestMatch = null;
       const candidates = [];
@@ -329,29 +220,7 @@ class Parser {
     const err = this.errors[0];
     return `Syntax error: expected ${err.expected}, got ${err.found}`;
   }
-
-  detectUnsupportedObjectSpread() {
-    for (let i = 0; i < this.tokens.length; i++) {
-      const token = this.tokens[i];
-      if (!token || token.type !== 'TOKEN__7B_') continue;
-
-      const t1 = this.tokens[i + 1];
-      if (!t1) continue;
-
-      if (t1.type === 'TOKEN__2E__2E__2E_') {
-        throw new Error('Object spread/rest in object literals is not supported yet (ES2018+, outside current ES8 target).');
-      }
-
-      const t2 = this.tokens[i + 2];
-      const t3 = this.tokens[i + 3];
-      if (t1.type === 'TOKEN__2E_' && t2 && t2.type === 'TOKEN__2E_' && t3 && t3.type === 'TOKEN__2E_') {
-        throw new Error('Object spread/rest in object literals is not supported yet (ES2018+, outside current ES8 target).');
-      }
-    }
-  }
-
   parse() {
-    this.detectUnsupportedObjectSpread();
     const result = this.parseprogram();
     const next = this.peek();
     if (!next && this.position === this.tokens.length) {
@@ -388,10 +257,6 @@ class Parser {
       } catch(e) {
         this.position = savePos;
         this.restoreEventState(saveMark);
-        const __tok = this.peek();
-        if (__tok && __tok.type !== 'EOF') {
-          throw e;
-        }
         break;
       }
     }
@@ -415,23 +280,6 @@ class Parser {
     }
     let __ok = false;
     try {
-    const __head = this.peek();
-    if (__head) {
-      if (__head.type === 'TOKEN_import') {
-        this.parseimportDeclaration();
-        __ok = true;
-        return;
-      }
-      if (__head.type === 'TOKEN_export') {
-        this.parseexportDeclaration();
-        __ok = true;
-        return;
-      }
-      this.parsestatement();
-      __ok = true;
-      return;
-    }
-
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
@@ -486,30 +334,6 @@ class Parser {
     }
     let __ok = false;
     try {
-    const __head = this.peek();
-    if (__head) {
-      if (__head.type === 'TOKEN_function') {
-        const __next = this.tokens[this.position + 1];
-        if (__next && __next.type === 'TOKEN__2A_') {
-          this.parsegeneratorDeclaration();
-        } else {
-          this.parsefunctionDeclaration();
-        }
-        __ok = true;
-        return;
-      }
-      if (__head.type === 'TOKEN_class') {
-        this.parseclassDeclaration();
-        __ok = true;
-        return;
-      }
-      if (__head.type === 'TOKEN_const') {
-        this.parseconstDeclaration();
-        __ok = true;
-        return;
-      }
-    }
-
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
@@ -949,8 +773,16 @@ class Parser {
       const _ruleMark = this.markEventState();
       try {
     this.parsebindingIdentifier();
-    if (this.peek() && this.peek().type === 'TOKEN__3D_') {
-      this.parseinitializer();
+    // Optional: try parsing initializer
+    {
+      const savePos = this.position;
+      const saveMark = this.markEventState();
+      try {
+        this.parseinitializer();
+      } catch(e) {
+        this.position = savePos;
+        this.restoreEventState(saveMark);
+      }
     }
         _matched = true;
       } catch (e) {
@@ -1031,8 +863,16 @@ class Parser {
       const _ruleMark = this.markEventState();
       try {
     this.parsebindingIdentifier();
-    if (this.peek() && this.peek().type === 'TOKEN__3D_') {
-      this.parseinitializer();
+    // Optional: try parsing initializer
+    {
+      const savePos = this.position;
+      const saveMark = this.markEventState();
+      try {
+        this.parseinitializer();
+      } catch(e) {
+        this.position = savePos;
+        this.restoreEventState(saveMark);
+      }
     }
         _matched = true;
       } catch (e) {
@@ -1044,8 +884,16 @@ class Parser {
       const _ruleMark = this.markEventState();
       try {
     this.parsebindingPattern();
-    if (this.peek() && this.peek().type === 'TOKEN__3D_') {
-      this.parseinitializer();
+    // Optional: try parsing initializer
+    {
+      const savePos = this.position;
+      const saveMark = this.markEventState();
+      try {
+        this.parseinitializer();
+      } catch(e) {
+        this.position = savePos;
+        this.restoreEventState(saveMark);
+      }
     }
         _matched = true;
       } catch (e) {
@@ -3072,19 +2920,7 @@ class Parser {
     }
     let __ok = false;
     try {
-    const __isSpreadStart = () => {
-      const t0 = this.peek();
-      if (!t0) return false;
-      if (t0.type === 'TOKEN__2E__2E__2E_') return true;
-      const t1 = this.tokens[this.position + 1];
-      const t2 = this.tokens[this.position + 2];
-      return t0.type === 'TOKEN__2E_' && t1 && t1.type === 'TOKEN__2E_' && t2 && t2.type === 'TOKEN__2E_';
-    };
-
     this.consume('TOKEN__7B_');
-    if (__isSpreadStart()) {
-      throw new Error('Object spread/rest in object literals is not supported yet (ES2018+, outside current ES8 target).');
-    }
     // Group ?
     {
       const _optStart = this.position;
@@ -3097,9 +2933,6 @@ class Parser {
       const _loopMark = this.markEventState();
       try {
     this.consume('TOKEN__2C_');
-    if (__isSpreadStart()) {
-      throw new Error('Object spread/rest in object literals is not supported yet (ES2018+, outside current ES8 target).');
-    }
     this.parsepropertyAssignment();
       } catch (e) {
         this.position = _loopStart;
@@ -6435,6 +6268,58 @@ class Parser {
       const _ruleMark = this.markEventState();
       try {
     this.consume('TOKEN_get');
+    this.consume('TOKEN__28_');
+    // Optional: try parsing formalParameterList
+    {
+      const savePos = this.position;
+      const saveMark = this.markEventState();
+      try {
+        this.parseformalParameterList();
+      } catch(e) {
+        this.position = savePos;
+        this.restoreEventState(saveMark);
+      }
+    }
+    this.consume('TOKEN__29_');
+    this.consume('TOKEN__7B_');
+    this.parsefunctionBody();
+    this.consume('TOKEN__7D_');
+        _matched = true;
+      } catch (e) {
+        this.position = _ruleStart;
+        this.restoreEventState(_ruleMark);
+      }
+    }
+    if (!_matched) {
+      const _ruleMark = this.markEventState();
+      try {
+    this.consume('TOKEN_set');
+    this.consume('TOKEN__28_');
+    // Optional: try parsing formalParameterList
+    {
+      const savePos = this.position;
+      const saveMark = this.markEventState();
+      try {
+        this.parseformalParameterList();
+      } catch(e) {
+        this.position = savePos;
+        this.restoreEventState(saveMark);
+      }
+    }
+    this.consume('TOKEN__29_');
+    this.consume('TOKEN__7B_');
+    this.parsefunctionBody();
+    this.consume('TOKEN__7D_');
+        _matched = true;
+      } catch (e) {
+        this.position = _ruleStart;
+        this.restoreEventState(_ruleMark);
+      }
+    }
+    if (!_matched) {
+      const _ruleMark = this.markEventState();
+      try {
+    this.consume('TOKEN_get');
     this.parsepropertyName();
     this.consume('TOKEN__28_');
     this.consume('TOKEN__29_');
@@ -6465,7 +6350,7 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 5 alternatives`);
+      throw new Error(`Expected one of: 7 alternatives`);
     }
 
       __ok = true;

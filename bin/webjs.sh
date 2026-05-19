@@ -7,22 +7,7 @@ PROJECTS_ROOT="$(cd "$REPO_ROOT/.." && pwd -P)"
 
 COMPILER_JS="$REPO_ROOT/compiler/ecmascript-compiler.js"
 
-resolve_webcpp() {
-  local local_path="$1"
-  local sibling_path="$2"
-  if [[ -f "$local_path" ]]; then
-    echo "$local_path"
-    return 0
-  fi
-  if [[ -f "$sibling_path" ]]; then
-    echo "$sibling_path"
-    return 0
-  fi
-  return 1
-}
-
-# Prefer the vendored MaiaCpp in this repo; fall back to sibling checkout.
-WEBCPP_SH="$(resolve_webcpp "$REPO_ROOT/maiacpp/bin/webcpp.sh" "$PROJECTS_ROOT/maiacpp/bin/webcpp.sh" || true)"
+WEBCPP_SH="$REPO_ROOT/maiacpp/bin/webcpp.sh"
 
 usage() {
   cat <<'EOF'
@@ -61,6 +46,8 @@ err() {
   echo "Error: $*" >&2
   exit 1
 }
+
+[[ -x "$WEBCPP_SH" ]] || err "MaiaCpp webcpp.sh not found in required submodule path: $WEBCPP_SH"
 
 run_full_compiler_suite() {
   echo "[webjs] running full compiler suite before dist build"

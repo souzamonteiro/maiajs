@@ -4341,6 +4341,7 @@ function emitTopLevelClassDefinitions(tree, compileContext) {
     const methodEntries = extractClassMethodEntries(classDeclaration);
 
     const classBodyLines = [];
+    const inferredFieldNames = new Set();
     if (heritageName) {
       classBodyLines.push(`  // extends ${heritageName} (inheritance semantics not yet lowered)`);
     }
@@ -4371,6 +4372,18 @@ function emitTopLevelClassDefinitions(tree, compileContext) {
       for (const stmtNode of methodStatements) {
         methodBodyLines.push(...lowerStatementNode(stmtNode, compileContext, 2, { returnTypeCpp: methodReturnType }));
       }
+
+      // Infer simple instance fields referenced as this->field in method bodies.
+      // We intentionally skip method-call forms like this->run(...).
+      for (const bodyLine of methodBodyLines) {
+        const thisFieldPattern = /\bthis->([A-Za-z_][A-Za-z0-9_]*)\b(?!\s*\()/g;
+        let match = thisFieldPattern.exec(bodyLine);
+        while (match) {
+          inferredFieldNames.add(match[1]);
+          match = thisFieldPattern.exec(bodyLine);
+        }
+      }
+
       // Only add auto-return for non-void (non-constructor) methods that have no return
       if (!isConstructor && !methodBodyLines.some((line) => /^\s*return\b/.test(line))) {
         methodBodyLines.push(`    return ${defaultCppValue(methodReturnType)};`);
@@ -4395,6 +4408,13 @@ function emitTopLevelClassDefinitions(tree, compileContext) {
 
     if (!hasConstructor) {
       classBodyLines.unshift(`  ${className}(void) {}`);
+    }
+
+    if (inferredFieldNames.size > 0) {
+      const fieldLines = Array.from(inferredFieldNames)
+        .sort()
+        .map((fieldName) => `  int ${fieldName};`);
+      classBodyLines.unshift(...fieldLines);
     }
 
     classDefinitions.push(
