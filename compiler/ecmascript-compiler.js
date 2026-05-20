@@ -3587,7 +3587,7 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     const elseStatement = hasElse ? (nestedStatements[1] || null) : null;
 
     const loweredCondition = conditionExpr ? lowerExpressionValue(conditionExpr, compileContext) : null;
-    lines.push(loweredCondition !== null ? `${indent}if (${loweredCondition}) {` : `${indent}if (/* condition */) {`);
+    lines.push(loweredCondition !== null ? `${indent}if (${loweredCondition}) {` : `${indent}if (0) {`);
 
     if (thenStatement) {
       lines.push(...lowerStatementNode(thenStatement, compileContext, indentLevel + 1, options));
@@ -3655,7 +3655,7 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       const bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
 
       const loweredCond = condExpr ? lowerExpressionValue(condExpr, compileContext) : null;
-      lines.push(`${indent}while (${loweredCond || '/* condition */'}) {`);
+      lines.push(`${indent}while (${loweredCond || '0'}) {`);
       
       if (bodyStmt) {
         lines.push(...lowerStatementNode(bodyStmt, compileContext, indentLevel + 1, options));
@@ -3681,7 +3681,7 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       }
       
       const loweredCond = condExpr ? lowerExpressionValue(condExpr, compileContext) : null;
-      lines.push(`${indent}} while (${loweredCond || '/* condition */)'});`);
+      lines.push(`${indent}} while (${loweredCond || '0'});`);
       
       return lines;
     }
@@ -3692,7 +3692,7 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       // for ( [var/let/const] init? ; condition? ; increment? ) statement
       // In AST: for TOKEN__28_ [TOKEN_var/TOKEN_let/TOKEN_const] [declarations/expression] TOKEN__3B_ [expression] TOKEN__3B_ [expression] TOKEN__29_ statement
       
-      // Find all semicolons to use as delimiters
+      // Find top-level semicolons in the for-header.
       const semicolonIndices = [];
       for (let i = 0; i < iterChildren.length; i++) {
         const child = iterChildren[i];
@@ -3700,75 +3700,129 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
           semicolonIndices.push(i);
         }
       }
-      
-      // Should have exactly 2 semicolons
-      if (semicolonIndices.length !== 2) {
+
+      const closeParenIndex = iterChildren.findIndex((c) => c && c.kind === 'terminal' && c.token === 'TOKEN__29_');
+      const bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+
+      if (closeParenIndex < 0) {
+        return [`${indent}// [for loop missing closing paren]`];
+      }
+
+      // Support both parser shapes:
+      // 1) for (init ; cond ; incr)               -> 2 top-level semicolons
+      // 2) for (lexicalDeclaration cond ; incr)   -> lexicalDeclaration contains first ';', so only 1 top-level semicolon
+      const lexicalDeclNode = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'lexicalDeclaration');
+      const hasLexicalShape = !!lexicalDeclNode;
+      if (semicolonIndices.length !== 2 && !(hasLexicalShape && semicolonIndices.length === 1)) {
         return [`${indent}// [for loop with unexpected semicolon count: ${semicolonIndices.length}]`];
       }
 
-      // Extract init (between opening paren and first semicolon)
       let initCode = '';
-      let varKeyword = '';
-      for (let i = 2; i < semicolonIndices[0]; i++) {
-        const child = iterChildren[i];
-        if (!child) continue;
-        
-        if (child.kind === 'terminal' && (child.token === 'TOKEN_var' || child.token === 'TOKEN_let' || child.token === 'TOKEN_const')) {
-          varKeyword = child.value + ' ';
-        } else if (child.kind === 'nonterminal' && child.name === 'variableDeclarationListNoIn') {
-          // Extract variable declarations from variableDeclarationListNoIn
-          const declNoInList = (child.children || []).filter((c) => c && c.kind === 'nonterminal' && c.name === 'variableDeclarationNoIn');
-          const varParts = [];
-          
-          for (const declNoIn of declNoInList) {
-            const bindingId = (declNoIn.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'bindingIdentifier');
-            const initializer = (declNoIn.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'initializerNoIn');
-            
-            const varName = bindingId ? findFirstIdentifierValue(bindingId) : null;
-            if (!varName) continue;
-            
-            let varDecl = varName;
-            if (initializer) {
-              // Extract the expression from initializerNoIn (after the '=' token)
-              const initExpr = (initializer.children || []).find((c) => c && c.kind === 'nonterminal');
-              const loweredInitExpr = initExpr ? lowerExpressionValue(initExpr, compileContext) : null;
-              if (loweredInitExpr) {
-                varDecl += ' = ' + loweredInitExpr;
+      const lexicalDeclLines = [];
+      if (hasLexicalShape) {
+        const isConst = (lexicalDeclNode.children || []).some(
+          (c) => c && c.kind === 'terminal' && c.token === 'TOKEN_const'
+        );
+        const bindingListNode = (lexicalDeclNode.children || []).find(
+          (c) => c && c.kind === 'nonterminal' && c.name === 'bindingList'
+        );
+        const lexicalBindings = bindingListNode
+          ? (bindingListNode.children || []).filter((c) => c && c.kind === 'nonterminal' && c.name === 'lexicalBinding')
+          : [];
+        for (const binding of lexicalBindings) {
+          const bindingId = (binding.children || []).find(
+            (c) => c && c.kind === 'nonterminal' && c.name === 'bindingIdentifier'
+          );
+          const initializer = (binding.children || []).find(
+            (c) => c && c.kind === 'nonterminal' && c.name === 'initializer'
+          );
+          const variableName = bindingId ? findFirstIdentifierValue(bindingId) : null;
+          if (!variableName) continue;
+
+          const initExpr = initializer
+            ? (initializer.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'assignmentExpression')
+            : null;
+          const inferredType = initExpr ? inferExprType(initExpr) : 'any';
+          const cppType = cppArgType(inferredType);
+          const constQualifier = isConst && cppType !== 'const char*' ? 'const ' : '';
+          const loweredInitExpr = initExpr ? lowerExpressionValue(initExpr, compileContext) : null;
+          const initValue = loweredInitExpr !== null ? loweredInitExpr : defaultCppValue(cppType);
+          const declIndent = indentation(indentLevel + 1);
+          lexicalDeclLines.push(`${declIndent}${constQualifier}${cppType} ${variableName} = ${initValue};`);
+        }
+
+        // Variables are initialized in the lexical scope block; for-header init stays empty.
+        initCode = '';
+      } else {
+        // Legacy form with explicit first semicolon at top-level.
+        let varKeyword = '';
+        for (let i = 2; i < semicolonIndices[0]; i++) {
+          const child = iterChildren[i];
+          if (!child) continue;
+
+          if (child.kind === 'terminal' && (child.token === 'TOKEN_var' || child.token === 'TOKEN_let' || child.token === 'TOKEN_const')) {
+            varKeyword = child.value + ' ';
+          } else if (child.kind === 'nonterminal' && child.name === 'variableDeclarationListNoIn') {
+            const declNoInList = (child.children || []).filter((c) => c && c.kind === 'nonterminal' && c.name === 'variableDeclarationNoIn');
+            const varParts = [];
+
+            for (const declNoIn of declNoInList) {
+              const bindingId = (declNoIn.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'bindingIdentifier');
+              const initializer = (declNoIn.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'initializerNoIn');
+
+              const varName = bindingId ? findFirstIdentifierValue(bindingId) : null;
+              if (!varName) continue;
+
+              let varDecl = varName;
+              if (initializer) {
+                const initExpr = (initializer.children || []).find((c) => c && c.kind === 'nonterminal');
+                const loweredInitExpr = initExpr ? lowerExpressionValue(initExpr, compileContext) : null;
+                if (loweredInitExpr) {
+                  varDecl += ' = ' + loweredInitExpr;
+                }
               }
+              varParts.push(varDecl);
             }
-            varParts.push(varDecl);
+
+            initCode = varParts.join(', ');
+          } else if (child.kind === 'nonterminal' && child.name === 'expression') {
+            const loweredExpr = lowerExpressionValue(child, compileContext);
+            if (loweredExpr) {
+              initCode += loweredExpr;
+            }
           }
-          
-          initCode = varParts.join(', ');
-        } else if (child.kind === 'nonterminal' && child.name === 'expression') {
-          const loweredExpr = lowerExpressionValue(child, compileContext);
-          if (loweredExpr) {
-            initCode += loweredExpr;
+        }
+
+        initCode = `${varKeyword}${initCode}`;
+      }
+
+      let condCode = '';
+      if (hasLexicalShape) {
+        const condExprNode = iterChildren.find(
+          (c, index) => c && c.kind === 'nonterminal' && c.name === 'expression' && index < semicolonIndices[0]
+        );
+        const loweredExpr = condExprNode ? lowerExpressionValue(condExprNode, compileContext) : null;
+        if (loweredExpr) condCode = loweredExpr;
+      } else {
+        for (let i = semicolonIndices[0] + 1; i < semicolonIndices[1]; i++) {
+          const child = iterChildren[i];
+          if (!child || child.kind === 'terminal') continue;
+
+          if (child.kind === 'nonterminal' && child.name === 'expression') {
+            const loweredExpr = lowerExpressionValue(child, compileContext);
+            if (loweredExpr) {
+              condCode = loweredExpr;
+            }
           }
         }
       }
 
-      // Extract condition (between first and second semicolon)
-      let condCode = '';
-      for (let i = semicolonIndices[0] + 1; i < semicolonIndices[1]; i++) {
+      let incrCode = '';
+      const incrStart = hasLexicalShape ? (semicolonIndices[0] + 1) : (semicolonIndices[1] + 1);
+      for (let i = incrStart; i < closeParenIndex; i++) {
         const child = iterChildren[i];
         if (!child || child.kind === 'terminal') continue;
-        
-        if (child.kind === 'nonterminal' && child.name === 'expression') {
-          const loweredExpr = lowerExpressionValue(child, compileContext);
-          if (loweredExpr) {
-            condCode = loweredExpr;
-          }
-        }
-      }
 
-      // Extract increment (between second semicolon and closing paren)
-      let incrCode = '';
-      for (let i = semicolonIndices[1] + 1; i < iterChildren.length; i++) {
-        const child = iterChildren[i];
-        if (!child) continue;
-        if (child.kind === 'terminal' && (child.token === 'TOKEN__29_' || child.token === 'TOKEN__3B_')) break;
-        
         if (child.kind === 'nonterminal' && child.name === 'expression') {
           const loweredExpr = lowerExpressionValue(child, compileContext);
           if (loweredExpr) {
@@ -3777,19 +3831,30 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
         }
       }
 
-      const bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+      // Build for loop. Lexical for-loops get a dedicated block to keep declarations valid in C89-like parsers.
+      const useLexicalScopeBlock = hasLexicalShape && lexicalDeclLines.length > 0;
+      const forIndentLevel = useLexicalScopeBlock ? (indentLevel + 1) : indentLevel;
+      const forIndent = indentation(forIndentLevel);
+      const bodyIndentLevel = forIndentLevel + 1;
 
-      // Build for loop
-      const forHeader = `${indent}for (${varKeyword}${initCode}; ${condCode}; ${incrCode}) {`;
-      lines.push(forHeader);
-      
-      if (bodyStmt) {
-        lines.push(...lowerStatementNode(bodyStmt, compileContext, indentLevel + 1, options));
-      } else {
-        lines.push(`${indentation(indentLevel + 1)}// [for body not yet lowered]`);
+      if (useLexicalScopeBlock) {
+        lines.push(`${indent}{`);
+        lines.push(...lexicalDeclLines);
       }
-      
-      lines.push(`${indent}}`);
+
+      const forHeader = `${forIndent}for (${initCode}; ${condCode}; ${incrCode}) {`;
+      lines.push(forHeader);
+
+      if (bodyStmt) {
+        lines.push(...lowerStatementNode(bodyStmt, compileContext, bodyIndentLevel, options));
+      } else {
+        lines.push(`${indentation(bodyIndentLevel)}// [for body not yet lowered]`);
+      }
+
+      lines.push(`${forIndent}}`);
+      if (useLexicalScopeBlock) {
+        lines.push(`${indent}}`);
+      }
       return lines;
     }
 
@@ -4612,7 +4677,8 @@ function emitExponentiationAssignmentHelpersCpp(tree) {
   const hostDecls = Array.from(signatures.entries())
     .map(([fn, argTypes]) => {
       const cppArgs = argTypes.length === 0 ? 'void' : argTypes.map(cppArgType).join(', ');
-      return `extern void ${fn}(${cppArgs});`;
+      const cppReturn = /^__console__(log|warn|error)$/.test(String(fn || '')) ? 'int' : 'void';
+      return `extern ${cppReturn} ${fn}(${cppArgs});`;
     })
     .join('\n');
 
