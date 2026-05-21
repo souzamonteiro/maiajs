@@ -1759,6 +1759,100 @@ function lowerArgumentsNode(argumentsNode, compileContext) {
   }).join(', ');
 }
 
+function unwrapExpressionNode(node) {
+  let current = node;
+  while (current && current.kind === 'nonterminal') {
+    if (current.name === 'literal' || current.name === 'additiveExpression') {
+      return current;
+    }
+    if (current.name === 'primaryExpression') {
+      const literalChild = (current.children || []).find(
+        (child) => child && child.kind === 'nonterminal' && child.name === 'literal'
+      );
+      if (literalChild) {
+        return literalChild;
+      }
+    }
+    const nonterminalChildren = (current.children || []).filter(
+      (child) => child && child.kind === 'nonterminal'
+    );
+    if (nonterminalChildren.length !== 1) {
+      return current;
+    }
+    current = nonterminalChildren[0];
+  }
+  return current;
+}
+
+function extractStringLiteralValue(node) {
+  const unwrapped = unwrapExpressionNode(node);
+  if (!unwrapped || unwrapped.kind !== 'nonterminal' || unwrapped.name !== 'literal') {
+    return null;
+  }
+
+  const stringLiteralNode = (unwrapped.children || []).find(
+    (child) => child && child.kind === 'nonterminal' && child.name === 'stringLiteral'
+  );
+  if (!stringLiteralNode) {
+    return null;
+  }
+
+  const terminal = (stringLiteralNode.children || []).find(
+    (child) => child && child.kind === 'terminal'
+  );
+  if (!terminal) {
+    return null;
+  }
+
+  const normalized = normalizeJsStringLiteralForCpp(terminal.value);
+  if (!normalized || normalized.length < 2) {
+    return '';
+  }
+
+  return normalized.slice(1, -1);
+}
+
+function collectAdditiveStringPieces(node, out) {
+  if (!node || node.kind !== 'nonterminal') {
+    return;
+  }
+
+  const unwrapped = unwrapExpressionNode(node);
+  if (!unwrapped || unwrapped.kind !== 'nonterminal') {
+    return;
+  }
+
+  if (unwrapped.name === 'additiveExpression') {
+    for (const child of (unwrapped.children || [])) {
+      if (!child || child.kind !== 'nonterminal') {
+        continue;
+      }
+      collectAdditiveStringPieces(child, out);
+    }
+    return;
+  }
+
+  const literalText = extractStringLiteralValue(unwrapped);
+  if (literalText !== null) {
+    out.push(literalText);
+  }
+}
+
+function lowerConsoleLogArgumentExpression(expressionNode, compileContext) {
+  const lowered = lowerExpressionValue(expressionNode, compileContext);
+  if (lowered !== null && /^"(?:[^"\\]|\\.)*"$/.test(lowered)) {
+    return lowered;
+  }
+
+  const pieces = [];
+  collectAdditiveStringPieces(expressionNode, pieces);
+  if (pieces.length > 0) {
+    return JSON.stringify(pieces.join(''));
+  }
+
+  return lowered !== null ? lowered : '0';
+}
+
 function lowerMemberExpressionNewCallValue(node, compileContext) {
   if (!node || node.kind !== 'nonterminal' || node.name !== 'memberExpression') {
     return null;
@@ -3293,6 +3387,11 @@ function lowerCallExpressionValue(node, compileContext) {
   if (!loweredCall) {
     const hostSymbol = compileContext.hostRegistry.resolvePath(pathSegments);
     if (!hostSymbol) { return null; }
+    if (hostSymbol === '__console__log' && argExprs.length === 1) {
+      const safeArg = lowerConsoleLogArgumentExpression(argExprs[0], compileContext);
+      loweredCall = `${hostSymbol}(${safeArg})`;
+      return loweredCall;
+    }
     loweredCall = `${hostSymbol}(${args})`;
   }
 

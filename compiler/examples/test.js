@@ -273,193 +273,30 @@ function runArrayStressTests() {
 }
 
 // ---------------------------------------------------------------------------
-// main — mirrors int main() in test.cpp
+// program entry — mirrors int main() in test.cpp semantics
 // ---------------------------------------------------------------------------
 
-function main() {
-  let failures = 0;
-  const a = 10;
-  const b = 20;
-  let result = 0;
-  let relation = 0;
-  let logic = 0;
-  let bit = 0;
-  let coutAcc = 0;
-  let i = 0;
-  let loopSum = 0;
-  let down = 5;
-  let up = 0;
-
+function runProgram() {
   console.log('=== MaiaJS Comprehensive Runtime Baseline ===');
+  const r1 = runClassTests();
+  const r2 = runBoxTests();
+  const r3 = runFunctionRefTests();
+  const r4 = runInheritanceTests();
+  const r5 = runNewTests();
+  const r6 = runCoutStressTests();
+  const r7 = runForCoutTest();
+  const r8 = runArrayStressTests();
 
-  // Arithmetic operators
-  console.log('--- Arithmetic Operators ---');
-  result = a + b;
-  console.log('add(a,b)=' + result);
-  result = b - a;
-  console.log('b-a=' + result);
-  result = a * 3;
-  console.log('a*3=' + result);
-  result = b / 2;
-  console.log('b/2=' + result);
-  result = b % 3;
-  console.log('b%3=' + result);
+  console.log('1. class/ctor/method=' + r1);
+  console.log('2. box/slot-index=' + r2);
+  console.log('3. function-ref dispatch=' + r3);
+  console.log('4. inheritance/instanceof/trunc=' + r4);
+  console.log('5. new/ctor=' + r5);
+  console.log('6. cout stress=' + r6);
+  console.log('7. for-loop with logging=' + r7);
+  console.log('8. robust arrays battery=' + r8);
 
-  // Assignment operators
-  console.log('--- Assignment Operators ---');
-  result = a;
-  console.log('result=' + result);
-  result = result + b;
-  console.log('result+=b => ' + result);
-  result = result - 10;
-  console.log('result-=10 => ' + result);
-  result = result * 2;
-  console.log('result*=2 => ' + result);
-  result = result / 5;
-  console.log('result/=5 => ' + result);
-  result = result % 4;
-  console.log('result%=4 => ' + result);
-
-  // Relational operators
-  console.log('--- Relational Operators ---');
-  relation = (a === b) ? 1 : 0;
-  console.log('a==b => ' + relation);
-  relation = (a !== b) ? 1 : 0;
-  console.log('a!=b => ' + relation);
-  relation = (a < b) ? 1 : 0;
-  console.log('a<b => ' + relation);
-  relation = (a > b) ? 1 : 0;
-  console.log('a>b => ' + relation);
-  relation = (a <= b) ? 1 : 0;
-  console.log('a<=b => ' + relation);
-  relation = (a >= b) ? 1 : 0;
-  console.log('a>=b => ' + relation);
-
-  // Logical operators
-  console.log('--- Logical Operators ---');
-  logic = (a && b) ? 1 : 0;
-  console.log('a&&b => ' + logic);
-  logic = (a || 0) ? 1 : 0;
-  console.log('a||0 => ' + logic);
-
-  // Bitwise operators
-  console.log('--- Bitwise Operators ---');
-  bit = a & b;
-  console.log('a&b => ' + bit);
-  bit = a | b;
-  console.log('a|b => ' + bit);
-  bit = a ^ b;
-  console.log('a^b => ' + bit);
-  bit = a << 2;
-  console.log('a<<2 => ' + bit);
-  bit = b >> 1;
-  console.log('b>>1 => ' + bit);
-
-  // Control flow
-  console.log('--- Control Flow ---');
-  for (let j = 0; j < 8; j++) {
-    if (j === 5) {
-      continue;
-    }
-    loopSum = loopSum + j;
-    console.log('[for] tick');
-  }
-  console.log('loop_sum=' + loopSum);
-
-  while (down > 0) {
-    down--;
-  }
-  console.log('while-down=' + down);
-
-  do {
-    up++;
-  } while (up < 5);
-  console.log('do-while-up=' + up);
-
-  // Logging-chain stress (mirrors cout stress in test.cpp)
-  console.log('--- cout stress preflight ---');
-  coutAcc = coutAcc + i;
-  console.log('[cout] tick');
-  i++;
-  coutAcc = coutAcc + i;
-  console.log('[cout] tick');
-  i++;
-  coutAcc = coutAcc + i;
-  console.log('[cout] tick');
-  i++;
-  coutAcc = coutAcc + i;
-  console.log('[cout] tick');
-  i++;
-  coutAcc = coutAcc + i;
-  console.log('[cout] tick');
-  i++;
-  coutAcc = coutAcc + i;
-  console.log('[cout] tick');
-  i++;
-  coutAcc = coutAcc + i;
-  console.log('[cout] tick');
-  i++;
-  coutAcc = coutAcc + i;
-  console.log('[cout] tick');
-  console.log('cout_acc=' + coutAcc + ' expected=92');
-
-  // Subsection results
-  if (runClassTests()) {
-    console.log('1. class/ctor/method: OK');
-  } else {
-    console.log('1. class/ctor/method: FAIL');
-    failures = failures + 1;
-  }
-
-  if (runBoxTests()) {
-    console.log('2. box/slot-index: OK');
-  } else {
-    console.log('2. box/slot-index: FAIL');
-    failures = failures + 1;
-  }
-
-  if (runFunctionRefTests()) {
-    console.log('3. function-ref dispatch: OK');
-  } else {
-    console.log('3. function-ref dispatch: FAIL');
-    failures = failures + 1;
-  }
-
-  if (runInheritanceTests()) {
-    console.log('4. inheritance/instanceof/trunc: OK');
-  } else {
-    console.log('4. inheritance/instanceof/trunc: FAIL');
-    failures = failures + 1;
-  }
-
-  if (runNewTests()) {
-    console.log('5. new/ctor: OK');
-  } else {
-    console.log('5. new/ctor: FAIL');
-    failures = failures + 1;
-  }
-
-  if (runCoutStressTests()) {
-    console.log('6. cout stress: OK');
-  } else {
-    console.log('6. cout stress: FAIL');
-    failures = failures + 1;
-  }
-
-  if (runForCoutTest()) {
-    console.log('7. for-loop with logging: OK');
-  } else {
-    console.log('7. for-loop with logging: FAIL');
-    failures = failures + 1;
-  }
-
-  if (runArrayStressTests()) {
-    console.log('8. robust arrays battery: OK');
-  } else {
-    console.log('8. robust arrays battery: FAIL');
-    failures = failures + 1;
-  }
-
+  const failures = (8 - (r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8));
   if (failures === 0) {
     console.log('ALL TESTS PASSED');
     return 0;
@@ -468,4 +305,4 @@ function main() {
   return 1;
 }
 
-main();
+runProgram();

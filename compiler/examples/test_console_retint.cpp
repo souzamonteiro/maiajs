@@ -306,7 +306,7 @@ int runArrayStressTests(void) {
       checksum = 0;
     }
   }
-  __console__log("array checksum= pos5= pos11=");
+  __console__log("array checksum=" + checksum + " pos5=" + pos5 + " pos11=" + pos11);
   const void* array3dFlat = __maia_arr_literal0();
   {
     double i = 0;
@@ -326,7 +326,7 @@ int runArrayStressTests(void) {
     }
   }
   const void* v123 = nullptr;
-  __console__log("array3d[1][2][3]=");
+  __console__log("array3d[1][2][3]=" + v123);
   const void* strings = __maia_arr_literal0();
   strings = "First string";
   strings = "Second string";
@@ -336,7 +336,7 @@ int runArrayStressTests(void) {
     double i = 0;
     for (; i < 3; i++) {
       strChars = strChars + strings.length;
-      __console__log("str[]=");
+      __console__log(0);
     }
   }
   const void* points = __maia_arr_literal0();
@@ -347,7 +347,7 @@ int runArrayStressTests(void) {
     }
   }
   const void* lastPoint = nullptr;
-  __console__log("points[4]=(,)");
+  __console__log("points[4]=(" + lastPoint.x + "," + lastPoint.y + ")");
   const void* matrix = __maia_arr_literal0();
   matrix = 1;
   matrix = 2;
@@ -368,7 +368,7 @@ int runArrayStressTests(void) {
       diag = 0;
     }
   }
-  __console__log("diag=");
+  __console__log("diag=" + diag);
   if (checksum != 45) {
     return (int)(0);
   }
@@ -403,20 +403,20 @@ int runProgram(void) {
   const void* r6 = runCoutStressTests();
   const void* r7 = runForCoutTest();
   const void* r8 = runArrayStressTests();
-  __console__log("1. class/ctor/method=");
-  __console__log("2. box/slot-index=");
-  __console__log("3. function-ref dispatch=");
-  __console__log("4. inheritance/instanceof/trunc=");
-  __console__log("5. new/ctor=");
-  __console__log("6. cout stress=");
-  __console__log("7. for-loop with logging=");
-  __console__log("8. robust arrays battery=");
+  __console__log("1. class/ctor/method=" + r1);
+  __console__log("2. box/slot-index=" + r2);
+  __console__log("3. function-ref dispatch=" + r3);
+  __console__log("4. inheritance/instanceof/trunc=" + r4);
+  __console__log("5. new/ctor=" + r5);
+  __console__log("6. cout stress=" + r6);
+  __console__log("7. for-loop with logging=" + r7);
+  __console__log("8. robust arrays battery=" + r8);
   const void* failures = nullptr;
   if (failures == 0) {
     __console__log("ALL TESTS PASSED");
     return (int)(0);
   }
-  __console__log("TESTS FAILED: ");
+  __console__log("TESTS FAILED: " + failures);
   return (int)(1);
 }
 

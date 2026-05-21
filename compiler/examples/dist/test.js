@@ -2287,7 +2287,7 @@ function createC89JsHosts(getMemory, opts = {}) {
 
 // ---------- host-extern wrappers (auto-generated from source) ----------
 const _buildHostEnv = // Auto-generated host env – do not edit manually
-(function buildEnv(getMemory) {
+(function buildEnv(getMemory, opts = {}) {
   function alignUp(value, alignment) {
     const a = Math.max(1, Number(alignment) | 0);
     const v = Number(value) | 0;
@@ -2340,6 +2340,19 @@ const _buildHostEnv = // Auto-generated host env – do not edit manually
     if (obj == null) return { thisValue: null, fn: null };
     return { thisValue: obj, fn: obj[parts[parts.length - 1]] };
   }
+  function __hostWrite(text) {
+    if (opts && typeof opts.write === 'function') {
+      opts.write(String(text));
+      return;
+    }
+    if (typeof process !== 'undefined' && process.stdout && typeof process.stdout.write === 'function') {
+      process.stdout.write(String(text));
+      return;
+    }
+    if (typeof console !== 'undefined' && typeof console.log === 'function') {
+      console.log(String(text));
+    }
+  }
   return {
     "__exc_push": () => { const target = __resolveHost(["exc_push"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
     "__exc_pop": () => { const target = __resolveHost(["exc_pop"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
@@ -2356,7 +2369,7 @@ const _buildHostEnv = // Auto-generated host env – do not edit manually
     "__d__value": () => { const target = __resolveHost(["d","value"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
     "__a__getValue": () => { const target = __resolveHost(["a","getValue"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
     "__p__getValue": () => { const target = __resolveHost(["p","getValue"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
-    "__console__log": (p0) => { const target = __resolveHost(["console","log"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue, readCString(p0)); return undefined; },
+    "__console__log": (p0) => { const text = String(readCString(p0)); __hostWrite(text + '\n'); return 0; },
   };
 });
 const _linkedLibraries = [];
@@ -2437,7 +2450,7 @@ function createImports(getMemory, opts = {}) {
     env: {
       printf: createPrintfHost({ getMemory, write }),
       ...defaultBuiltins,
-      ..._buildHostEnv(getMemory),
+      ..._buildHostEnv(getMemory, { write }),
     }
   };
 }
