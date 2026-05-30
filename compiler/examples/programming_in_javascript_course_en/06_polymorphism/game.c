@@ -145,17 +145,28 @@ void Human_say__pv(Human* self, char* s) {
 
 char* Human_respond__pv(Human* self, char* s) {
   (void)self;
-  if ((strcmp(s, "Hello!") == 0)) {
+  if ((strcmp(s, "Hello!") == 0))
+  {
   return "How are you?";
-  } else if ((strcmp(s, "How are you?") == 0)) {
+  }
+  else if ((strcmp(s, "How are you?") == 0))
+  {
   return "Fine, and you?";
-  } else if ((strcmp(s, "Fine, and you?") == 0)) {
+  }
+  else if ((strcmp(s, "Fine, and you?") == 0))
+  {
   return "I'm doing great!";
-  } else if ((strcmp(s, "Goodbye!") == 0)) {
+  }
+  else if ((strcmp(s, "Goodbye!") == 0))
+  {
   return "See you!";
-  } else if ((strcmp(s, "Bye!") == 0)) {
+  }
+  else if ((strcmp(s, "Bye!") == 0))
+  {
   return "See you!";
-  } else {
+  }
+  else
+  {
   return "I don't know.";
   }
   (void)s;
@@ -295,17 +306,28 @@ int Knight_getArmor(Knight* self) {
 
 char* Knight_respond__pv(Knight* self, char* s) {
   (void)self;
-  if ((strcmp(s, "Hello!") == 0)) {
+  if ((strcmp(s, "Hello!") == 0))
+  {
   return "How do you do, noble person?";
-  } else if ((strcmp(s, "How are you?") == 0)) {
+  }
+  else if ((strcmp(s, "How are you?") == 0))
+  {
   return "Fine, and how is Your Lordship?";
-  } else if ((strcmp(s, "Fine, and you?") == 0)) {
+  }
+  else if ((strcmp(s, "Fine, and you?") == 0))
+  {
   return "I am doing splendidly well!";
-  } else if ((strcmp(s, "Goodbye!") == 0)) {
+  }
+  else if ((strcmp(s, "Goodbye!") == 0))
+  {
   return "Until next time!";
-  } else if ((strcmp(s, "Bye!") == 0)) {
+  }
+  else if ((strcmp(s, "Bye!") == 0))
+  {
   return "Until next time!";
-  } else {
+  }
+  else
+  {
   return "I don't know.";
   }
   (void)s;
@@ -384,19 +406,32 @@ int Princess_getWealth(Princess* self) {
 
 char* Princess_respond__pv(Princess* self, char* s) {
   (void)self;
-  if ((strcmp(s, "Hello!") == 0)) {
+  if ((strcmp(s, "Hello!") == 0))
+  {
   return "I'm good, and you?";
-  } else if ((strcmp(s, "I'm good, and you?") == 0)) {
+  }
+  else if ((strcmp(s, "I'm good, and you?") == 0))
+  {
   return "I'm great!";
-  } else if ((strcmp(s, "None of your business!") == 0)) {
+  }
+  else if ((strcmp(s, "None of your business!") == 0))
+  {
   return "How rude!";
-  } else if ((strcmp(s, "Get out of here!") == 0)) {
+  }
+  else if ((strcmp(s, "Get out of here!") == 0))
+  {
   return "I'll call my father!";
-  } else if ((strcmp(s, "Get lost!") == 0)) {
+  }
+  else if ((strcmp(s, "Get lost!") == 0))
+  {
   return "You're done for!";
-  } else if ((strcmp(s, "You're done for!") == 0)) {
+  }
+  else if ((strcmp(s, "You're done for!") == 0))
+  {
   return "I don't care!";
-  } else {
+  }
+  else
+  {
   return "I don't know.";
   }
   (void)s;
@@ -459,21 +494,36 @@ int Villager_getHonesty(Villager* self) {
 
 char* Villager_respond__pv(Villager* self, char* s) {
   (void)self;
-  if ((strcmp(s, "Hello!") == 0)) {
+  if ((strcmp(s, "Hello!") == 0))
+  {
   return "I'm good, and you?";
-  } else if ((strcmp(s, "How are you?") == 0)) {
+  }
+  else if ((strcmp(s, "How are you?") == 0))
+  {
   return "None of your business!";
-  } else if ((strcmp(s, "Fine, and you?") == 0)) {
+  }
+  else if ((strcmp(s, "Fine, and you?") == 0))
+  {
   return "Get out of here!";
-  } else if ((strcmp(s, "I'm great!") == 0)) {
+  }
+  else if ((strcmp(s, "I'm great!") == 0))
+  {
   return "Get out of here!";
-  } else if ((strcmp(s, "I'll call my father!") == 0)) {
+  }
+  else if ((strcmp(s, "I'll call my father!") == 0))
+  {
   return "I don't care!";
-  } else if ((strcmp(s, "Goodbye!") == 0)) {
+  }
+  else if ((strcmp(s, "Goodbye!") == 0))
+  {
   return "Get lost!";
-  } else if ((strcmp(s, "Bye!") == 0)) {
+  }
+  else if ((strcmp(s, "Bye!") == 0))
+  {
   return "I don't care!";
-  } else {
+  }
+  else
+  {
   return "I don't know.";
   }
   (void)s;

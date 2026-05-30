@@ -1,0 +1,431 @@
+==> webjs: compile
+[webjs] transpiling JS -> C++: /Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/test.js
+[webjs] C++ emitted: /Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/test.cpp
+[webjs] --no-webcpp set, stopping after C++ emission
+==> webcpp: create dist (browser + node)
+Parsing: /Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/test.cpp
+Parser: ok
+C gerado em: /var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.frCNvXCHRr/test.c
+[webc] Compilation error: Parse failed for                                  
+                 
+
+                                      
+                       
+extern void   __exc_push(void);
+extern void   __exc_pop(void);
+extern int    __exc_active(void);
+extern int    __exc_type(void);
+extern void*  __exc_data(void);
+extern void   __exc_throw(int type, void* data);
+extern void   __exc_clear(void);
+extern int    __exc_matches(int thrown_type, int catch_type);
+extern void*  __malloc(unsigned long size);
+extern void   __free(void* ptr);
+
+                                                                                    
+extern unsigned int strlen(const char* s);
+extern int strcmp(const char* s1, const char* s2);
+extern int strncmp(const char* s1, const char* s2, unsigned int n);
+extern char* strcpy(char* dest, const char* src);
+extern char* strncpy(char* dest, const char* src, unsigned int n);
+extern char* strcat(char* dest, const char* src);
+extern char* strncat(char* dest, const char* src, unsigned int n);
+extern char* strstr(const char* haystack, const char* needle);
+extern char* strchr(const char* s, int c);
+extern char* strrchr(const char* s, int c);
+extern unsigned int strspn(const char* s, const char* accept);
+extern unsigned int strcspn(const char* s, const char* reject);
+extern char* strtok(char* str, const char* delim);
+extern int memcmp(const void* s1, const void* s2, unsigned int n);
+extern void* memcpy(void* dest, const void* src, unsigned int n);
+extern void* memmove(void* dest, const void* src, unsigned int n);
+extern void* memset(void* s, int c, unsigned int n);
+extern void* memchr(const void* s, int c, unsigned int n);
+
+                              
+extern void __fn(void*, void*);
+extern void __c__getValue(void);
+extern void __box__setAt(double, double);
+extern void __box__at(double);
+extern void __d__value(void);
+extern void __a__getValue(void);
+extern void __p__getValue(void);
+extern void __console__log(const char*);
+
+
+
+
+
+
+
+typedef struct C {
+  int value;
+} C;
+
+void C_init(struct C* self);
+void C_destroy(struct C* self);
+int C_getValue(struct C* self);
+
+void C_init(struct C* self) {
+  (void)self;
+}
+
+void C_destroy(struct C* self) {
+  (void)self;
+}
+
+int C_getValue(struct C* self) {
+  (void)self;
+  return (int)0;
+}
+
+typedef struct Box {
+  int d0;
+  int d1;
+  int d2;
+  int d3;
+} Box;
+
+void Box_init(struct Box* self);
+void Box_destroy(struct Box* self);
+int Box_at__i(struct Box* self, int i);
+int Box_setAt__ii(struct Box* self, int i, int v);
+
+void Box_init(struct Box* self) {
+  (void)self;
+}
+
+void Box_destroy(struct Box* self) {
+  (void)self;
+}
+
+int Box_at__i(struct Box* self, int i) {
+  (void)self;
+  (void)i;
+  return (int)0;
+}
+
+int Box_setAt__ii(struct Box* self, int i, int v) {
+  (void)self;
+  (void)i;
+  (void)v;
+  return (int)0;
+}
+
+typedef struct BBase {
+  int __dummy;
+} BBase;
+
+void BBase_init(struct BBase* self);
+void BBase_destroy(struct BBase* self);
+
+void BBase_init(struct BBase* self) {
+  (void)self;
+}
+
+void BBase_destroy(struct BBase* self) {
+  (void)self;
+}
+
+typedef struct DDerived {
+  struct BBase __base;
+  int number;
+} DDerived;
+
+void DDerived_init(struct DDerived* self);
+void DDerived_destroy(struct DDerived* self);
+int DDerived_value(struct DDerived* self);
+
+void DDerived_init(struct DDerived* self) {
+  (void)self;
+}
+
+void DDerived_destroy(struct DDerived* self) {
+  (void)self;
+}
+
+int DDerived_value(struct DDerived* self) {
+  (void)self;
+  return (int)0;
+}
+
+typedef struct P {
+  int value;
+} P;
+
+void P_init(struct P* self);
+void P_destroy(struct P* self);
+int P_getValue(struct P* self);
+
+void P_init(struct P* self) {
+  (void)self;
+}
+
+void P_destroy(struct P* self) {
+  (void)self;
+}
+
+int P_getValue(struct P* self) {
+  (void)self;
+  return (int)0;
+}
+
+                      
+int add__ii(int a, int b);
+int multiply__ii(int a, int b);
+int run_class_tests(void);
+int run_template_tests(void);
+int run_function_pointer_tests(void);
+int run_cast_tests(void);
+int run_new_delete_tests(void);
+int run_cout_stress_tests(void);
+int run_for_cout_test(void);
+int run_main_baseline_sections(void);
+int run_program(void);
+int main(void);
+
+int add__ii(int a, int b) {
+  return (int)(a + b);
+}
+
+int multiply__ii(int a, int b) {
+  return (int)(a * b);
+}
+
+int run_class_tests(void) {
+  const struct C c(42);
+  return (int)(((c.getValue() == 42) ? (1) : (0)));
+}
+
+int run_template_tests(void) {
+  const struct Box box;
+  box.setAt(0, 10);
+  box.setAt(1, 20);
+  return (int)(((box.at(0) + box.at(1) == 30) ? (1) : (0)));
+}
+
+int run_function_pointer_tests(void) {
+  const double s = execute(7, 3, add__ii);
+  const double m = execute(7, 3, multiply__ii);
+  return (int)(((s == 10 && m == 21) ? (1) : (0)));
+}
+
+int run_cast_tests(void) {
+  const struct DDerived b(15);
+  const void* d = ((((struct DDerived*)(b) != 0)) ? (b) : (0));
+  const void* n = (int)(3.2) | (int)(0);
+  if (d == 0) {
+    return (int)(0);
+  }
+  if (__d__value() != 15) {
+    return (int)(0);
+  }
+  if (n != 3) {
+    return (int)(0);
+  }
+  return (int)(1);
+}
+
+int run_new_delete_tests(void) {
+  const struct C a(1);
+  if (a.getValue() != 1) {
+    return (int)(0);
+  }
+  const struct P p(10);
+  const double v = p.getValue();
+  return (int)(((v == 10) ? (1) : (0)));
+}
+
+int run_cout_stress_tests(void) {
+  double cout_acc = 0;
+  double i = 1;
+  cout_acc = cout_acc + i;
+  (void)__console__log("[cout-test] i=1 acc=1 int=42 double=3.25 char=Q");
+  i = i + 1;
+  cout_acc = cout_acc + i;
+  (void)__console__log("[cout-test] i=2 acc=3 int=42 double=3.25 char=Q");
+  i = i + 1;
+  cout_acc = cout_acc + i;
+  (void)__console__log("[cout-test] i=3 acc=6 int=42 double=3.25 char=Q");
+  return (int)(((cout_acc == 6) ? (1) : (0)));
+}
+
+int run_for_cout_test(void) {
+  double sum = 0;
+  const double ratio = 1.5;
+  {
+  double i = 1;
+  for (;
+  i < 4;
+  i = i + 1)
+  {
+  sum = sum + i;
+  __console__log("[for-cout] tick");
+  }
+  }
+  return (int)(((sum == 6) ? (1) : (0)));
+}
+
+int run_main_baseline_sections(void) {
+  double a = 10;
+  const double b = 20;
+  double result = 0;
+  double relation = 0;
+  double logic = 0;
+  double bit = 0;
+  double i = 0;
+  double loop_sum = 0;
+  double down = 5;
+  double up = 0;
+  (void)__console__log("--- Arithmetic Operators ---");
+  result = a + b;
+  result = b - a;
+  result = a * 3;
+  result = b / 2;
+  result = b % 3;
+  (void)__console__log("--- Assignment Operators ---");
+  result = a;
+  result = result + b;
+  result = result - 10;
+  result = result * 2;
+  result = result / 5;
+  result = result % 4;
+  (void)__console__log("--- Relational Operators ---");
+  relation = ((a == b) ? (1) : (0));
+  relation = ((a != b) ? (1) : (0));
+  relation = ((a < b) ? (1) : (0));
+  relation = ((a > b) ? (1) : (0));
+  relation = ((a <= b) ? (1) : (0));
+  relation = ((a >= b) ? (1) : (0));
+  (void)__console__log("--- Logical Operators ---");
+  logic = ((a && b) ? (1) : (0));
+  logic = ((a || 0) ? (1) : (0));
+  (void)__console__log("--- Bitwise Operators ---");
+  bit = (int)(a) & (int)(b);
+  bit = (int)(a) | (int)(b);
+  bit = (int)(a) ^ (int)(b);
+  bit = (int)(a) << (int)(2);
+  bit = (int)(b) >> (int)(1);
+  (void)__console__log("--- Pointer Operators ---");
+  a = 100;
+  (void)__console__log("--- Control Flow ---");
+  for (; i < 8; i = i + 1) {
+    if (i == 5) {
+      continue;
+    }
+    loop_sum = loop_sum + i;
+  }
+  while (down > 0) {
+    down = down - 1;
+  }
+  do {
+    up = up + 1;
+  } while (up < 5);
+  return (int)(((loop_sum == 23 && down == 0 && up == 5 && a == 100) ? (1) : (0)));
+}
+
+int run_program(void) {
+  double failures = 0;
+  __console__log("=== MaiaJS Comprehensive Runtime Baseline ===");
+  if (!((int)(run_main_baseline_sections())))
+  {
+  __console__log("FAIL main baseline sections");
+  return (int)(1);
+  }
+  __console__log("1. class/ctor/const:");
+  if (run_class_tests())
+  {
+  __console__log("OK");
+  }
+  else
+  {
+  __console__log("FAIL");
+  failures = failures + 1;
+  }
+  __console__log("2. template/operator[]:");
+  if (run_template_tests())
+  {
+  __console__log("OK");
+  }
+  else
+  {
+  __console__log("FAIL");
+  failures = failures + 1;
+  }
+  __console__log("3. function pointer dispatch:");
+  if (run_function_pointer_tests())
+  {
+  __console__log("OK");
+  }
+  else
+  {
+  __console__log("FAIL");
+  failures = failures + 1;
+  }
+  __console__log("4. casts(dynamic/static):");
+  if (run_cast_tests())
+  {
+  __console__log("OK");
+  }
+  else
+  {
+  __console__log("FAIL");
+  failures = failures + 1;
+  }
+  __console__log("5. new/delete/placement-new:");
+  if (run_new_delete_tests())
+  {
+  __console__log("OK");
+  }
+  else
+  {
+  __console__log("FAIL");
+  failures = failures + 1;
+  }
+  __console__log("6. cout stress(chain/loop/literals):");
+  if (run_cout_stress_tests())
+  {
+  __console__log("OK");
+  }
+  else
+  {
+  __console__log("FAIL");
+  failures = failures + 1;
+  }
+  __console__log("7. for-loop with cout and double local:");
+  if (run_for_cout_test())
+  {
+  __console__log("OK");
+  }
+  else
+  {
+  __console__log("FAIL");
+  failures = failures + 1;
+  }
+  if (failures == 0)
+  {
+  __console__log("ALL TESTS PASSED");
+  return (int)(0);
+  }
+  __console__log("TESTS FAILED");
+  return (int)(1);
+}
+
+int main(void) {
+  run_program();
+  return 0;
+}
+
+                                                                                                  
+                                               
+                                                    
+                                                           
+                                                              
+                                                                      
+                                                               
+                                                                
+                                                                  
+                                                                       
+                                                                       
+                                                                 
+: Unexpected token at end: TOKEN_int at line 187, column 1 (offset 4194)

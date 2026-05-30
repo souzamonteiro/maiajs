@@ -45,12 +45,13 @@ void Fibonacci_createSeries__i(Fibonacci* self, int n) {
   for (i = 1; i <= n; i++) {
     printf(" %d", fib__i(i));
   }
-  printf("\n");
+  (void)printf("\n");
   (void)n;
 }
 
 /* Global functions */
 int fib__i(int n);
+int main(void);
 int main(void);
 
 int fib__i(int n) {
@@ -58,6 +59,17 @@ int fib__i(int n) {
     return n;
   }
   return fib__i(n - 1) + fib__i(n - 2);
+}
+
+int main(void) {
+  Fibonacci fib_obj;
+  int n = 0;
+
+  printf("How many terms would you like to display? ");
+  scanf("%d", &n);
+  printf("\n");
+  Fibonacci_createSeries__i(&fib_obj, n);
+  return 0;
 }
 
 int main(void) {

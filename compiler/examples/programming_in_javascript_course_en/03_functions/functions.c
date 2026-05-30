@@ -20,6 +20,9 @@ void display_message__pv(char* msg);
 float square__f(float x);
 float power__fi(float x, int y);
 int main(void);
+void hello_world__v(void);
+void display_message__N9constchar(int msg);
+int main(void);
 
 void hello_world(void) {
   printf("Hello World!\n");
@@ -56,7 +59,30 @@ int main(void) {
   return 0;
 }
 
-/* Lowering diagnostics: 3 event(s) (structured-cstyle-body=1, structured-io-runtime=2) */
+void hello_world__v(void) {
+  printf("Hello World!\n");
+}
+
+void display_message__N9constchar(int msg) {
+  printf("%d", msg);
+  printf("\n");
+}
+
+int main(void) {
+  hello_world();
+  display_message__pv("Hi there!");
+  printf("The square of 5 is ");
+  printf("%g", square__f((float)(5)));
+  printf(".\n");
+  printf("The cube of 2 is ");
+  printf("%g", power__fi((float)(2), 3));
+  printf(".\n");
+  return 0;
+}
+
+/* Lowering diagnostics: 5 event(s) (structured-cstyle-body=1, structured-io-runtime=4) */
 /* - hello_world: structured-io-runtime (structured-io-runtime) */
 /* - display_message: structured-io-runtime (structured-io-runtime) */
 /* - power: structured-cstyle-body (5 stmt(s)) */
+/* - hello_world: structured-io-runtime (structured-io-runtime) */
+/* - display_message: structured-io-runtime (structured-io-runtime) */

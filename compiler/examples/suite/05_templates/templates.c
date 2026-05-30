@@ -17,6 +17,7 @@ extern void   __free(void* ptr);
 /* Global functions */
 int tmax__N1TN1T(int a, int b);
 int main(void);
+int tmax__N6constTN6constT(int a, int b);
 
 int tmax__N1TN1T(int a, int b) {
   return a > b ? a : b;
@@ -31,4 +32,8 @@ int main(void) {
   }
   printf("ALL PASS\n");
   return 0;
+}
+
+int tmax__N6constTN6constT(int a, int b) {
+  return a>b?a:b;
 }

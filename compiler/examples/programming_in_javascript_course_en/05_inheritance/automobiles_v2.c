@@ -120,6 +120,70 @@ void Tractor_destroy(Tractor* self) {
 
 /* Global functions */
 int main(void);
+int main(void);
+
+int main(void) {
+  Car etios;
+  Car_init__pvipvffff(&etios, "Silver", 2021, "XL", 1.4f, 50000.0f, 2000.0f, 3000.0f);
+  Truck actros;
+  Truck_init__pvipvffff(&actros, "Red", 2022, "X", 6.0f, 500000.0f, 20000.0f, 30000.0f);
+  Tractor mf3400;
+  Tractor_init__pvipvffff(&mf3400, "Blue", 2022, "MF 3400", 3.0f, 75000.0f, 3000.0f, 4000.0f);
+  int vehicleType = 0;
+  char wantAC = 0;
+  char wantSteering = 0;
+  double totalPrice = 0;
+  char* model = 0;
+
+  printf("Build your vehicle:\n");
+  printf("Would you like to buy a car (1), truck (2) or tractor (3)? ");
+  scanf("%d", &vehicleType);
+  printf("\nWould you like a vehicle with air conditioning (y/n)? ");
+  scanf(" %c", &wantAC);
+  printf("\nWould you like a vehicle with power steering (y/n)? ");
+  scanf(" %c", &wantSteering);
+  switch (vehicleType) {
+    case 1:
+      model = "XL";
+      totalPrice = 50000.0f;
+      if (wantAC == 'y') {
+        totalPrice += 2000.0f;
+      }
+      if (wantSteering == 'y') {
+        totalPrice += 3000.0f;
+      }
+      break;
+    case 2:
+      model = "X";
+      totalPrice = 500000.0f;
+      if (wantAC == 'y') {
+        totalPrice += 20000.0f;
+      }
+      if (wantSteering == 'y') {
+        totalPrice += 30000.0f;
+      }
+      break;
+    case 3:
+      model = "MF 3400";
+      totalPrice = 75000.0f;
+      if (wantAC == 'y') {
+        totalPrice += 3000.0f;
+      }
+      if (wantSteering == 'y') {
+        totalPrice += 4000.0f;
+      }
+      break;
+    default:
+      printf("Invalid option!");
+      return 0;
+  }
+  printf("The vehicle ");
+  printf("%s", model);
+  printf(" costs $");
+  printf("%g", totalPrice);
+  printf(".\n");
+  return 0;
+}
 
 int main(void) {
   Car etios;

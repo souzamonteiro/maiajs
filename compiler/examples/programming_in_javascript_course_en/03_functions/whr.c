@@ -17,9 +17,24 @@ extern void   __free(void* ptr);
 /* Global functions */
 float calcWHR__ff(float waist, float hip);
 int main(void);
+int main(void);
 
 float calcWHR__ff(float waist, float hip) {
   return waist / hip;
+}
+
+int main(void) {
+  float waist = 0;
+  float hip = 0;
+
+  printf("Enter your waist circumference in cm: ");
+  scanf("%f", &waist);
+  printf("Enter your hip circumference in cm: ");
+  scanf("%f", &hip);
+  printf("WHR: ");
+  printf("%g", calcWHR__ff((float)(waist), (float)(hip)));
+  printf(".\n");
+  return 0;
 }
 
 int main(void) {

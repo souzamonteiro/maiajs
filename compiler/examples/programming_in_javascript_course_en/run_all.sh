@@ -126,6 +126,7 @@ run_cpp_one() {
     local binary="$test_dir/$stem"
     local runner_sh="$test_dir/dist/node-runner.sh"
     local runner_js="$test_dir/dist/node-runner.js"
+    local stem_runner_js="$test_dir/$stem.js"
     local wasm_file="$test_dir/dist/$stem.wasm"
     if [[ ! -f "$wasm_file" ]]; then
         wasm_file="$test_dir/$stem.wasm"
@@ -167,44 +168,68 @@ run_cpp_one() {
         SKIP=$((SKIP + 1))
     fi
 
-    if [[ -f "$runner_sh" || -f "$runner_js" ]]; then
-        if [[ ! -f "$wasm_file" ]]; then
-            echo "    MaiaCpp SKIP — WASM binary not found"
-            MAIACPP_SKIP=$((MAIACPP_SKIP + 1))
+    if [[ ! -f "$wasm_file" ]]; then
+        echo "    MaiaCpp SKIP — WASM binary not found"
+        MAIACPP_SKIP=$((MAIACPP_SKIP + 1))
+    elif [[ -f "$stem_runner_js" ]]; then
+        local wasm_raw
+        if [[ -f "$input_file" ]]; then
+            wasm_raw="$(run_timed "$WASM_TIMEOUT" node "$stem_runner_js" < "$input_file" 2>/dev/null)" || true
         else
-            local wasm_raw
-            if [[ -f "$input_file" ]]; then
-                if [[ -f "$runner_sh" ]]; then
-                    wasm_raw="$(run_timed "$WASM_TIMEOUT" bash "$runner_sh" "$wasm_file" < "$input_file" 2>/dev/null)" || true
-                else
-                    wasm_raw="$(run_timed "$WASM_TIMEOUT" node "$runner_js" "$wasm_file" < "$input_file" 2>/dev/null)" || true
-                fi
+            wasm_raw="$(echo '' | run_timed "$WASM_TIMEOUT" node "$stem_runner_js" 2>/dev/null)" || true
+        fi
+
+        local wasm_out
+        wasm_out="$(printf '%s\n' "$wasm_raw" | sed '/^\[webc\] program returned:/d;/^\[node-runner\] program returned:/d')"
+        local wasm_norm
+        wasm_norm="$(normalize_output "$wasm_out")"
+
+        local wasm_ref_norm="$gpp_norm"
+        local wasm_expected_file="$test_dir/${stem}.wasm_expected_output.txt"
+        if [[ -f "$wasm_expected_file" ]]; then
+            wasm_ref_norm="$(awk 'NF{last=NR} {lines[NR]=$0} END{for(i=1;i<=last;i++) print lines[i]}' "$wasm_expected_file")"
+        fi
+
+        if diff <(printf '%s\n' "$wasm_ref_norm") <(printf '%s\n' "$wasm_norm") >/dev/null 2>&1; then
+            echo "    MaiaCpp PASS"
+            MAIACPP_PASS=$((MAIACPP_PASS + 1))
+        else
+            echo "    MaiaCpp FAIL — output mismatch"
+            MAIACPP_FAIL=$((MAIACPP_FAIL + 1))
+        fi
+    elif [[ -f "$runner_sh" || -f "$runner_js" ]]; then
+        local wasm_raw
+        if [[ -f "$input_file" ]]; then
+            if [[ -f "$runner_sh" ]]; then
+                wasm_raw="$(run_timed "$WASM_TIMEOUT" bash "$runner_sh" "$wasm_file" < "$input_file" 2>/dev/null)" || true
             else
-                if [[ -f "$runner_sh" ]]; then
-                    wasm_raw="$(echo '' | run_timed "$WASM_TIMEOUT" bash "$runner_sh" "$wasm_file" 2>/dev/null)" || true
-                else
-                    wasm_raw="$(echo '' | run_timed "$WASM_TIMEOUT" node "$runner_js" "$wasm_file" 2>/dev/null)" || true
-                fi
+                wasm_raw="$(run_timed "$WASM_TIMEOUT" node "$runner_js" "$wasm_file" < "$input_file" 2>/dev/null)" || true
             fi
-
-            local wasm_out
-            wasm_out="$(printf '%s\n' "$wasm_raw" | sed '/^\[node-runner\] program returned:/d')"
-            local wasm_norm
-            wasm_norm="$(normalize_output "$wasm_out")"
-
-            local wasm_ref_norm="$gpp_norm"
-            local wasm_expected_file="$test_dir/${stem}.wasm_expected_output.txt"
-            if [[ -f "$wasm_expected_file" ]]; then
-                wasm_ref_norm="$(awk 'NF{last=NR} {lines[NR]=$0} END{for(i=1;i<=last;i++) print lines[i]}' "$wasm_expected_file")"
-            fi
-
-            if diff <(printf '%s\n' "$wasm_ref_norm") <(printf '%s\n' "$wasm_norm") >/dev/null 2>&1; then
-                echo "    MaiaCpp PASS"
-                MAIACPP_PASS=$((MAIACPP_PASS + 1))
+        else
+            if [[ -f "$runner_sh" ]]; then
+                wasm_raw="$(echo '' | run_timed "$WASM_TIMEOUT" bash "$runner_sh" "$wasm_file" 2>/dev/null)" || true
             else
-                echo "    MaiaCpp FAIL — output mismatch"
-                MAIACPP_FAIL=$((MAIACPP_FAIL + 1))
+                wasm_raw="$(echo '' | run_timed "$WASM_TIMEOUT" node "$runner_js" "$wasm_file" 2>/dev/null)" || true
             fi
+        fi
+
+        local wasm_out
+        wasm_out="$(printf '%s\n' "$wasm_raw" | sed '/^\[node-runner\] program returned:/d;/^\[webc\] program returned:/d')"
+        local wasm_norm
+        wasm_norm="$(normalize_output "$wasm_out")"
+
+        local wasm_ref_norm="$gpp_norm"
+        local wasm_expected_file="$test_dir/${stem}.wasm_expected_output.txt"
+        if [[ -f "$wasm_expected_file" ]]; then
+            wasm_ref_norm="$(awk 'NF{last=NR} {lines[NR]=$0} END{for(i=1;i<=last;i++) print lines[i]}' "$wasm_expected_file")"
+        fi
+
+        if diff <(printf '%s\n' "$wasm_ref_norm") <(printf '%s\n' "$wasm_norm") >/dev/null 2>&1; then
+            echo "    MaiaCpp PASS"
+            MAIACPP_PASS=$((MAIACPP_PASS + 1))
+        else
+            echo "    MaiaCpp FAIL — output mismatch"
+            MAIACPP_FAIL=$((MAIACPP_FAIL + 1))
         fi
     else
         echo "    MaiaCpp SKIP — WASM dist not found (run build_all.sh first)"

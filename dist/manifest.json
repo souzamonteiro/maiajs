@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-05-16T20:29:04.280Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.mXEfxa3A1a/es8_regex_smoke.c",
+  "generatedAt": "2026-05-22T18:32:36.584Z",
+  "input": "/tmp/maiajs_from_test_cpp.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/dist",
-  "appName": "es8_regex_smoke",
+  "appName": "maiajs_from_test_cpp",
   "artifacts": {
-    "wasm": "es8_regex_smoke.wasm",
-    "wrapper": "es8_regex_smoke.js",
-    "wat": null,
+    "wasm": "maiajs_from_test_cpp.wasm",
+    "wrapper": "maiajs_from_test_cpp.js",
+    "wat": "maiajs_from_test_cpp.wat",
     "browserRunner": "browser-runner.html",
     "browserMemoryFileStore": "browser-memory-file-store.js",
     "nodeRunner": "node-runner.js",
@@ -16,5 +16,5 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 722
+  "sourceBytes": 11628
 }

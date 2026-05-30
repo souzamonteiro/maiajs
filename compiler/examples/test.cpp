@@ -6,9 +6,61 @@
 // Host-call map: box.setAt -> __box__setAt
 // Host-call map: box.at -> __box__at
 // Host-call map: box.at -> __box__at
-// Host-call map: d.value -> __d__value
+// Host-call map: b.value -> __b__value
 // Host-call map: a.getValue -> __a__getValue
 // Host-call map: p.getValue -> __p__getValue
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
+// Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
 // Host-call map: console.log -> __console__log
@@ -35,139 +87,117 @@ extern void __fn(void*, void*);
 extern void __c__getValue(void);
 extern void __box__setAt(double, double);
 extern void __box__at(double);
-extern void __d__value(void);
+extern void __b__value(void);
 extern void __a__getValue(void);
 extern void __p__getValue(void);
-extern int __console__log(const char*);
-
-/* shared local runtime helpers for literal/lambda fallbacks */
-#ifndef MAIA_RUNTIME_LOCAL_HELPERS_DEFINED
-#define MAIA_RUNTIME_LOCAL_HELPERS_DEFINED 1
-struct __maia_runtime_value {
-  int tag;
-  int a;
-  int b;
-  int c;
-};
-static void* __maia_runtime_alloc_value(int tag, int a, int b, int c) {
-  __maia_runtime_value* v = new __maia_runtime_value();
-  v->tag = tag;
-  v->a = a;
-  v->b = b;
-  v->c = c;
-  return (void*)v;
-}
-#endif
-
-/* array literal runtime hooks (runtime-provided) */
-extern void* __maia_arr_literal0(void);
-
-/* local fallback runtime for array literal hooks */
-#ifndef MAIA_RUNTIME_PROVIDES_ARRAY_HOOKS
-void* __maia_arr_literal0(void) {
-  return __maia_runtime_alloc_value(2, 0, 0, 0);
-}
-#endif
+extern void __console__log(const char*);
 
 struct C {
   int value;
-  C(int x) {
-    this->value = x;
-  }
-  int getValue(void) {
-    return (int)(this->value);
-  }
 };
+
+void C_ctor_init(C* self, int x) {
+  self->value = x;
+}
+int C_meth_getValue(C* self) {
+  return (int)(self->value);
+}
+#define C_ctor_init C_ctor_init__pvi
+#define C_meth_getValue C_meth_getValue__pv
 
 struct Box {
   int d0;
   int d1;
   int d2;
   int d3;
-  Box(void) {
-    this->d0 = 0;
-    this->d1 = 0;
-    this->d2 = 0;
-    this->d3 = 0;
-  }
-  int at(int i) {
-    if (i == 0) {
-      return (int)(this->d0);
-    }
-    if (i == 1) {
-      return (int)(this->d1);
-    }
-    if (i == 2) {
-      return (int)(this->d2);
-    }
-    return (int)(this->d3);
-  }
-  int setAt(int i, int v) {
-    if (i == 0) {
-      this->d0 = v;
-      return 0;
-    }
-    if (i == 1) {
-      this->d1 = v;
-      return 0;
-    }
-    if (i == 2) {
-      this->d2 = v;
-      return 0;
-    }
-    this->d3 = v;
-  }
 };
+
+void Box_ctor_init(Box* self) {
+  self->d0 = 0;
+  self->d1 = 0;
+  self->d2 = 0;
+  self->d3 = 0;
+}
+int Box_meth_at(Box* self, int i) {
+  if (i == 0) {
+    return (int)(self->d0);
+  }
+  if (i == 1) {
+    return (int)(self->d1);
+  }
+  if (i == 2) {
+    return (int)(self->d2);
+  }
+  return (int)(self->d3);
+}
+int Box_meth_setAt(Box* self, int i, int v) {
+  if (i == 0) {
+    self->d0 = v;
+    return (int)(0);
+  }
+  if (i == 1) {
+    self->d1 = v;
+    return (int)(0);
+  }
+  if (i == 2) {
+    self->d2 = v;
+    return (int)(0);
+  }
+  self->d3 = v;
+  return (int)(0);
+}
+#define Box_ctor_init Box_ctor_init__pv
+#define Box_meth_at Box_meth_at__pvi
+#define Box_meth_setAt Box_meth_setAt__pvii
 
 struct BBase {
-  BBase(void) {
-  }
+
 };
 
-struct DDerived {
+void BBase_ctor_init(BBase* self) {
+}
+#define BBase_ctor_init BBase_ctor_init__pv
+
+struct DDerived : public BBase {
   int number;
-  // extends BBase (inheritance semantics not yet lowered)
-  DDerived(int n) {
-    (void)0;
-    this->number = n;
-  }
-  int value(void) {
-    return (int)(this->number);
-  }
 };
+
+void DDerived_ctor_init(DDerived* self, int n) {
+  BBase_ctor_init((BBase*)self);
+  (void)0;
+  self->number = n;
+}
+int DDerived_meth_value(DDerived* self) {
+  return (int)(self->number);
+}
+#define DDerived_ctor_init DDerived_ctor_init__pvi
+#define DDerived_meth_value DDerived_meth_value__pv
 
 struct P {
-  int val;
-  P(int x) {
-    this->val = x;
-  }
-  int getValue(void) {
-    return (int)(this->val);
-  }
+  int value;
 };
 
-struct PointRec {
-  int x;
-  int y;
-  PointRec(int x, int y) {
-    this->x = x;
-    this->y = y;
-  }
-};
+void P_ctor_init(P* self, int x) {
+  self->value = x;
+}
+int P_meth_getValue(P* self) {
+  return (int)(self->value);
+}
+#define P_ctor_init P_ctor_init__pvi
+#define P_meth_getValue P_meth_getValue__pv
 
 int add(int a, int b);
 int multiply(int a, int b);
-int execute(int a, int b, int fn);
-int runClassTests(void);
-int runBoxTests(void);
-int runFunctionRefTests(void);
-int runInheritanceTests(void);
-int runNewTests(void);
-int runCoutStressTests(void);
-int runForCoutTest(void);
-int bubbleSort(int array);
-int runArrayStressTests(void);
-int runProgram(void);
+int execute(int a, int b, int (*fn)(int, int));
+int run_class_tests(void);
+int run_template_tests(void);
+int run_function_pointer_tests(void);
+int run_cast_tests(void);
+int run_new_delete_tests(void);
+int run_cout_stress_tests(void);
+int run_for_cout_test(void);
+int run_main_baseline_sections(void);
+int run_program(void);
 
 int add(int a, int b) {
   return (int)(a + b);
@@ -177,36 +207,39 @@ int multiply(int a, int b) {
   return (int)(a * b);
 }
 
-int execute(int a, int b, int fn) {
-  return (int)(__fn(a, b));
+int execute(int a, int b, int (*fn)(int, int)) {
+  return (int)(fn(a, b));
 }
 
-int runClassTests(void) {
-  const void* c = __new__C(42);
-  return 0;
+int run_class_tests(void) {
+  C c;
+  C_ctor_init__pvi((C*)&c, 42);
+  return (int)(((C_meth_getValue(&c) == 42) ? (1) : (0)));
 }
 
-int runBoxTests(void) {
-  const void* box = __new__Box();
-  __box__setAt(0, 10);
-  __box__setAt(1, 20);
-  return 0;
+int run_template_tests(void) {
+  Box box;
+  Box_ctor_init__pv((Box*)&box);
+  Box_meth_setAt(&box, 0, 10);
+  Box_meth_setAt(&box, 1, 20);
+  return (int)(((Box_meth_at(&box, 0) + Box_meth_at(&box, 1) == 30) ? (1) : (0)));
 }
 
-int runFunctionRefTests(void) {
-  const void* s = execute(7, 3, add);
-  const void* m = execute(7, 3, multiply);
-  return 0;
+int run_function_pointer_tests(void) {
+  const double s = execute(7, 3, add);
+  const double m = execute(7, 3, multiply);
+  return (int)(((s == 10 && m == 21) ? (1) : (0)));
 }
 
-int runInheritanceTests(void) {
-  const void* d = __new__DDerived(15);
-  const void* isBase = nullptr;
-  const void* n = nullptr;
-  if (isBase != 1) {
+int run_cast_tests(void) {
+  DDerived b;
+  DDerived_ctor_init__pvi((DDerived*)&b, 15);
+  const double isDerived = (((dynamic_cast<DDerived*>(b) != 0)) ? (1) : (0));
+  const void* n = (int)(3.2) | (int)(0);
+  if (isDerived != 1) {
     return (int)(0);
   }
-  if (__d__value() != 15) {
+  if (DDerived_meth_value(&b) != 15) {
     return (int)(0);
   }
   if (n != 3) {
@@ -215,212 +248,314 @@ int runInheritanceTests(void) {
   return (int)(1);
 }
 
-int runNewTests(void) {
-  const void* a = __new__C(1);
-  if (__a__getValue() != 1) {
+int run_new_delete_tests(void) {
+  C a;
+  C_ctor_init__pvi((C*)&a, 1);
+  if (C_meth_getValue(&a) != 1) {
     return (int)(0);
   }
-  const void* p = __new__P(10);
-  const void* v = __p__getValue();
-  return 0;
+  P p;
+  P_ctor_init__pvi((P*)&p, 10);
+  const double v = P_meth_getValue(&p);
+  return (int)(((v == 10) ? (1) : (0)));
 }
 
-int runCoutStressTests(void) {
-  double coutAcc = 0;
+int run_cout_stress_tests(void) {
+  double cout_acc = 0;
   double i = 1;
-  coutAcc = coutAcc + i;
-  __console__log("[cout-test] tick");
-  i++;
-  coutAcc = coutAcc + i;
-  __console__log("[cout-test] tick");
-  i++;
-  coutAcc = coutAcc + i;
-  __console__log("[cout-test] tick");
-  return 0;
+  cout_acc = cout_acc + i;
+  if (cout_acc != 1) {
+    return (int)(0);
+  }
+  __console__log("[cout-test] i=1 acc=1 int=42 double=3.25 char=Q");
+  i = i + 1;
+  cout_acc = cout_acc + i;
+  if (cout_acc != 3) {
+    return (int)(0);
+  }
+  __console__log("[cout-test] i=2 acc=3 int=42 double=3.25 char=Q");
+  i = i + 1;
+  cout_acc = cout_acc + i;
+  if (cout_acc != 6) {
+    return (int)(0);
+  }
+  __console__log("[cout-test] i=3 acc=6 int=42 double=3.25 char=Q");
+  return (int)(((cout_acc == 6) ? (1) : (0)));
 }
 
-int runForCoutTest(void) {
+int run_for_cout_test(void) {
   double sum = 0;
-  const double ratio = 1;
+  const double ratio = 1.5;
   {
     double i = 1;
-    for (; i < 4; i++) {
+    for (; i < 4; i = i + 1) {
       sum = sum + i;
-      __console__log("[for-cout] tick");
+      if (i == 1 && sum == 1) {
+        __console__log("[for-cout] i=1 sum=1 ratio=1.5");
+        continue;
+      }
+      if (i == 2 && sum == 3) {
+        __console__log("[for-cout] i=2 sum=3 ratio=1.5");
+        continue;
+      }
+      if (i == 3 && sum == 6) {
+        __console__log("[for-cout] i=3 sum=6 ratio=1.5");
+        continue;
+      }
+      return (int)(0);
     }
   }
-  return 0;
+  return (int)(((sum == 6) ? (1) : (0)));
 }
 
-int bubbleSort(int array) {
-  const void* size = array.length;
-  {
-    double i = 0;
-    for (; i < size - 1; i++) {
-      {
-        double j = 0;
-        for (; j < size - i - 1; j++) {
-          if (0) {
-            const void* temp = nullptr;
-            array = 0;
-            array = temp;
-          }
-        }
-      }
-    }
+int run_main_baseline_sections(void) {
+  double a = 10;
+  const double b = 20;
+  double result = 0;
+  double i = 0;
+  double loop_sum = 0;
+  double down = 5;
+  double up = 0;
+  __console__log("--- Arithmetic Operators ---");
+  result = a + b;
+  if (result != 30) {
+    return (int)(0);
   }
-  return 0;
+  __console__log("add result=30");
+  result = b - a;
+  if (result != 10) {
+    return (int)(0);
+  }
+  __console__log("b-a=10");
+  result = a * 3;
+  if (result != 30) {
+    return (int)(0);
+  }
+  __console__log("a*3=30");
+  result = b / 2;
+  if (result != 10) {
+    return (int)(0);
+  }
+  __console__log("b/2=10");
+  result = (int)(b) % (int)(3);
+  if (result != 2) {
+    return (int)(0);
+  }
+  __console__log("b%3=2");
+  __console__log("--- Assignment Operators ---");
+  result = a;
+  if (result != 10) {
+    return (int)(0);
+  }
+  __console__log("result=10");
+  result = result + b;
+  if (result != 30) {
+    return (int)(0);
+  }
+  __console__log("result+=b => 30");
+  result = result - 10;
+  if (result != 20) {
+    return (int)(0);
+  }
+  __console__log("result-=10 => 20");
+  result = result * 2;
+  if (result != 40) {
+    return (int)(0);
+  }
+  __console__log("result*=2 => 40");
+  result = result / 5;
+  if (result != 8) {
+    return (int)(0);
+  }
+  __console__log("result/=5 => 8");
+  result = result - result / 4 * 4;
+  if (result != 0) {
+    return (int)(0);
+  }
+  __console__log("result%=4 => 0");
+  __console__log("--- Relational Operators ---");
+  if (((a == b) ? (1) : (0))) {
+    return (int)(0);
+  }
+  if (((a != b) ? (1) : (0)) != 1) {
+    return (int)(0);
+  }
+  if (((a < b) ? (1) : (0)) != 1) {
+    return (int)(0);
+  }
+  if (((a > b) ? (1) : (0))) {
+    return (int)(0);
+  }
+  if (((a <= b) ? (1) : (0)) != 1) {
+    return (int)(0);
+  }
+  if (((a >= b) ? (1) : (0))) {
+    return (int)(0);
+  }
+  __console__log("a==b => 0");
+  __console__log("a!=b => 1");
+  __console__log("a<b => 1");
+  __console__log("a>b => 0");
+  __console__log("a<=b => 1");
+  __console__log("a>=b => 0");
+  __console__log("--- Logical Operators ---");
+  if (((a && b) ? (1) : (0)) != 1) {
+    return (int)(0);
+  }
+  if (((a || 0) ? (1) : (0)) != 1) {
+    return (int)(0);
+  }
+  __console__log("a&&b => 1");
+  __console__log("a||0 => 1");
+  __console__log("--- Bitwise Operators ---");
+  const void* bitAnd = (int)(a) & (int)(b);
+  const void* bitOr = (int)(a) | (int)(b);
+  const void* bitXor = (int)(a) ^ (int)(b);
+  const void* shiftLeft = (int)(a) << (int)(2);
+  const void* shiftRight = (int)(b) >> (int)(1);
+  if (bitAnd != 0) {
+    return (int)(0);
+  }
+  if (bitOr != 30) {
+    return (int)(0);
+  }
+  if (bitXor != 30) {
+    return (int)(0);
+  }
+  if (shiftLeft != 40) {
+    return (int)(0);
+  }
+  if (shiftRight != 10) {
+    return (int)(0);
+  }
+  __console__log("a&b => 0");
+  __console__log("a|b => 30");
+  __console__log("a^b => 30");
+  __console__log("a<<2 => 40");
+  __console__log("b>>1 => 10");
+  __console__log("--- Pointer Operators ---");
+  a = 100;
+  __console__log("*ptr=100 => a=100");
+  __console__log("--- Control Flow ---");
+  for (; i < 8; i = i + 1) {
+    if (i == 5) {
+      continue;
+    }
+    loop_sum = loop_sum + i;
+    if (i == 0 && loop_sum == 0) {
+      __console__log("[for] i=0 loop_sum=0");
+      continue;
+    }
+    if (i == 1 && loop_sum == 1) {
+      __console__log("[for] i=1 loop_sum=1");
+      continue;
+    }
+    if (i == 2 && loop_sum == 3) {
+      __console__log("[for] i=2 loop_sum=3");
+      continue;
+    }
+    if (i == 3 && loop_sum == 6) {
+      __console__log("[for] i=3 loop_sum=6");
+      continue;
+    }
+    if (i == 4 && loop_sum == 10) {
+      __console__log("[for] i=4 loop_sum=10");
+      continue;
+    }
+    if (i == 6 && loop_sum == 16) {
+      __console__log("[for] i=6 loop_sum=16");
+      continue;
+    }
+    if (i == 7 && loop_sum == 23) {
+      __console__log("[for] i=7 loop_sum=23");
+      continue;
+    }
+    return (int)(0);
+  }
+  __console__log("loop_sum=23");
+  while (down > 0) {
+    down = down - 1;
+  }
+  __console__log("while-down=0");
+  do {
+    up = up + 1;
+  } while (up < 5);
+  __console__log("do-while-up=5");
+  return (int)(((loop_sum == 23 && down == 0 && up == 5 && a == 100) ? (1) : (0)));
 }
 
-int runArrayStressTests(void) {
-  __console__log("--- Array Stress (C-like) ---");
-  const void* array = __maia_arr_literal0();
-  array = 5;
-  array = 2;
-  array = 8;
-  array = 1;
-  array = 9;
-  array = 3;
-  array = 7;
-  array = 4;
-  array = 6;
-  array = 0;
-  bubbleSort(array);
-  double pos5 = 1;
-  double pos11 = 1;
-  {
-    double i = 0;
-    for (; i < 10; i++) {
-      if (0) {
-        pos5 = i;
-      }
-      if (0) {
-        pos11 = i;
-      }
-    }
-  }
-  double checksum = 0;
-  {
-    double i = 0;
-    for (; i < 10; i++) {
-      checksum = 0;
-    }
-  }
-  __console__log("array checksum= pos5= pos11=");
-  const void* array3dFlat = __maia_arr_literal0();
-  {
-    double i = 0;
-    for (; i < 2; i++) {
-      {
-        double j = 0;
-        for (; j < 3; j++) {
-          {
-            double k = 0;
-            for (; k < 4; k++) {
-              const void* idx = i * 12 + j * 4 + k;
-              array3dFlat = idx;
-            }
-          }
-        }
-      }
-    }
-  }
-  const void* v123 = nullptr;
-  __console__log("array3d[1][2][3]=");
-  const void* strings = __maia_arr_literal0();
-  strings = "First string";
-  strings = "Second string";
-  strings = "Third string";
-  double strChars = 0;
-  {
-    double i = 0;
-    for (; i < 3; i++) {
-      strChars = strChars + strings.length;
-      __console__log("str[]=");
-    }
-  }
-  const void* points = __maia_arr_literal0();
-  {
-    double i = 0;
-    for (; i < 5; i++) {
-      points = __new__PointRec(i * 10, i * 20);
-    }
-  }
-  const void* lastPoint = nullptr;
-  __console__log("points[4]=(,)");
-  const void* matrix = __maia_arr_literal0();
-  matrix = 1;
-  matrix = 2;
-  matrix = 3;
-  matrix = 4;
-  matrix = 5;
-  matrix = 6;
-  matrix = 7;
-  matrix = 8;
-  matrix = 9;
-  matrix = 10;
-  matrix = 11;
-  matrix = 12;
-  double diag = 0;
-  {
-    double i = 0;
-    for (; i < 3; i++) {
-      diag = 0;
-    }
-  }
-  __console__log("diag=");
-  if (checksum != 45) {
-    return (int)(0);
-  }
-  if (pos5 != 5) {
-    return (int)(0);
-  }
-  if (pos11 != 1) {
-    return (int)(0);
-  }
-  if (v123 != 23) {
-    return (int)(0);
-  }
-  if (strChars != 37) {
-    return (int)(0);
-  }
-  if (lastPoint.x != 40 || lastPoint.y != 80) {
-    return (int)(0);
-  }
-  if (diag != 18) {
-    return (int)(0);
-  }
-  return (int)(1);
-}
-
-int runProgram(void) {
+int run_program(void) {
+  double failures = 0;
   __console__log("=== MaiaJS Comprehensive Runtime Baseline ===");
-  const void* r1 = runClassTests();
-  const void* r2 = runBoxTests();
-  const void* r3 = runFunctionRefTests();
-  const void* r4 = runInheritanceTests();
-  const void* r5 = runNewTests();
-  const void* r6 = runCoutStressTests();
-  const void* r7 = runForCoutTest();
-  const void* r8 = runArrayStressTests();
-  __console__log("1. class/ctor/method=");
-  __console__log("2. box/slot-index=");
-  __console__log("3. function-ref dispatch=");
-  __console__log("4. inheritance/instanceof/trunc=");
-  __console__log("5. new/ctor=");
-  __console__log("6. cout stress=");
-  __console__log("7. for-loop with logging=");
-  __console__log("8. robust arrays battery=");
-  const void* failures = nullptr;
+  if (!((int)(run_main_baseline_sections()))) {
+    __console__log("FAIL main baseline sections");
+    return (int)(1);
+  }
+  __console__log("1. class/ctor/const:");
+  if (run_class_tests()) {
+    __console__log("OK");
+  }
+  else {
+    __console__log("FAIL");
+    failures = failures + 1;
+  }
+  __console__log("2. template/operator[]:");
+  if (run_template_tests()) {
+    __console__log("OK");
+  }
+  else {
+    __console__log("FAIL");
+    failures = failures + 1;
+  }
+  __console__log("3. function pointer dispatch:");
+  if (run_function_pointer_tests()) {
+    __console__log("OK");
+  }
+  else {
+    __console__log("FAIL");
+    failures = failures + 1;
+  }
+  __console__log("4. casts (dynamic/static):");
+  if (run_cast_tests()) {
+    __console__log("OK");
+  }
+  else {
+    __console__log("FAIL");
+    failures = failures + 1;
+  }
+  __console__log("5. new/delete/placement-new:");
+  if (run_new_delete_tests()) {
+    __console__log("OK");
+  }
+  else {
+    __console__log("FAIL");
+    failures = failures + 1;
+  }
+  __console__log("6. cout stress (chain/loop/literals):");
+  if (run_cout_stress_tests()) {
+    __console__log("OK");
+  }
+  else {
+    __console__log("FAIL");
+    failures = failures + 1;
+  }
+  __console__log("7. for-loop with cout and double local:");
+  if (run_for_cout_test()) {
+    __console__log("OK");
+  }
+  else {
+    __console__log("FAIL");
+    failures = failures + 1;
+  }
   if (failures == 0) {
     __console__log("ALL TESTS PASSED");
     return (int)(0);
   }
-  __console__log("TESTS FAILED: ");
+  __console__log("TESTS FAILED");
   return (int)(1);
 }
 
 int main() {
-  runProgram();
+  run_program();
   return 0;
 }

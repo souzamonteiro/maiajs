@@ -18,6 +18,15 @@ float pi = 3.1415269;
 
 /* Global functions */
 int main(void);
+int main(void);
+
+int main(void) {
+  printf("PI number: ");
+  printf("%g", pi);
+  printf("\n");
+  printf("PI number: %0.7f", pi);
+  return 0;
+}
 
 int main(void) {
   printf("PI number: ");

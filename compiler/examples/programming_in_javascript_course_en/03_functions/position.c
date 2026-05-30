@@ -16,6 +16,24 @@ extern void   __free(void* ptr);
 
 /* Global functions */
 int main(void);
+int main(void);
+
+int main(void) {
+  float position = 0;
+  float initial_position = 0;
+  float velocity = 0;
+  float time = 0;
+
+  printf("Enter the initial position of the object in m: ");
+  scanf("%f", &initial_position);
+  printf("Enter the velocity of the object in m/s: ");
+  scanf("%f", &velocity);
+  printf("Enter the elapsed time in s: ");
+  scanf("%f", &time);
+  position = initial_position + velocity * time;
+  printf("Current position of the object: %.2f m.\n", position);
+  return 0;
+}
 
 int main(void) {
   float position = 0;

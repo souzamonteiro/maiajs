@@ -36,6 +36,30 @@ extern void* memchr(const void* s, int c, unsigned int n);
 
 /* Global functions */
 int main(void);
+int main(void);
+
+int main(void) {
+  char word[50];
+  int i = 0;
+  int j = 0;
+  int is_palindrome = 1;
+
+  printf("Enter a word: ");
+  scanf("%s", word);
+  j = strlen(word) - 1;
+  for (i = 0; i < strlen(word); i++) {
+    if (word[i] != word[j]) {
+      is_palindrome = 0;
+    }
+    j--;
+  }
+  if (is_palindrome) {
+    printf("The word is a palindrome!");
+  } else {
+    printf("The word is not a palindrome!");
+  }
+  return 0;
+}
 
 int main(void) {
   char word[50];

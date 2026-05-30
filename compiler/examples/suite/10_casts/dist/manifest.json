@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-17T19:03:15.077Z",
+  "generatedAt": "2026-05-30T02:15:17.319Z",
   "input": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/10_casts/casts.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/10_casts/dist",
   "appName": "casts",
@@ -13,13 +13,8 @@
     "nodeRunnerShell": "node-runner.sh"
   },
   "linkedLibraries": [],
-  "copiedLibraries": [
-    "ctype",
-    "setjmp",
-    "stdlib",
-    "string"
-  ],
+  "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 1888
+  "sourceBytes": 2112
 }

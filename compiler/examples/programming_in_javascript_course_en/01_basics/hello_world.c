@@ -16,6 +16,12 @@ extern void   __free(void* ptr);
 
 /* Global functions */
 int main(void);
+int main(void);
+
+int main(void) {
+  printf("Hello World!");
+  return 0;
+}
 
 int main(void) {
   printf("Hello World!");

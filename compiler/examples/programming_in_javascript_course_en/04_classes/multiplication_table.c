@@ -43,6 +43,18 @@ void MultiplicationTable_createTable__i(MultiplicationTable* self, int n) {
 
 /* Global functions */
 int main(void);
+int main(void);
+
+int main(void) {
+  MultiplicationTable multTable;
+  int n = 0;
+
+  printf("Which multiplication table would you like to display? ");
+  scanf("%d", &n);
+  printf("\n");
+  MultiplicationTable_createTable__i(&multTable, n);
+  return 0;
+}
 
 int main(void) {
   MultiplicationTable multTable;

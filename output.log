@@ -1,0 +1,10 @@
+Using webcpp: /Volumes/External_SSD/Documentos/Projects/maiacpp/bin/webcpp.sh
+==> webjs: compile
+[webjs] transpiling JS -> C++: /Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/test.js
+[webjs] C++ emitted: /Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/test.cpp
+[webjs] --no-webcpp set, stopping after C++ emission
+==> webcpp: create dist (browser + node)
+Parsing: /Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/test.cpp
+Parser: ok
+C gerado em: /var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.v6Unza2VSD/test.c
+[webc] Validation error: WebAssembly.Module(): Compiling function #47 failed: call[2] expected type f64, found if of type i32 @+5523

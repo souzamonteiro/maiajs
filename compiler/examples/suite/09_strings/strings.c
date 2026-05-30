@@ -21,6 +21,11 @@ int c_strcpy__pvpv(char* dst, char* src);
 int c_strcat__pvpv(char* dst, char* src);
 int char_count__pvc(char* s, char c);
 int main(void);
+int c_strlen__pv(void* s);
+int c_strcmp__pvpv(void* a, void* b);
+int c_strcpy__pvpv(char* dst, void* src);
+int c_strcat__pvpv(char* dst, void* src);
+int char_count__pvc(void* s, char c);
 
 int c_strlen__pv(char* s) {
   int n = 0;
@@ -89,9 +94,77 @@ int main(void) {
   return 0;
 }
 
-/* Lowering diagnostics: 5 event(s) (structured-cstyle-body=5) */
+int c_strlen__pv(void* s) {
+  {
+  int n=0;
+  while(*s)
+  {
+  ++n;
+  ++s;
+  }
+  returnn;
+  }
+  return (int)0;
+}
+
+int c_strcmp__pvpv(void* a, void* b) {
+  {
+  while(*a&&*b&&*a==*b)
+  {
+  ++a;
+  ++b;
+  }
+  return(unsignedchar)*a-(unsignedchar)*b;
+  }
+}
+
+int c_strcpy__pvpv(char* dst, void* src) {
+  {
+  while(*src)
+  {
+  *dst++=*src++;
+  }
+  *dst='\0';
+  }
+  return (int)0;
+}
+
+int c_strcat__pvpv(char* dst, void* src) {
+  {
+  while(*dst)
+  {
+  ++dst;
+  }
+  while(*src)
+  {
+  *dst++=*src++;
+  }
+  *dst='\0';
+  }
+  return (int)0;
+}
+
+int char_count__pvc(void* s, char c) {
+  {
+  int n=0;
+  while(*s)
+  {
+  if(*s==c)++n;
+  ++s;
+  }
+  returnn;
+  }
+  return (int)0;
+}
+
+/* Lowering diagnostics: 10 event(s) (structured-cstyle-body=10) */
 /* - c_strlen: structured-cstyle-body (3 stmt(s)) */
 /* - c_strcmp: structured-cstyle-body (2 stmt(s)) */
 /* - c_strcpy: structured-cstyle-body (2 stmt(s)) */
 /* - c_strcat: structured-cstyle-body (3 stmt(s)) */
 /* - char_count: structured-cstyle-body (3 stmt(s)) */
+/* - c_strlen: structured-cstyle-body (raw-body 10 line(s)) */
+/* - c_strcmp: structured-cstyle-body (raw-body 8 line(s)) */
+/* - c_strcpy: structured-cstyle-body (raw-body 8 line(s)) */
+/* - c_strcat: structured-cstyle-body (raw-body 12 line(s)) */
+/* - char_count: structured-cstyle-body (raw-body 10 line(s)) */

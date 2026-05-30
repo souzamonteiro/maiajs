@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-17T19:03:10.144Z",
+  "generatedAt": "2026-05-30T02:15:12.373Z",
   "input": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/03_functions/functions.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/03_functions/dist",
   "appName": "functions",
@@ -13,13 +13,8 @@
     "nodeRunnerShell": "node-runner.sh"
   },
   "linkedLibraries": [],
-  "copiedLibraries": [
-    "ctype",
-    "setjmp",
-    "stdlib",
-    "string"
-  ],
+  "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 3425
+  "sourceBytes": 3767
 }

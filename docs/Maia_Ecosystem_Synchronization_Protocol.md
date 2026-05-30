@@ -20,6 +20,13 @@ After the principal repository is validated, committed, and pushed, update the p
 
 Do not develop or validate the downstream project against a sibling checkout outside the repository. Every repository in the suite must build, regenerate parsers, assemble, and validate using its own in-repo submodules.
 
+## Submodule Sync Enforcement (Mandatory)
+
+1. Apply code changes in the owning principal repository only; do not commit feature/fix changes directly inside a downstream submodule checkout.
+2. After pushing the principal repository, go to each downstream principal repository and run `./git_pull.sh` from repository root.
+3. Commit the resulting submodule pointer update in the downstream parent repository.
+4. Execute downstream tests only after this pull-and-pointer-update sequence.
+
 Examples:
 
 1. MaiaJS must use `./maiacpp`, `./maiac`, `./maiawasm`, and `./maiacc` from inside the MaiaJS repository.

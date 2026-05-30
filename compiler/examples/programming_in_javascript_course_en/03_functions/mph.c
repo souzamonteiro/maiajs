@@ -16,6 +16,20 @@ extern void   __free(void* ptr);
 
 /* Global functions */
 int main(void);
+int main(void);
+
+int main(void) {
+  float mph = 0;
+  float kmh = 0;
+
+  printf("Enter the speed in km/h: ");
+  scanf("%f", &kmh);
+  mph = kmh / 1.61;
+  printf("Speed in mph: ");
+  printf("%g", mph);
+  printf(".\n");
+  return 0;
+}
 
 int main(void) {
   float mph = 0;

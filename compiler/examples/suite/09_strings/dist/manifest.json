@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-17T19:03:14.413Z",
+  "generatedAt": "2026-05-21T22:39:48.529Z",
   "input": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/09_strings/strings.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/09_strings/dist",
   "appName": "strings",
@@ -13,12 +13,7 @@
     "nodeRunnerShell": "node-runner.sh"
   },
   "linkedLibraries": [],
-  "copiedLibraries": [
-    "ctype",
-    "setjmp",
-    "stdlib",
-    "string"
-  ],
+  "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
   "sourceBytes": 2249

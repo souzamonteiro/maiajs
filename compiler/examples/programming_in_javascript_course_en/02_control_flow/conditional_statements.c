@@ -16,6 +16,45 @@ extern void   __free(void* ptr);
 
 /* Global functions */
 int main(void);
+int main(void);
+
+int main(void) {
+  int age = 0;
+  char gender = 0;
+
+  printf("Enter your age: ");
+  scanf("%d", &age);
+  if (age > 18) {
+    printf("You are older than 18.");
+    printf("\n");
+  } else {
+    if (age < 18) {
+      printf("You are younger than 18.");
+      printf("\n");
+    } else {
+      printf("You are 18 years old.");
+      printf("\n");
+    }
+  }
+  printf("Enter your gender (M/F): ");
+  scanf(" %c", &gender);
+  switch (gender) {
+    case 'm':
+    case 'M':
+      printf("You are male.");
+      printf("\n");
+      break;
+    case 'f':
+    case 'F':
+      printf("You are female.");
+      printf("\n");
+      break;
+    default:
+      printf("Gender undefined.");
+      printf("\n");
+  }
+  return 0;
+}
 
 int main(void) {
   int age = 0;

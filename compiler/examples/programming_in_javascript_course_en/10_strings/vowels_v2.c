@@ -36,6 +36,27 @@ extern void* memchr(const void* s, int c, unsigned int n);
 
 /* Global functions */
 int main(void);
+int main(void);
+
+int main(void) {
+  int i = 0;
+  char name[255];
+  int count = 0;
+
+  printf("Enter your name: ");
+  scanf("%s", name);
+  printf("\n");
+  count = 0;
+  for (i = 0; i < strlen(name); i++) {
+    if ((name[i] == 'a') || (name[i] == 'e') || (name[i] == 'i') || (name[i] == 'o') || (name[i] == 'u')) {
+      count++;
+    }
+  }
+  printf("Your name contains ");
+  printf("%d", count);
+  printf(" vowels.\n");
+  return 0;
+}
 
 int main(void) {
   int i = 0;

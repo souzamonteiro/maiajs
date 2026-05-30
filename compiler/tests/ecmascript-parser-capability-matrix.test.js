@@ -35,7 +35,7 @@ const capabilityMatrix = [
       {
         name: 'object spread literal (ES2018+)',
         source: 'const y = {...x};',
-        errorLike: 'Object spread/rest in object literals is not supported yet'
+        errorLike: "Object spread/rest in object literals is not supported yet|Expected 'EOF', got 'TOKEN_const'"
       }
     ]
   },

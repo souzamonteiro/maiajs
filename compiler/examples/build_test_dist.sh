@@ -11,12 +11,12 @@ PROJECTS_ROOT="$(cd "$ROOT_DIR/.." && pwd -P)"
 resolve_webcpp() {
 	local local_path="$1"
 	local sibling_path="$2"
-	if [[ -f "$local_path" ]]; then
-		echo "$local_path"
-		return 0
-	fi
 	if [[ -f "$sibling_path" ]]; then
 		echo "$sibling_path"
+		return 0
+	fi
+	if [[ -f "$local_path" ]]; then
+		echo "$local_path"
 		return 0
 	fi
 	return 1
@@ -28,6 +28,8 @@ if [[ -z "$WEBCPP_SH" ]]; then
 	echo "ERROR: webcpp.sh not found (checked local and sibling MaiaCpp checkouts)." >&2
 	exit 1
 fi
+
+echo "Using webcpp: $WEBCPP_SH"
 
 rm -rf "$SCRIPT_DIR/dist"
 rm -rf "$SCRIPT_DIR/out"

@@ -16,6 +16,31 @@ extern void   __free(void* ptr);
 
 /* Global functions */
 int main(void);
+int main(void);
+
+int main(void) {
+  int x = 0;
+  float y = 0;
+  double z = 0;
+  char a = 0;
+  char b[] = "Hello World";
+
+  x = 1;
+  y = 2;
+  z = 3;
+  a = 'A';
+  printf("%d", x);
+  printf("\n");
+  printf("%g", y);
+  printf("\n");
+  printf("%g", z);
+  printf("\n");
+  printf("%c", a);
+  printf("\n");
+  printf("%s", b);
+  printf("\n");
+  return 0;
+}
 
 int main(void) {
   int x = 0;

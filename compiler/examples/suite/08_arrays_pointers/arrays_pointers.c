@@ -17,11 +17,14 @@ extern void   __free(void* ptr);
 /* Global functions */
 int array_sum__pvi(int* arr, int n);
 int main(void);
+int array_sum__pvi(void* arr, int n);
 
 int array_sum__pvi(int* arr, int n) {
   int i;
   int s = 0;
-  for (i = 0; i < n; ++i) s += arr[i];
+  for (i = 0;
+  i < n;
+  ++i) s += arr[i];
   return s;
 }
 
@@ -58,5 +61,17 @@ int main(void) {
   return 0;
 }
 
-/* Lowering diagnostics: 1 event(s) (structured-cstyle-body=1) */
-/* - array_sum: structured-cstyle-body (raw-body 4 line(s)) */
+int array_sum__pvi(void* arr, int n) {
+  {
+  int s=0;
+  for(inti=0;
+  i<n;
+  ++i)s+=arr[i];
+  returns;
+  }
+  return (int)0;
+}
+
+/* Lowering diagnostics: 2 event(s) (structured-cstyle-body=2) */
+/* - array_sum: structured-cstyle-body (raw-body 6 line(s)) */
+/* - array_sum: structured-cstyle-body (raw-body 8 line(s)) */

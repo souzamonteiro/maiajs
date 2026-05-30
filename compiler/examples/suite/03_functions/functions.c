@@ -28,14 +28,20 @@ int double_val__i(int x);
 int negate__i(int x);
 int apply__N5IntOpi(IntOp f, int x);
 int main(void);
+int swap_ref__ii(int a, int b);
+int sum_cref__N8constintN8constint(int x, int y);
 
 int factorial__i(int n) {
-  if (n <= 1) return 1;
+  if (n <= 1) {
+    return 1;
+  }
   return n * factorial__i(n - 1);
 }
 
 int fib__i(int n) {
-  if (n <= 1) return n;
+  if (n <= 1) {
+    return n;
+  }
   return fib__i(n - 1) + fib__i(n - 2);
 }
 
@@ -59,8 +65,12 @@ int sum_cref__ii(int x, int y) {
 }
 
 int clamp__iii(int x, int lo, int hi) {
-  if (x < lo) return lo;
-  if (x > hi) return hi;
+  if (x < lo) {
+    return lo;
+  }
+  if (x > hi) {
+    return hi;
+  }
   return x;
 }
 
@@ -152,8 +162,22 @@ int main(void) {
   return 0;
 }
 
-/* Lowering diagnostics: 4 event(s) (structured-cstyle-body=4) */
+int swap_ref__ii(int a, int b) {
+  {
+  int tmp=a;
+  a=b;
+  b=tmp;
+  }
+  return (int)0;
+}
+
+int sum_cref__N8constintN8constint(int x, int y) {
+  return x+y;
+}
+
+/* Lowering diagnostics: 5 event(s) (structured-cstyle-body=5) */
 /* - factorial: structured-cstyle-body (2 stmt(s)) */
 /* - fib: structured-cstyle-body (2 stmt(s)) */
 /* - swap_ref: structured-cstyle-body (3 stmt(s)) */
 /* - clamp: structured-cstyle-body (3 stmt(s)) */
+/* - swap_ref: structured-cstyle-body (raw-body 6 line(s)) */

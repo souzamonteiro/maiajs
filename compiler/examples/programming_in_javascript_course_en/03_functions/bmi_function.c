@@ -17,9 +17,24 @@ extern void   __free(void* ptr);
 /* Global functions */
 float calcBMI__ff(float weight, float height);
 int main(void);
+int main(void);
 
 float calcBMI__ff(float weight, float height) {
   return weight / (height * height);
+}
+
+int main(void) {
+  float weight = 0;
+  float height = 0;
+
+  printf("Enter your weight in kg: ");
+  scanf("%f", &weight);
+  printf("Enter your height in m: ");
+  scanf("%f", &height);
+  printf("BMI: ");
+  printf("%g", calcBMI__ff((float)(weight), (float)(height)));
+  printf(".\n");
+  return 0;
 }
 
 int main(void) {

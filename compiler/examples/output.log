@@ -1,0 +1,4 @@
+Parsing: /Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/test.cpp
+Parser: ok
+C gerado em: /var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.1PyKe0j4TV/test.c
+[webc] Validation error: WebAssembly.Module(): Compiling function #49 failed: i32.or[0] expected type i32, found f64.const of type f64 @+3676

@@ -167,6 +167,19 @@ void HomoNeanderthalensis_destroy(HomoNeanderthalensis* self) {
 
 /* Global functions */
 int main(void);
+int main(void);
+
+int main(void) {
+  HomoNeanderthalensis fred;
+  HomoNeanderthalensis_init__pv(&fred, "Fred");
+  HomoSapiens adam;
+  HomoSapiens_init__pv(&adam, "Adam");
+
+  HomoSapiens_say__pv(&adam, "What a lovely day!");
+  HomoSapiens_say__pvN11HomoErectus(&adam, "Who are you?", fred);
+  HomoHabilis_fight__N1T((HomoHabilis*)&fred, &adam);
+  return 0;
+}
 
 int main(void) {
   HomoNeanderthalensis fred;

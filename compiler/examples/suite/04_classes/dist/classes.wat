@@ -395,7 +395,13 @@
     f64.const 4
     call $Vec2_init__dd
     i32.const 0
-    f64.convert_i32_s
+    drop
+    local.get $__frame
+    i32.const 0
+    i32.add
+    i32.const 0
+    i32.add
+    f64.load
     f64.const 3
     f64.eq
     i32.eqz
@@ -413,8 +419,12 @@
       call $imp_printf
       drop
     end
+    local.get $__frame
     i32.const 0
-    f64.convert_i32_s
+    i32.add
+    i32.const 8
+    i32.add
+    f64.load
     f64.const 4
     f64.eq
     i32.eqz
@@ -478,15 +488,23 @@
     i32.add
     i32.load
     i32.store
+    local.get $__frame
+    i32.const 16
+    i32.add
     i32.const 0
-    f64.convert_i32_s
+    i32.add
+    f64.load
     f64.const 3
     f64.eq
     i32.eqz
     i32.eqz
     if (result i32)
-      i32.const 0
-      f64.convert_i32_s
+      local.get $__frame
+      i32.const 16
+      i32.add
+      i32.const 8
+      i32.add
+      f64.load
       f64.const 4
       f64.eq
       i32.eqz
@@ -515,6 +533,8 @@
     f64.const 0
     f64.const 0
     call $Vec2_init__dd
+    i32.const 0
+    drop
     local.get $__frame
     i32.const 32
     i32.add
@@ -557,15 +577,23 @@
     i32.store
     local.get $__tmp_struct_dst
     drop
+    local.get $__frame
+    i32.const 32
+    i32.add
     i32.const 0
-    f64.convert_i32_s
+    i32.add
+    f64.load
     f64.const 3
     f64.eq
     i32.eqz
     i32.eqz
     if (result i32)
-      i32.const 0
-      f64.convert_i32_s
+      local.get $__frame
+      i32.const 32
+      i32.add
+      i32.const 8
+      i32.add
+      f64.load
       f64.const 4
       f64.eq
       i32.eqz
@@ -594,6 +622,8 @@
     f64.const 1
     f64.const 0
     call $Vec2_init__dd
+    i32.const 0
+    drop
     local.get $__frame
     i32.const 0
     i32.add

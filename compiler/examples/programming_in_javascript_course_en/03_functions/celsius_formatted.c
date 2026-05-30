@@ -17,9 +17,19 @@ extern void   __free(void* ptr);
 /* Global functions */
 float celsius__f(float f);
 int main(void);
+int main(void);
 
 float celsius__f(float f) {
   return (f - 32) / 1.8;
+}
+
+int main(void) {
+  float f = 0;
+
+  printf("Enter the temperature in Fahrenheit: ");
+  scanf("%f", &f);
+  printf("Temperature in Celsius: %.2f.\n", celsius__f((float)(f)));
+  return 0;
 }
 
 int main(void) {

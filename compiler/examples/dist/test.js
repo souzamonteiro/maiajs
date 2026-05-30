@@ -2366,10 +2366,10 @@ const _buildHostEnv = // Auto-generated host env – do not edit manually
     "__c__getValue": () => { const target = __resolveHost(["c","getValue"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
     "__box__setAt": (p0, p1) => { const target = __resolveHost(["box","setAt"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue, p0, p1); return undefined; },
     "__box__at": (p0) => { const target = __resolveHost(["box","at"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue, p0); return undefined; },
-    "__d__value": () => { const target = __resolveHost(["d","value"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
+    "__b__value": () => { const target = __resolveHost(["b","value"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
     "__a__getValue": () => { const target = __resolveHost(["a","getValue"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
     "__p__getValue": () => { const target = __resolveHost(["p","getValue"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
-    "__console__log": (p0) => { const text = String(readCString(p0)); __hostWrite(text + '\n'); return 0; },
+    "__console__log": (p0) => { const text = String(readCString(p0)); __hostWrite(text + '\n'); return undefined; },
   };
 });
 const _linkedLibraries = [];
@@ -2445,11 +2445,13 @@ function _runEntrypointWithLongjmpResume(entry, maxAttempts = 32) {
 function createImports(getMemory, opts = {}) {
   const write = opts.write || (s => process.stdout.write(s));
   const defaultBuiltins = createDefaultHostBuiltins(getMemory, opts);
+  const c89Hosts = createC89JsHosts(getMemory, opts);
 
   return {
     env: {
       printf: createPrintfHost({ getMemory, write }),
       ...defaultBuiltins,
+      ...c89Hosts,
       ..._buildHostEnv(getMemory, { write }),
     }
   };
@@ -2547,9 +2549,22 @@ async function run(wasmPath, opts) {
       } else {
         // Standalone execution: [node, script.js, wasm-path?, arg1, arg2, ...]
         const _pathMod = require('path');
-        const progName = _pathMod.basename(wasmPath, '.wasm');
+        const _progStem = _pathMod.basename(wasmPath, '.wasm');
+        const _distDir = _pathMod.dirname(wasmPath);
+        const _appDir = _pathMod.basename(_distDir) === 'dist' ? _pathMod.dirname(_distDir) : _distDir;
+        const progName = _appDir + '//' + _progStem;
         argv = [progName].concat(process.argv.slice(3));
-        env  = Object.keys(process.env).map(function(k) { return k + '=' + process.env[k]; });
+        try {
+          const { spawnSync } = require('child_process');
+          const out = spawnSync('env', ['-0'], { encoding: 'utf8' });
+          if (out && out.status === 0 && typeof out.stdout === 'string') {
+            env = out.stdout.split(' ').filter((entry) => entry && entry.includes('='));
+          } else {
+            env = Object.keys(process.env).map(function(k) { return k + '=' + process.env[k]; });
+          }
+        } catch (_) {
+          env = Object.keys(process.env).map(function(k) { return k + '=' + process.env[k]; });
+        }
       }
     } else {
       // Browser: no access to process — pass empty argc/argv/env.

@@ -116,6 +116,12 @@ void Tractor_destroy(Tractor* self) {
 
 /* Global functions */
 int main(void);
+int main(void);
+
+int main(void) {
+  printf("The tractor MF 3400 year 2022 costs $75000.\n");
+  return 0;
+}
 
 int main(void) {
   printf("The tractor MF 3400 year 2022 costs $75000.\n");
