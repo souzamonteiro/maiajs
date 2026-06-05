@@ -14,6 +14,7 @@ function usage() {
 
 Options:
   --file FILE          Input ECMAScript source file.
+  --strict-lowering    Fail on unsupported lowering/fallback paths.
   --ast-show           Print AST tree to stdout.
   --ast-xml-out FILE   Write AST XML.
   --ast-json-out FILE  Write AST JSON.
@@ -69,6 +70,7 @@ function toJsonTree(node) {
 function parseArgs(argv) {
   const options = {
     file: '',
+    strictLowering: process.env.MAIAJS_STRICT_LOWERING === '1',
     astShow: false,
     astXmlOut: '',
     astJsonOut: '',
@@ -82,6 +84,9 @@ function parseArgs(argv) {
       case '--file':
         if (i + 1 >= argv.length) err('missing value for --file');
         options.file = argv[++i];
+        break;
+      case '--strict-lowering':
+        options.strictLowering = true;
         break;
       case '--ast-show':
         options.astShow = true;
@@ -148,13 +153,33 @@ function findFirstIdentifierValue(node) {
   return found;
 }
 
-function extractPathFromMemberExpression(memberExpressionNode) {
+function extractPathFromMemberExpression(memberExpressionNode, compileContext = null) {
   if (!memberExpressionNode || memberExpressionNode.kind !== 'nonterminal' || memberExpressionNode.name !== 'memberExpression') {
+    if (compileContext) {
+      reportUnsupportedLowering(
+        compileContext,
+        'member-expression-path-unlowerable',
+        'memberExpression node is missing or malformed'
+      );
+      if (compileContext.strictLowering) {
+        err('unsupported lowering: memberExpression node');
+      }
+    }
     return null;
   }
 
   const children = Array.isArray(memberExpressionNode.children) ? memberExpressionNode.children : [];
   if (children.length === 0) {
+    if (compileContext) {
+      reportUnsupportedLowering(
+        compileContext,
+        'member-expression-path-unlowerable',
+        'memberExpression has no children to resolve path'
+      );
+      if (compileContext.strictLowering) {
+        err('unsupported lowering: memberExpression empty children');
+      }
+    }
     return null;
   }
 
@@ -173,6 +198,16 @@ function extractPathFromMemberExpression(memberExpressionNode) {
     if (firstTerminal) {
       base = firstTerminal;
     } else {
+      if (compileContext) {
+        reportUnsupportedLowering(
+          compileContext,
+          'member-expression-path-unlowerable',
+          'memberExpression base identifier could not be resolved'
+        );
+        if (compileContext.strictLowering) {
+          err('unsupported lowering: memberExpression base identifier');
+        }
+      }
       return null;
     }
   }
@@ -180,22 +215,68 @@ function extractPathFromMemberExpression(memberExpressionNode) {
   const pathSegments = [base];
   for (let i = 1; i < children.length; i += 1) {
     const child = children[i];
-    if (!child || child.kind !== 'terminal' || child.value !== '.') {
+    if (!child || child.kind !== 'terminal') {
+      continue;
+    }
+
+    if (child.value !== '.') {
+      if (compileContext && (child.token === 'TOKEN__5B_' || child.token === 'TOKEN__5D_')) {
+        reportUnsupportedLowering(
+          compileContext,
+          'member-expression-path-unlowerable',
+          'computed member access is not supported in member path lowering'
+        );
+        if (compileContext.strictLowering) {
+          err('unsupported lowering: computed member access');
+        }
+        return null;
+      }
       continue;
     }
 
     const next = children[i + 1];
     if (!next || next.kind !== 'nonterminal') {
+      if (compileContext) {
+        reportUnsupportedLowering(
+          compileContext,
+          'member-expression-path-unlowerable',
+          'memberExpression dot access is missing nonterminal property node'
+        );
+        if (compileContext.strictLowering) {
+          err('unsupported lowering: memberExpression dot property node');
+        }
+      }
       continue;
     }
     if (next.name !== 'propertyIdentifierName' && next.name !== 'identifierName') {
+      if (compileContext) {
+        reportUnsupportedLowering(
+          compileContext,
+          'member-expression-path-unlowerable',
+          `memberExpression property node kind '${next.name}' is not supported`
+        );
+        if (compileContext.strictLowering) {
+          err(`unsupported lowering: memberExpression property node '${next.name}'`);
+        }
+      }
       continue;
     }
 
     const suffix = findFirstIdentifierValue(next);
-    if (suffix) {
-      pathSegments.push(suffix);
+    if (!suffix) {
+      if (compileContext) {
+        reportUnsupportedLowering(
+          compileContext,
+          'member-expression-path-unlowerable',
+          'memberExpression property identifier could not be resolved'
+        );
+        if (compileContext.strictLowering) {
+          err('unsupported lowering: memberExpression property identifier');
+        }
+      }
+      continue;
     }
+    pathSegments.push(suffix);
   }
 
   return pathSegments;
@@ -1219,9 +1300,14 @@ function buildCompileContext(tree, hostRegistry) {
     ...Array.from(lambdaStats.asyncSignatures.values())
   ].some((signature) => signature.captureCount > 0);
 
+  const options = arguments.length > 2 && arguments[2] ? arguments[2] : {};
+
   return {
     tree,
     hostRegistry,
+    strictLowering: Boolean(options.strictLowering),
+    loweringWarnings: [],
+    loweringWarningKeys: new Set(),
     localFunctionNames: collectTopLevelFunctionNames(tree),
     topLevelBindingNames: collectTopLevelBindingNames(tree),
     topLevelClassNames: collectTopLevelClassNames(tree),
@@ -1237,6 +1323,39 @@ function buildCompileContext(tree, hostRegistry) {
     hasLambdaCapturePayload,
     functionReturnTypes
   };
+}
+
+function reportUnsupportedLowering(compileContext, code, detail) {
+  if (!compileContext) {
+    return;
+  }
+
+  const message = `[${code}] ${detail}`;
+  const warningKeys = compileContext.loweringWarningKeys;
+  if (warningKeys && !warningKeys.has(message)) {
+    warningKeys.add(message);
+    compileContext.loweringWarnings.push(message);
+  }
+
+  if (compileContext.strictLowering) {
+    err(`strict-lowering violation: ${message}`);
+  }
+}
+
+function printLoweringWarnings(compileContext) {
+  if (!compileContext || !Array.isArray(compileContext.loweringWarnings) || compileContext.loweringWarnings.length === 0) {
+    return;
+  }
+
+  const total = compileContext.loweringWarnings.length;
+  const maxPreview = 20;
+  process.stderr.write(`[maiajs] lowering warnings: ${total}\n`);
+  for (const warning of compileContext.loweringWarnings.slice(0, maxPreview)) {
+    process.stderr.write(`  - ${warning}\n`);
+  }
+  if (total > maxPreview) {
+    process.stderr.write(`  ... ${total - maxPreview} more warning(s)\n`);
+  }
 }
 
 function isLocalFunctionPath(pathSegments, compileContext) {
@@ -1327,7 +1446,7 @@ function extractDirectNewClassInfo(node, compileContext) {
     return null;
   }
 
-  const ctorPath = extractPathFromMemberExpression(children[1]);
+  const ctorPath = extractPathFromMemberExpression(children[1], compileContext);
   const className = Array.isArray(ctorPath) && ctorPath.length > 0
     ? ctorPath.join('__')
     : findFirstIdentifierValue(children[1]);
@@ -1609,6 +1728,16 @@ function mapInfixOperator(operator) {
 
 function lowerIdentifierValue(identifierValue, compileContext = null) {
   if (!identifierValue) {
+    if (compileContext) {
+      reportUnsupportedLowering(
+        compileContext,
+        'identifier-expression-unlowerable',
+        'identifier value could not be resolved'
+      );
+      if (compileContext.strictLowering) {
+        err('unsupported lowering: identifier value');
+      }
+    }
     return null;
   }
 
@@ -1619,6 +1748,11 @@ function lowerIdentifierValue(identifierValue, compileContext = null) {
   if (identifierValue === 'arguments') {
     if (compileContext) {
       compileContext.unsupportedArgumentsUsed = true;
+      reportUnsupportedLowering(
+        compileContext,
+        'unsupported-arguments',
+        "identifier 'arguments' is lowered to nullptr"
+      );
     }
     return 'nullptr';
   }
@@ -2101,8 +2235,12 @@ function lowerArgumentsNode(argumentsNode, compileContext) {
   const argExprs = argListNode ? collectArgumentExpressions(argListNode) : [];
 
   return argExprs.map((expr) => {
-    const val = lowerExpressionValue(expr, compileContext);
-    return val !== null ? val : '0';
+    return lowerRequiredExpressionValue(
+      expr,
+      compileContext,
+      'argument-expression-unlowerable',
+      'argument expression'
+    );
   }).join(', ');
 }
 
@@ -2185,17 +2323,46 @@ function collectAdditiveStringPieces(node, out) {
   }
 }
 
+function lowerRequiredExpressionValue(expressionNode, compileContext, code, detail) {
+  const lowered = lowerExpressionValue(expressionNode, compileContext);
+  if (lowered !== null) {
+    return lowered;
+  }
+
+  reportUnsupportedLowering(compileContext, code, detail);
+  err(`unsupported lowering: ${detail}`);
+  return '0';
+}
+
 function lowerConsoleLogArgumentExpression(expressionNode, compileContext) {
   const lowered = lowerExpressionValue(expressionNode, compileContext);
   if (lowered !== null && /^"(?:[^"\\]|\\.)*"$/.test(lowered)) {
     return lowered;
   }
 
-  return lowered !== null ? lowered : '0';
+  if (lowered !== null) {
+    return lowered;
+  }
+
+  reportUnsupportedLowering(
+    compileContext,
+    'console-log-argument-unlowerable',
+    'console.log argument expression could not be lowered'
+  );
+  err('unsupported lowering: console.log argument expression');
+  return '0';
 }
 
 function lowerConditionalExpressionValue(node, compileContext) {
   if (!node || node.kind !== 'nonterminal' || (node.name !== 'conditionalExpression' && node.name !== 'conditionalExpressionNoIn')) {
+    reportUnsupportedLowering(
+      compileContext,
+      'conditional-expression-unlowerable',
+      'conditional expression node is missing, malformed, or unexpected kind'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: conditional expression node shape');
+    }
     return null;
   }
 
@@ -2204,10 +2371,41 @@ function lowerConditionalExpressionValue(node, compileContext) {
   const nonterminalChildren = children.filter((child) => child && child.kind === 'nonterminal');
 
   if (!hasTernary) {
-    return nonterminalChildren.length === 1 ? lowerExpressionValue(nonterminalChildren[0], compileContext) : null;
+    if (nonterminalChildren.length !== 1) {
+      reportUnsupportedLowering(
+        compileContext,
+        'conditional-expression-unlowerable',
+        'conditional expression could not be reduced to a single child'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: conditional expression');
+      }
+      return null;
+    }
+
+    const loweredSingle = lowerExpressionValue(nonterminalChildren[0], compileContext);
+    if (loweredSingle === null) {
+      reportUnsupportedLowering(
+        compileContext,
+        'conditional-expression-unlowerable',
+        'conditional expression child could not be lowered'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: conditional expression child');
+      }
+    }
+    return loweredSingle;
   }
 
   if (nonterminalChildren.length < 3) {
+    reportUnsupportedLowering(
+      compileContext,
+      'conditional-expression-unlowerable',
+      'ternary conditional expression is missing branches'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: ternary conditional expression');
+    }
     return null;
   }
 
@@ -2215,6 +2413,14 @@ function lowerConditionalExpressionValue(node, compileContext) {
   const consequentExpr = lowerExpressionValue(nonterminalChildren[1], compileContext);
   const alternateExpr = lowerExpressionValue(nonterminalChildren[2], compileContext);
   if (testExpr === null || consequentExpr === null || alternateExpr === null) {
+    reportUnsupportedLowering(
+      compileContext,
+      'conditional-expression-unlowerable',
+      'ternary conditional branch expression could not be lowered'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: ternary conditional branch expression');
+    }
     return null;
   }
 
@@ -2228,6 +2434,19 @@ function lowerMemberExpressionNewCallValue(node, compileContext) {
 
   const children = node.children || [];
   if (children.length < 3) {
+    const startsWithNew = children[0]
+      && children[0].kind === 'terminal'
+      && children[0].token === 'TOKEN_new';
+    if (startsWithNew) {
+      reportUnsupportedLowering(
+        compileContext,
+        'new-expression-unlowerable',
+        'new expression is missing constructor/member/arguments structure'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: malformed new expression structure');
+      }
+    }
     return null;
   }
 
@@ -2242,15 +2461,36 @@ function lowerMemberExpressionNewCallValue(node, compileContext) {
     && children[2].name === 'arguments';
 
   if (!isNewCtor) {
+    const startsWithNew = children[0]
+      && children[0].kind === 'terminal'
+      && children[0].token === 'TOKEN_new';
+    if (startsWithNew) {
+      reportUnsupportedLowering(
+        compileContext,
+        'new-expression-unlowerable',
+        'new expression does not match supported constructor call shape'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: new expression shape');
+      }
+    }
     return null;
   }
 
-  const ctorPath = extractPathFromMemberExpression(children[1]);
+  const ctorPath = extractPathFromMemberExpression(children[1], compileContext);
   const ctorBase = Array.isArray(ctorPath) && ctorPath.length > 0
     ? ctorPath.join('__')
     : findFirstIdentifierValue(children[1]);
 
   if (!ctorBase) {
+    reportUnsupportedLowering(
+      compileContext,
+      'new-expression-unlowerable',
+      'constructor base could not be resolved for new expression'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: new expression constructor base');
+    }
     return null;
   }
 
@@ -2304,7 +2544,12 @@ function lowerObjectLiteralValue(objectLiteralNode, compileContext) {
     let chain = '__maia_obj_builder_begin()';
     for (const property of properties) {
       const keyLiteral = JSON.stringify(property.key);
-      const loweredValue = lowerExpressionValue(property.valueExprNode, compileContext) || '0';
+      const loweredValue = lowerRequiredExpressionValue(
+        property.valueExprNode,
+        compileContext,
+        'object-literal-value-unlowerable',
+        `object literal property '${property.key}' value expression`
+      );
       chain = `__maia_obj_builder_set_key(${chain}, ${keyLiteral}, (int)(${loweredValue}))`;
     }
     return `__maia_obj_builder_end(${chain})`;
@@ -2313,7 +2558,12 @@ function lowerObjectLiteralValue(objectLiteralNode, compileContext) {
   const args = [];
   for (const property of properties) {
     const keyLiteral = JSON.stringify(property.key);
-    const loweredValue = lowerExpressionValue(property.valueExprNode, compileContext) || '0';
+    const loweredValue = lowerRequiredExpressionValue(
+      property.valueExprNode,
+      compileContext,
+      'object-literal-value-unlowerable',
+      `object literal property '${property.key}' value expression`
+    );
     args.push(`${keyLiteral}, (int)(${loweredValue})`);
   }
 
@@ -2413,14 +2663,24 @@ function lowerAdvancedArrayLiteralValue(arrayInfo, compileContext) {
 
     if (operation.kind === 'spread') {
       const loweredSpread = operation.valueExprNode
-        ? (lowerExpressionValue(operation.valueExprNode, compileContext) || 'nullptr')
+        ? lowerRequiredExpressionValue(
+          operation.valueExprNode,
+          compileContext,
+          'array-spread-unlowerable',
+          'array spread expression'
+        )
         : 'nullptr';
       chain = `__maia_arr_builder_spread(${chain}, (void*)(${loweredSpread}))`;
       continue;
     }
 
     const loweredValue = operation.valueExprNode
-      ? (lowerExpressionValue(operation.valueExprNode, compileContext) || '0')
+      ? lowerRequiredExpressionValue(
+        operation.valueExprNode,
+        compileContext,
+        'array-element-unlowerable',
+        'array element expression'
+      )
       : '0';
     chain = `__maia_arr_builder_push_value(${chain}, (int)(${loweredValue}))`;
   }
@@ -2438,8 +2698,13 @@ function lowerArrayLiteralValue(arrayLiteralNode, compileContext) {
 
   if (!arrayInfo.hasSpread && !arrayInfo.hasElision && elements.length <= 4) {
     const args = elements.map((element) => {
-      const lowered = lowerExpressionValue(element, compileContext);
-      return `(int)(${lowered || '0'})`;
+      const lowered = lowerRequiredExpressionValue(
+        element,
+        compileContext,
+        'array-element-unlowerable',
+        'array literal element expression'
+      );
+      return `(int)(${lowered})`;
     });
 
     return `__maia_arr_literal${elements.length}(${args.join(', ')})`;
@@ -2751,18 +3016,48 @@ function lowerLiteralValue(node, compileContext) {
     if (child.name === 'stringLiteral') {
       const t = (child.children || []).find((c) => c.kind === 'terminal' && c.token === 'StringLiteral');
       if (!t) {
+        reportUnsupportedLowering(
+          compileContext,
+          'literal-expression-unlowerable',
+          'string literal terminal token could not be resolved'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: string literal token');
+        }
         return null;
       }
       return normalizeJsStringLiteralForCpp(t.value) || t.value;
     }
     if (child.name === 'numericLiteral') {
       const t = (child.children || []).find((c) => c.kind === 'terminal');
-      return t ? t.value : null;
+      if (!t) {
+        reportUnsupportedLowering(
+          compileContext,
+          'literal-expression-unlowerable',
+          'numeric literal terminal token could not be resolved'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: numeric literal token');
+        }
+        return null;
+      }
+      return t.value;
     }
     if (child.name === 'nullLiteral') { return 'nullptr'; }
     if (child.name === 'booleanLiteral') {
       const t = (child.children || []).find((c) => c.kind === 'terminal');
-      return t ? t.value : null;
+      if (!t) {
+        reportUnsupportedLowering(
+          compileContext,
+          'literal-expression-unlowerable',
+          'boolean literal terminal token could not be resolved'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: boolean literal token');
+        }
+        return null;
+      }
+      return t.value;
     }
     if (child.name === 'objectLiteral') {
       return lowerObjectLiteralValue(child, compileContext);
@@ -2771,11 +3066,29 @@ function lowerLiteralValue(node, compileContext) {
       return lowerArrayLiteralValue(child, compileContext);
     }
   }
+  reportUnsupportedLowering(
+    compileContext,
+    'literal-expression-unlowerable',
+    'literal expression could not be matched to a supported literal kind'
+  );
+  if (compileContext && compileContext.strictLowering) {
+    err('unsupported lowering: literal expression');
+  }
   return null;
 }
 
-function lowerIdentifierFromLeftHandSideExpression(node) {
+function lowerIdentifierFromLeftHandSideExpression(node, compileContext = null) {
   if (!node || node.kind !== 'nonterminal' || node.name !== 'leftHandSideExpression') {
+    if (compileContext) {
+      reportUnsupportedLowering(
+        compileContext,
+        'left-hand-side-unlowerable',
+        'leftHandSideExpression node is missing or malformed'
+      );
+      if (compileContext.strictLowering) {
+        err('unsupported lowering: leftHandSideExpression node');
+      }
+    }
     return null;
   }
 
@@ -2787,7 +3100,7 @@ function lowerIdentifierFromLeftHandSideExpression(node) {
     }
   });
   if (memberExprNode) {
-    const segments = extractPathFromMemberExpression(memberExprNode);
+    const segments = extractPathFromMemberExpression(memberExprNode, compileContext);
     if (segments && segments.length >= 2) {
       let result = segments[0];
       for (let i = 1; i < segments.length; i++) {
@@ -2798,11 +3111,29 @@ function lowerIdentifierFromLeftHandSideExpression(node) {
   }
 
   const identifier = findFirstIdentifierValue(node);
+  if (!identifier && compileContext) {
+    reportUnsupportedLowering(
+      compileContext,
+      'left-hand-side-unlowerable',
+      'leftHandSideExpression identifier could not be resolved'
+    );
+    if (compileContext.strictLowering) {
+      err('unsupported lowering: leftHandSideExpression identifier');
+    }
+  }
   return identifier || null;
 }
 
 function lowerAssignmentExpressionValue(node, compileContext) {
   if (!node || node.kind !== 'nonterminal' || node.name !== 'assignmentExpression') {
+    reportUnsupportedLowering(
+      compileContext,
+      'assignment-expression-unlowerable',
+      'assignment expression node is missing, malformed, or unexpected kind'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: assignment expression node shape');
+    }
     return null;
   }
 
@@ -2814,13 +3145,29 @@ function lowerAssignmentExpressionValue(node, compileContext) {
       && children[1].name === 'assignmentOperator'
       && children[2].kind === 'nonterminal'
       && children[2].name === 'assignmentExpression') {
-    const lhs = lowerIdentifierFromLeftHandSideExpression(children[0]);
+    const lhs = lowerIdentifierFromLeftHandSideExpression(children[0], compileContext);
     if (!lhs) {
+      reportUnsupportedLowering(
+        compileContext,
+        'assignment-expression-unlowerable',
+        'assignment expression left-hand side could not be lowered'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: assignment expression left-hand side');
+      }
       return null;
     }
 
     const operatorToken = (children[1].children || []).find((child) => child.kind === 'terminal');
     if (!operatorToken) {
+      reportUnsupportedLowering(
+        compileContext,
+        'assignment-expression-unlowerable',
+        'assignment expression operator token could not be resolved'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: assignment expression operator');
+      }
       return null;
     }
     const operatorValue = String(operatorToken.value || '').trim();
@@ -2837,6 +3184,14 @@ function lowerAssignmentExpressionValue(node, compileContext) {
     }
 
     if (rhs === null) {
+      reportUnsupportedLowering(
+        compileContext,
+        'assignment-expression-unlowerable',
+        `assignment expression right-hand side could not be lowered for '${operatorValue}'`
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err(`unsupported lowering: assignment expression right-hand side '${operatorValue}'`);
+      }
       return `${lhs} ${operatorValue} 0`;
     }
 
@@ -2846,14 +3201,41 @@ function lowerAssignmentExpressionValue(node, compileContext) {
 
   const nonterminalChildren = children.filter((child) => child.kind === 'nonterminal');
   if (nonterminalChildren.length === 1) {
-    return lowerExpressionValue(nonterminalChildren[0], compileContext);
+    const loweredChild = lowerExpressionValue(nonterminalChildren[0], compileContext);
+    if (loweredChild === null) {
+      reportUnsupportedLowering(
+        compileContext,
+        'assignment-expression-unlowerable',
+        'assignment expression child could not be lowered'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: assignment expression child');
+      }
+    }
+    return loweredChild;
   }
 
+  reportUnsupportedLowering(
+    compileContext,
+    'assignment-expression-unlowerable',
+    'assignment expression could not be matched to a supported shape'
+  );
+  if (compileContext && compileContext.strictLowering) {
+    err('unsupported lowering: assignment expression');
+  }
   return null;
 }
 
 function lowerPostfixExpressionValue(node, compileContext) {
   if (!node || node.kind !== 'nonterminal' || node.name !== 'postfixExpression') {
+    reportUnsupportedLowering(
+      compileContext,
+      'postfix-expression-unlowerable',
+      'postfix expression node is missing, malformed, or unexpected kind'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: postfix expression node shape');
+    }
     return null;
   }
 
@@ -2863,8 +3245,16 @@ function lowerPostfixExpressionValue(node, compileContext) {
       && children[0].name === 'leftHandSideExpression'
       && children[1].kind === 'terminal'
       && (children[1].token === 'TOKEN__2B__2B_' || children[1].token === 'TOKEN__2D__2D_')) {
-    const target = lowerIdentifierFromLeftHandSideExpression(children[0]);
+    const target = lowerIdentifierFromLeftHandSideExpression(children[0], compileContext);
     if (!target) {
+      reportUnsupportedLowering(
+        compileContext,
+        'postfix-expression-unlowerable',
+        `postfix expression target could not be lowered for '${children[1].value}'`
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err(`unsupported lowering: postfix expression target '${children[1].value}'`);
+      }
       return null;
     }
     return `${target}${children[1].value}`;
@@ -2872,14 +3262,41 @@ function lowerPostfixExpressionValue(node, compileContext) {
 
   const nonterminalChildren = children.filter((child) => child.kind === 'nonterminal');
   if (nonterminalChildren.length === 1) {
-    return lowerExpressionValue(nonterminalChildren[0], compileContext);
+    const loweredChild = lowerExpressionValue(nonterminalChildren[0], compileContext);
+    if (loweredChild === null) {
+      reportUnsupportedLowering(
+        compileContext,
+        'postfix-expression-unlowerable',
+        'postfix expression child could not be lowered'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: postfix expression child');
+      }
+    }
+    return loweredChild;
   }
 
+  reportUnsupportedLowering(
+    compileContext,
+    'postfix-expression-unlowerable',
+    'postfix expression could not be matched to a supported shape'
+  );
+  if (compileContext && compileContext.strictLowering) {
+    err('unsupported lowering: postfix expression');
+  }
   return null;
 }
 
 function lowerUnaryExpressionValue(node, compileContext) {
   if (!node || node.kind !== 'nonterminal' || node.name !== 'unaryExpression') {
+    reportUnsupportedLowering(
+      compileContext,
+      'unary-expression-unlowerable',
+      'unary expression node is missing, malformed, or unexpected kind'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: unary expression node shape');
+    }
     return null;
   }
 
@@ -2890,6 +3307,14 @@ function lowerUnaryExpressionValue(node, compileContext) {
       && children[1].kind === 'nonterminal') {
     const operand = lowerExpressionValue(children[1], compileContext);
     if (operand === null) {
+      reportUnsupportedLowering(
+        compileContext,
+        'unary-expression-unlowerable',
+        `unary expression operand could not be lowered for '${children[0].value}'`
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err(`unsupported lowering: unary expression operand '${children[0].value}'`);
+      }
       return null;
     }
     if (children[0].token === 'TOKEN__21_') {
@@ -2907,14 +3332,30 @@ function lowerUnaryExpressionValue(node, compileContext) {
       (child) => child.kind === 'nonterminal' && child.name === 'postfixExpression'
     );
     if (!postfixNode) {
+      reportUnsupportedLowering(
+        compileContext,
+        'unary-expression-unlowerable',
+        `prefix update expression is missing postfix target for '${children[0].value}'`
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err(`unsupported lowering: prefix update expression '${children[0].value}'`);
+      }
       return null;
     }
 
     const lhsNode = (postfixNode.children || []).find(
       (child) => child.kind === 'nonterminal' && child.name === 'leftHandSideExpression'
     );
-    const target = lowerIdentifierFromLeftHandSideExpression(lhsNode);
+    const target = lowerIdentifierFromLeftHandSideExpression(lhsNode, compileContext);
     if (!target) {
+      reportUnsupportedLowering(
+        compileContext,
+        'unary-expression-unlowerable',
+        `prefix update target could not be lowered for '${children[0].value}'`
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err(`unsupported lowering: prefix update target '${children[0].value}'`);
+      }
       return null;
     }
 
@@ -2923,14 +3364,41 @@ function lowerUnaryExpressionValue(node, compileContext) {
 
   const nonterminalChildren = children.filter((child) => child.kind === 'nonterminal');
   if (nonterminalChildren.length === 1) {
-    return lowerExpressionValue(nonterminalChildren[0], compileContext);
+    const loweredChild = lowerExpressionValue(nonterminalChildren[0], compileContext);
+    if (loweredChild === null) {
+      reportUnsupportedLowering(
+        compileContext,
+        'unary-expression-unlowerable',
+        'unary expression child could not be lowered'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: unary expression child');
+      }
+    }
+    return loweredChild;
   }
 
+  reportUnsupportedLowering(
+    compileContext,
+    'unary-expression-unlowerable',
+    'unary expression could not be matched to a supported shape'
+  );
+  if (compileContext && compileContext.strictLowering) {
+    err('unsupported lowering: unary expression');
+  }
   return null;
 }
 
 function lowerInfixExpressionValue(node, compileContext) {
   if (!node || node.kind !== 'nonterminal' || !INFIX_EXPRESSION_NODES.has(node.name)) {
+    reportUnsupportedLowering(
+      compileContext,
+      'infix-expression-unlowerable',
+      'infix expression node is missing, malformed, or unexpected kind'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: infix expression node shape');
+    }
     return null;
   }
 
@@ -2948,6 +3416,14 @@ function lowerInfixExpressionValue(node, compileContext) {
         return `(dynamic_cast<${rhsClassName}*>(${lhs}) != 0)`;
       }
     }
+    reportUnsupportedLowering(
+      compileContext,
+      'infix-expression-unlowerable',
+      'instanceof expression could not be lowered'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: instanceof expression');
+    }
     return null;
   }
 
@@ -2960,6 +3436,14 @@ function lowerInfixExpressionValue(node, compileContext) {
     if (child.kind === 'nonterminal') {
       const lowered = lowerExpressionValue(child, compileContext);
       if (lowered === null) {
+        reportUnsupportedLowering(
+          compileContext,
+          'infix-expression-unlowerable',
+          `infix expression child could not be lowered in ${node.name}`
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err(`unsupported lowering: infix expression child in ${node.name}`);
+        }
         return null;
       }
       parts.push(lowered);
@@ -2973,6 +3457,14 @@ function lowerInfixExpressionValue(node, compileContext) {
       }
 
       if (!SUPPORTED_INFIX_OPERATORS.has(operator)) {
+        reportUnsupportedLowering(
+          compileContext,
+          'infix-expression-unlowerable',
+          `unsupported infix operator '${operator}' in ${node.name}`
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err(`unsupported lowering: infix operator '${operator}' in ${node.name}`);
+        }
         return null;
       }
 
@@ -2985,6 +3477,14 @@ function lowerInfixExpressionValue(node, compileContext) {
   }
 
   if (parts.length < 3 || parts.length % 2 === 0) {
+    reportUnsupportedLowering(
+      compileContext,
+      'infix-expression-unlowerable',
+      `infix expression could not be normalized for ${node.name}`
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err(`unsupported lowering: infix expression normalization for ${node.name}`);
+    }
     return null;
   }
 
@@ -2999,14 +3499,36 @@ function lowerInfixExpressionValue(node, compileContext) {
 }
 
 function lowerExpressionValue(node, compileContext) {
-  if (!node || node.kind !== 'nonterminal') { return null; }
+  if (!node || node.kind !== 'nonterminal') {
+    reportUnsupportedLowering(
+      compileContext,
+      'expression-unlowerable',
+      'expression node is missing or not a nonterminal'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: expression node shape');
+    }
+    return null;
+  }
   if (node.name === 'arrowFunction') { return lowerArrowFunctionValue(node, false, compileContext); }
   if (node.name === 'asyncArrowFunction') { return lowerArrowFunctionValue(node, true, compileContext); }
   if (node.name === 'functionExpression') {
     const inlineSymbol = compileContext && compileContext.inlineFunctionExpressionSymbols
       ? compileContext.inlineFunctionExpressionSymbols.get(node)
       : null;
-    return inlineSymbol || 'nullptr';
+    if (inlineSymbol) {
+      return inlineSymbol;
+    }
+
+    reportUnsupportedLowering(
+      compileContext,
+      'function-expression-unlowerable',
+      'function expression has no lowered inline symbol and falls back to nullptr'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: function expression inline symbol');
+    }
+    return 'nullptr';
   }
   if (node.name === 'identifier') { return lowerIdentifierValue(findFirstIdentifierValue(node), compileContext); }
   if (node.name === 'assignmentExpression') { return lowerAssignmentExpressionValue(node, compileContext); }
@@ -3020,7 +3542,7 @@ function lowerExpressionValue(node, compileContext) {
       return loweredNewCall;
     }
 
-    const segments = extractPathFromMemberExpression(node);
+    const segments = extractPathFromMemberExpression(node, compileContext);
     if (segments && segments.length >= 2) {
       // Use -> for this and . for local stack-instantiated class objects.
       let result = segments[0];
@@ -3030,11 +3552,35 @@ function lowerExpressionValue(node, compileContext) {
       }
       return result;
     }
+
+    const ntc = (node.children || []).filter((c) => c && c.kind === 'nonterminal');
+    if (ntc.length !== 1) {
+      reportUnsupportedLowering(
+        compileContext,
+        'member-expression-unlowerable',
+        'memberExpression has no resolved path and cannot be reduced to a single passthrough child'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: memberExpression shape');
+      }
+      return null;
+    }
     // Fall through to passthrough for single-child memberExpression
   }
   if (EXPR_PASSTHROUGH_NODES.has(node.name)) {
     const ntc = (node.children || []).filter((c) => c.kind === 'nonterminal');
-    return ntc.length === 1 ? lowerExpressionValue(ntc[0], compileContext) : null;
+    if (ntc.length !== 1) {
+      reportUnsupportedLowering(
+        compileContext,
+        'expression-unlowerable',
+        `passthrough expression node '${node.name}' did not reduce to a single child`
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err(`unsupported lowering: passthrough expression node '${node.name}'`);
+      }
+      return null;
+    }
+    return lowerExpressionValue(ntc[0], compileContext);
   }
   if (node.name === 'callExpression') { return lowerCallExpressionValue(node, compileContext); }
   if (node.name === 'primaryExpression') {
@@ -3051,6 +3597,24 @@ function lowerExpressionValue(node, compileContext) {
         }
       }
     }
+
+    reportUnsupportedLowering(
+      compileContext,
+      'primary-expression-unlowerable',
+      'primaryExpression contains no supported child node for lowering'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: primaryExpression child');
+    }
+    return null;
+  }
+  reportUnsupportedLowering(
+    compileContext,
+    'expression-unlowerable',
+    `expression node '${node.name}' is not supported by lowering`
+  );
+  if (compileContext && compileContext.strictLowering) {
+    err(`unsupported lowering: expression node '${node.name}'`);
   }
   return null;
 }
@@ -3729,9 +4293,19 @@ function lowerCallExpressionValue(node, compileContext) {
   const children = node.children || [];
   const memberExprNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'memberExpression');
   const argsNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'arguments');
-  if (!memberExprNode || !argsNode) { return null; }
+  if (!memberExprNode || !argsNode) {
+    reportUnsupportedLowering(
+      compileContext,
+      'call-expression-unlowerable',
+      'call expression is missing member expression or arguments'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: malformed call expression');
+    }
+    return null;
+  }
 
-  const pathSegments = extractPathFromMemberExpression(memberExprNode);
+  const pathSegments = extractPathFromMemberExpression(memberExprNode, compileContext);
   const memberChildren = memberExprNode.children || [];
   const directPropertyIndex = memberChildren.findIndex((child) => child && child.kind === 'terminal' && child.value === '.');
   const directPropertyNode = directPropertyIndex >= 0 ? memberChildren[directPropertyIndex + 1] : null;
@@ -3752,6 +4326,21 @@ function lowerCallExpressionValue(node, compileContext) {
     loweredCall = `${pathSegments[0]}(${args})`;
   }
 
+  if (!loweredCall && pathSegments && pathSegments.length === 1) {
+    const globalCallName = pathSegments[0];
+    const isBoundLocalCall = isIdentifierBoundAtNode(globalCallName, node, compileContext);
+    if (!isBoundLocalCall) {
+      reportUnsupportedLowering(
+        compileContext,
+        'unresolved-global-call',
+        `global call '${globalCallName}' is not locally bound and will be treated as host symbol`
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err(`unsupported lowering: unresolved global call '${globalCallName}'`);
+      }
+    }
+  }
+
   // Member method call: this->method(args) or obj.method(args)
   if (!loweredCall && pathSegments && pathSegments.length >= 2) {
     const isThisCall = pathSegments[0] === 'this';
@@ -3762,11 +4351,31 @@ function lowerCallExpressionValue(node, compileContext) {
       const loweredBase = baseExpressionNode ? lowerExpressionValue(baseExpressionNode, compileContext) : pathSegments[0];
       const wrapperClassName = isThisCall ? null : localClassType;
       if (wrapperClassName) {
-        loweredCall = `${getClassMethodWrapperName(wrapperClassName, methodName)}(&${loweredBase}${args && args.trim() ? `, ${args}` : ''})`;
+        if (loweredBase === null) {
+          reportUnsupportedLowering(
+            compileContext,
+            'method-call-base-unlowerable',
+            `object method base expression could not be lowered for '${pathSegments[0]}.${methodName}'`
+          );
+          if (compileContext && compileContext.strictLowering) {
+            err(`unsupported lowering: object method base '${pathSegments[0]}.${methodName}'`);
+          }
+        } else {
+          loweredCall = `${getClassMethodWrapperName(wrapperClassName, methodName)}(&${loweredBase}${args && args.trim() ? `, ${args}` : ''})`;
+        }
       } else {
         const enclosingClassName = findEnclosingClassNameAtNode(node, compileContext);
         if (enclosingClassName) {
           loweredCall = `${getClassMethodWrapperName(enclosingClassName, methodName)}(this${args && args.trim() ? `, ${args}` : ''})`;
+        } else {
+          reportUnsupportedLowering(
+            compileContext,
+            'method-call-base-unlowerable',
+            `this-method call could not resolve enclosing class for '${methodName}'`
+          );
+          if (compileContext && compileContext.strictLowering) {
+            err(`unsupported lowering: this-method call '${methodName}'`);
+          }
         }
       }
     }
@@ -3793,7 +4402,22 @@ function lowerCallExpressionValue(node, compileContext) {
       const loweredBase = lowerExpressionValue(baseExpressionNode, compileContext);
       if (loweredBase !== null) {
         loweredCall = `${loweredBase}.${directPropertyName}(${args})`;
+      } else {
+        reportUnsupportedLowering(
+          compileContext,
+          'method-call-base-unlowerable',
+          `member call base expression could not be lowered for '${directPropertyName}'`
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err(`unsupported lowering: member call base '${directPropertyName}'`);
+        }
       }
+    } else {
+      reportUnsupportedLowering(
+        compileContext,
+        'js-runtime-method-call',
+        `dropping JS runtime member call '${directPropertyName}' on non-host base expression`
+      );
     }
   }
 
@@ -3803,13 +4427,49 @@ function lowerCallExpressionValue(node, compileContext) {
     && compileContext.hasLambdaCapturePayload
     && lambdaBindingState
     && lambdaBindingState.isCaptureAware) {
-    const asyncCallFlag = lambdaBindingState.isAsync ? 1 : 0;
-    loweredCall = `__maia_runtime_lambda_invoke_function_id((void*)${pathSegments[0]}, ${argExprs.length}, ${asyncCallFlag})`;
+    if (!Array.isArray(pathSegments) || pathSegments.length === 0) {
+      reportUnsupportedLowering(
+        compileContext,
+        'lambda-call-unlowerable',
+        'capture-aware lambda call is missing resolvable path segments'
+      );
+      if (compileContext.strictLowering) {
+        err('unsupported lowering: capture-aware lambda call path');
+      }
+    } else {
+      const asyncCallFlag = lambdaBindingState.isAsync ? 1 : 0;
+      loweredCall = `__maia_runtime_lambda_invoke_function_id((void*)${pathSegments[0]}, ${argExprs.length}, ${asyncCallFlag})`;
+    }
   }
 
   if (!loweredCall) {
+    if (!compileContext || !compileContext.hostRegistry || typeof compileContext.hostRegistry.resolvePath !== 'function') {
+      reportUnsupportedLowering(
+        compileContext,
+        'call-expression-unlowerable',
+        'call expression cannot resolve host symbol because compileContext hostRegistry is unavailable'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: call expression host registry unavailable');
+      }
+      return null;
+    }
+
     const hostSymbol = compileContext.hostRegistry.resolvePath(pathSegments);
-    if (!hostSymbol) { return null; }
+    if (!hostSymbol) {
+      const pathLabel = Array.isArray(pathSegments) && pathSegments.length > 0
+        ? pathSegments.join('.')
+        : '<unknown-call-path>';
+      reportUnsupportedLowering(
+        compileContext,
+        'unresolved-host-call',
+        `host call path not resolved: ${pathLabel}`
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err(`unsupported lowering: unresolved host call '${pathLabel}'`);
+      }
+      return null;
+    }
     if (hostSymbol === '__console__log' && argExprs.length === 1) {
       const safeArg = lowerConsoleLogArgumentExpression(argExprs[0], compileContext);
       loweredCall = `${hostSymbol}(${safeArg})`;
@@ -3833,25 +4493,64 @@ function lowerCallExpressionValue(node, compileContext) {
 
     if (child.kind === 'terminal' && child.value === '.') {
       const propertyNode = children[i + 1];
-      if (propertyNode && propertyNode.kind === 'nonterminal' && propertyNode.name === 'propertyIdentifierName') {
-        const propertyName = findFirstIdentifierValue(propertyNode);
-        if (propertyName) {
-          if (JS_RUNTIME_METHODS.has(propertyName)) {
-            // Truncate: this is a JS-only method; drop the rest of the chain.
-            chainTruncated = true;
-          } else {
-            loweredCall = `${loweredCall}.${propertyName}`;
-          }
+      if (!propertyNode || propertyNode.kind !== 'nonterminal' || propertyNode.name !== 'propertyIdentifierName') {
+        reportUnsupportedLowering(
+          compileContext,
+          'call-chain-unlowerable',
+          'call chain member access is missing propertyIdentifierName after dot'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: call chain property after dot');
         }
-        i += 1;
+        chainTruncated = true;
+        continue;
       }
+
+      const propertyName = findFirstIdentifierValue(propertyNode);
+      if (!propertyName) {
+        reportUnsupportedLowering(
+          compileContext,
+          'call-chain-unlowerable',
+          'call chain property name could not be resolved'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: call chain property name');
+        }
+        chainTruncated = true;
+        i += 1;
+        continue;
+      }
+
+      if (JS_RUNTIME_METHODS.has(propertyName)) {
+        // Truncate: this is a JS-only method; drop the rest of the chain.
+        reportUnsupportedLowering(
+          compileContext,
+          'js-runtime-chain-truncated',
+          `truncating call chain at unsupported JS runtime method '${propertyName}'`
+        );
+        chainTruncated = true;
+      } else {
+        loweredCall = `${loweredCall}.${propertyName}`;
+      }
+      i += 1;
       continue;
     }
 
     if (!chainTruncated && child.kind === 'nonterminal' && child.name === 'arguments') {
       const chainedArgs = lowerArgumentsNode(child, compileContext);
       loweredCall = `${loweredCall}(${chainedArgs})`;
+      continue;
     }
+
+    reportUnsupportedLowering(
+      compileContext,
+      'call-chain-unlowerable',
+      'call chain contains unsupported node after first invocation'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: call chain node');
+    }
+    chainTruncated = true;
   }
 
   return loweredCall;
@@ -3887,8 +4586,22 @@ function collectHostSignatures(tree, compileContext) {
 }
 
 // Returns array of identifier name strings from arrayBindingPattern
-function extractArrayBindingIdentifiers(arrayBindingPatternNode) {
+function extractArrayBindingIdentifiers(arrayBindingPatternNode, compileContext = null) {
   const names = [];
+  if (!arrayBindingPatternNode || arrayBindingPatternNode.kind !== 'nonterminal' || arrayBindingPatternNode.name !== 'arrayBindingPattern') {
+    if (compileContext) {
+      reportUnsupportedLowering(
+        compileContext,
+        'destructuring-binding-unlowerable',
+        'arrayBindingPattern node is missing or malformed while extracting identifiers'
+      );
+      if (compileContext.strictLowering) {
+        err('unsupported lowering: arrayBindingPattern node');
+      }
+    }
+    return names;
+  }
+
   const bel = (arrayBindingPatternNode.children || []).find(
     (c) => c && c.kind === 'nonterminal' && c.name === 'bindingElementList'
   );
@@ -3902,8 +4615,22 @@ function extractArrayBindingIdentifiers(arrayBindingPatternNode) {
 }
 
 // Returns array of identifier name strings from objectBindingPattern
-function extractObjectBindingIdentifiers(objectBindingPatternNode) {
+function extractObjectBindingIdentifiers(objectBindingPatternNode, compileContext = null) {
   const names = [];
+  if (!objectBindingPatternNode || objectBindingPatternNode.kind !== 'nonterminal' || objectBindingPatternNode.name !== 'objectBindingPattern') {
+    if (compileContext) {
+      reportUnsupportedLowering(
+        compileContext,
+        'destructuring-binding-unlowerable',
+        'objectBindingPattern node is missing or malformed while extracting identifiers'
+      );
+      if (compileContext.strictLowering) {
+        err('unsupported lowering: objectBindingPattern node');
+      }
+    }
+    return names;
+  }
+
   const bpl = (objectBindingPatternNode.children || []).find(
     (c) => c && c.kind === 'nonterminal' && c.name === 'bindingPropertyList'
   );
@@ -3916,8 +4643,18 @@ function extractObjectBindingIdentifiers(objectBindingPatternNode) {
   return names;
 }
 
-function extractVariableDeclarations(variableDeclarationListNode) {
+function extractVariableDeclarations(variableDeclarationListNode, compileContext = null) {
   if (!variableDeclarationListNode || variableDeclarationListNode.kind !== 'nonterminal' || variableDeclarationListNode.name !== 'variableDeclarationList') {
+    if (compileContext) {
+      reportUnsupportedLowering(
+        compileContext,
+        'variable-declaration-unlowerable',
+        'variableDeclarationList node is missing or malformed while extracting declarations'
+      );
+      if (compileContext.strictLowering) {
+        err('unsupported lowering: variableDeclarationList node');
+      }
+    }
     return [];
   }
 
@@ -3926,19 +4663,50 @@ function extractVariableDeclarations(variableDeclarationListNode) {
   );
 }
 
-function extractVariableDeclarationName(variableDeclarationNode) {
+function extractVariableDeclarationName(variableDeclarationNode, compileContext = null) {
   if (!variableDeclarationNode || variableDeclarationNode.kind !== 'nonterminal' || variableDeclarationNode.name !== 'variableDeclaration') {
+    if (compileContext) {
+      reportUnsupportedLowering(
+        compileContext,
+        'variable-name-unlowerable',
+        'variable declaration node is missing or malformed while extracting name'
+      );
+      if (compileContext.strictLowering) {
+        err('unsupported lowering: variable declaration name node');
+      }
+    }
     return null;
   }
 
   const bindingIdentifier = (variableDeclarationNode.children || []).find(
     (child) => child && child.kind === 'nonterminal' && child.name === 'bindingIdentifier'
   );
-  return bindingIdentifier ? findFirstIdentifierValue(bindingIdentifier) : null;
+  const variableName = bindingIdentifier ? findFirstIdentifierValue(bindingIdentifier) : null;
+  if (!variableName && compileContext) {
+    reportUnsupportedLowering(
+      compileContext,
+      'variable-name-unlowerable',
+      'variable declaration bindingIdentifier could not be resolved'
+    );
+    if (compileContext.strictLowering) {
+      err('unsupported lowering: variable declaration bindingIdentifier');
+    }
+  }
+  return variableName;
 }
 
-function extractVariableDeclarationInitializer(variableDeclarationNode) {
+function extractVariableDeclarationInitializer(variableDeclarationNode, compileContext = null) {
   if (!variableDeclarationNode || variableDeclarationNode.kind !== 'nonterminal' || variableDeclarationNode.name !== 'variableDeclaration') {
+    if (compileContext) {
+      reportUnsupportedLowering(
+        compileContext,
+        'variable-initializer-unlowerable',
+        'variable declaration node is missing or malformed while extracting initializer'
+      );
+      if (compileContext.strictLowering) {
+        err('unsupported lowering: variable declaration initializer node');
+      }
+    }
     return null;
   }
 
@@ -3949,9 +4717,20 @@ function extractVariableDeclarationInitializer(variableDeclarationNode) {
     return null;
   }
 
-  return (initializer.children || []).find(
+  const assignmentExpression = (initializer.children || []).find(
     (child) => child && child.kind === 'nonterminal' && child.name === 'assignmentExpression'
   ) || null;
+  if (!assignmentExpression && compileContext) {
+    reportUnsupportedLowering(
+      compileContext,
+      'variable-initializer-unlowerable',
+      'variable initializer node does not contain assignmentExpression'
+    );
+    if (compileContext.strictLowering) {
+      err('unsupported lowering: variable initializer assignmentExpression');
+    }
+  }
+  return assignmentExpression;
 }
 
 function lowerVariableDeclarations(statementNode, compileContext, indent = '  ') {
@@ -3975,24 +4754,44 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
   const variableDeclarationList = (declarationNode.children || []).find(
     (child) => child && child.kind === 'nonterminal' && child.name === 'variableDeclarationList'
   );
-  const declarations = extractVariableDeclarations(variableDeclarationList);
+  if (!variableDeclarationList) {
+    reportUnsupportedLowering(
+      compileContext,
+      'variable-declaration-unlowerable',
+      'variable declaration statement is missing variableDeclarationList'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: variable declaration list missing');
+    }
+    return lowered;
+  }
+
+  const declarations = extractVariableDeclarations(variableDeclarationList, compileContext);
+  if (declarations.length === 0) {
+    reportUnsupportedLowering(
+      compileContext,
+      'variable-declaration-unlowerable',
+      'variable declaration list contains no variableDeclaration nodes'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: empty variable declaration list');
+    }
+    return lowered;
+  }
+
   const topLevelStatements = compileContext && compileContext.tree
     ? extractTopLevelStatementNodes(compileContext.tree)
     : [];
   const isTopLevelStatement = topLevelStatements.includes(statementNode);
 
   for (const variableDeclaration of declarations) {
-    const variableName = extractVariableDeclarationName(variableDeclaration);
+    const variableName = extractVariableDeclarationName(variableDeclaration, compileContext);
     if (!variableName) {
       // Check for destructuring pattern
       const bindingPatternNode = (variableDeclaration.children || []).find(
         (c) => c && c.kind === 'nonterminal' && c.name === 'bindingPattern'
       );
       if (bindingPatternNode) {
-        const initializerExpr = extractVariableDeclarationInitializer(variableDeclaration);
-        const loweredRhs = initializerExpr ? lowerExpressionValue(initializerExpr, compileContext) : null;
-        const rhsExpr = loweredRhs !== null ? loweredRhs : '/* rhs */';
-
         const arrayPattern = (bindingPatternNode.children || []).find(
           (c) => c && c.kind === 'nonterminal' && c.name === 'arrayBindingPattern'
         );
@@ -4001,33 +4800,30 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
         );
 
         if (arrayPattern) {
-          const names = extractArrayBindingIdentifiers(arrayPattern);
-          if (names.length > 0) {
-            nextDestrIdx();
-            const sinkType = isConst ? 'const int' : 'int';
-            lowered.push(`${indent}(void)(${rhsExpr});`);
-            lowered.push(`${indent}// [unsupported array destructuring lowered to default values]`);
-            names.forEach((name) => {
-              lowered.push(`${indent}${sinkType} ${name} = 0;`);
-            });
-          } else {
-            lowered.push(`${indent}// [empty array destructuring]`);
-          }
+          const names = extractArrayBindingIdentifiers(arrayPattern, compileContext);
+          const namesLabel = names.length > 0 ? names.join(', ') : '(empty pattern)';
+          reportUnsupportedLowering(
+            compileContext,
+            'unsupported-array-destructuring',
+            `array destructuring is not supported (${namesLabel})`
+          );
+          err(`unsupported lowering: array destructuring declaration (${namesLabel})`);
         } else if (objectPattern) {
-          const names = extractObjectBindingIdentifiers(objectPattern);
-          if (names.length > 0) {
-            nextDestrIdx();
-            const sinkType = isConst ? 'const int' : 'int';
-            lowered.push(`${indent}(void)(${rhsExpr});`);
-            lowered.push(`${indent}// [unsupported object destructuring lowered to default values]`);
-            names.forEach((name) => {
-              lowered.push(`${indent}${sinkType} ${name} = 0;`);
-            });
-          } else {
-            lowered.push(`${indent}// [empty object destructuring]`);
-          }
+          const names = extractObjectBindingIdentifiers(objectPattern, compileContext);
+          const namesLabel = names.length > 0 ? names.join(', ') : '(empty pattern)';
+          reportUnsupportedLowering(
+            compileContext,
+            'unsupported-object-destructuring',
+            `object destructuring is not supported (${namesLabel})`
+          );
+          err(`unsupported lowering: object destructuring declaration (${namesLabel})`);
         } else {
-          lowered.push(`${indent}// [unsupported destructuring pattern]`);
+          reportUnsupportedLowering(
+            compileContext,
+            'unsupported-destructuring-pattern',
+            'destructuring pattern is not supported'
+          );
+          err('unsupported lowering: destructuring pattern declaration');
         }
       } else {
         lowered.push(`${indent}// [variable declaration without supported binding name]`);
@@ -4035,7 +4831,7 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
       continue;
     }
 
-    const initializerExpr = extractVariableDeclarationInitializer(variableDeclaration);
+    const initializerExpr = extractVariableDeclarationInitializer(variableDeclaration, compileContext);
     const topLevelFunctionExpression = isTopLevelStatement
       ? extractDirectFunctionExpressionInitializer(initializerExpr)
       : null;
@@ -4053,6 +4849,16 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
 
     const cppType = inferInitializerCppType(initializerExpr, compileContext);
     const loweredInit = initializerExpr ? lowerExpressionValue(initializerExpr, compileContext) : null;
+    if (initializerExpr && loweredInit === null) {
+      reportUnsupportedLowering(
+        compileContext,
+        'variable-initializer-unlowerable',
+        `variable initializer for '${variableName}' could not be lowered`
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err(`unsupported lowering: variable initializer '${variableName}'`);
+      }
+    }
     const initValue = loweredInit !== null ? loweredInit : defaultCppValue(cppType);
 
     const constQualifier = isConst && cppType !== 'const char*' ? 'const ' : '';
@@ -4098,6 +4904,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
 
     const loweredReturn = lowerExpressionValue(returnExprNode, compileContext);
     if (loweredReturn === null) {
+      reportUnsupportedLowering(
+        compileContext,
+        'return-expression-unlowerable',
+        'return expression could not be lowered'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: return expression');
+      }
       return [`${indent}return ${defaultCppValue(returnTypeCpp)};`];
     }
 
@@ -4116,6 +4930,16 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     const elseStatement = hasElse ? (nestedStatements[1] || null) : null;
 
     const loweredCondition = conditionExpr ? lowerExpressionValue(conditionExpr, compileContext) : null;
+    if (loweredCondition === null) {
+      reportUnsupportedLowering(
+        compileContext,
+        'if-condition-unlowerable',
+        'if statement condition could not be lowered'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: if statement condition');
+      }
+    }
     lines.push(loweredCondition !== null ? `${indent}if (${loweredCondition}) {` : `${indent}if (0) {`);
 
     if (thenStatement) {
@@ -4164,7 +4988,18 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       return [`${indent}// [expression statement missing expression]`];
     }
     const lowered = lowerExpressionValue(exprNode, compileContext);
-    return [lowered !== null ? `${indent}${lowered};` : `${indent}(void)0;`];
+    if (lowered === null) {
+      reportUnsupportedLowering(
+        compileContext,
+        'expression-statement-unlowerable',
+        'expression statement could not be lowered'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: expression statement');
+      }
+      return [`${indent}(void)0;`];
+    }
+    return [`${indent}${lowered};`];
   }
 
   const iterationStmtNode = (statementNode.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'iterationStatement');
@@ -4173,6 +5008,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     const firstToken = iterChildren.find((c) => c && c.kind === 'terminal');
     
     if (!firstToken) {
+      reportUnsupportedLowering(
+        compileContext,
+        'iteration-statement-unlowerable',
+        'iteration statement is missing loop token'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: iteration statement missing loop token');
+      }
       return [`${indent}// [iteration statement with no token]`];
     }
 
@@ -4183,8 +5026,10 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       const condExpr = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'expression');
       const bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
 
-      const loweredCond = condExpr ? lowerExpressionValue(condExpr, compileContext) : null;
-      lines.push(`${indent}while (${loweredCond || '0'}) {`);
+      const loweredCond = condExpr
+        ? lowerRequiredExpressionValue(condExpr, compileContext, 'while-condition-unlowerable', 'while loop condition expression')
+        : '0';
+      lines.push(`${indent}while (${loweredCond}) {`);
       
       if (bodyStmt) {
         lines.push(...lowerStatementNode(bodyStmt, compileContext, indentLevel + 1, options));
@@ -4209,8 +5054,10 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
         lines.push(`${indentation(indentLevel + 1)}// [do-while body not yet lowered]`);
       }
       
-      const loweredCond = condExpr ? lowerExpressionValue(condExpr, compileContext) : null;
-      lines.push(`${indent}} while (${loweredCond || '0'});`);
+      const loweredCond = condExpr
+        ? lowerRequiredExpressionValue(condExpr, compileContext, 'do-while-condition-unlowerable', 'do-while loop condition expression')
+        : '0';
+      lines.push(`${indent}} while (${loweredCond});`);
       
       return lines;
     }
@@ -4234,6 +5081,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       const bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
 
       if (closeParenIndex < 0) {
+        reportUnsupportedLowering(
+          compileContext,
+          'for-statement-unlowerable',
+          'for loop header is missing closing parenthesis'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: for loop header missing closing parenthesis');
+        }
         return [`${indent}// [for loop missing closing paren]`];
       }
 
@@ -4243,6 +5098,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       const lexicalDeclNode = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'lexicalDeclaration');
       const hasLexicalShape = !!lexicalDeclNode;
       if (semicolonIndices.length !== 2 && !(hasLexicalShape && semicolonIndices.length === 1)) {
+        reportUnsupportedLowering(
+          compileContext,
+          'for-statement-unlowerable',
+          `for loop header has unexpected semicolon count: ${semicolonIndices.length}`
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err(`unsupported lowering: for loop semicolon count ${semicolonIndices.length}`);
+        }
         return [`${indent}// [for loop with unexpected semicolon count: ${semicolonIndices.length}]`];
       }
 
@@ -4275,6 +5138,26 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
           const cppType = cppArgType(inferredType);
           const constQualifier = isConst && cppType !== 'const char*' ? 'const ' : '';
           const loweredInitExpr = initExpr ? lowerExpressionValue(initExpr, compileContext) : null;
+          if (initExpr && loweredInitExpr === null) {
+            reportUnsupportedLowering(
+              compileContext,
+              'for-init-unlowerable',
+              `for lexical initializer expression for '${variableName}' could not be lowered`
+            );
+            if (compileContext && compileContext.strictLowering) {
+              err(`unsupported lowering: for lexical initializer '${variableName}'`);
+            }
+          }
+          if (initExpr && loweredInitExpr === null) {
+            reportUnsupportedLowering(
+              compileContext,
+              'variable-initializer-unlowerable',
+              `lexical variable initializer for '${variableName}' could not be lowered`
+            );
+            if (compileContext && compileContext.strictLowering) {
+              err(`unsupported lowering: lexical variable initializer '${variableName}'`);
+            }
+          }
           const initValue = loweredInitExpr !== null ? loweredInitExpr : defaultCppValue(cppType);
           const declIndent = indentation(indentLevel + 1);
           lexicalDeclLines.push(`${declIndent}${constQualifier}${cppType} ${variableName} = ${initValue};`);
@@ -4306,7 +5189,17 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
               if (initializer) {
                 const initExpr = (initializer.children || []).find((c) => c && c.kind === 'nonterminal');
                 const loweredInitExpr = initExpr ? lowerExpressionValue(initExpr, compileContext) : null;
-                if (loweredInitExpr) {
+                if (initExpr && loweredInitExpr === null) {
+                  reportUnsupportedLowering(
+                    compileContext,
+                    'for-init-unlowerable',
+                    `for initializer expression for '${varName}' could not be lowered`
+                  );
+                  if (compileContext && compileContext.strictLowering) {
+                    err(`unsupported lowering: for initializer '${varName}'`);
+                  }
+                }
+                if (loweredInitExpr !== null) {
                   varDecl += ' = ' + loweredInitExpr;
                 }
               }
@@ -4316,8 +5209,17 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
             initCode = varParts.join(', ');
           } else if (child.kind === 'nonterminal' && child.name === 'expression') {
             const loweredExpr = lowerExpressionValue(child, compileContext);
-            if (loweredExpr) {
+            if (loweredExpr !== null) {
               initCode += loweredExpr;
+            } else {
+              reportUnsupportedLowering(
+                compileContext,
+                'for-init-unlowerable',
+                'for initializer expression could not be lowered'
+              );
+              if (compileContext && compileContext.strictLowering) {
+                err('unsupported lowering: for initializer expression');
+              }
             }
           }
         }
@@ -4331,7 +5233,18 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
           (c, index) => c && c.kind === 'nonterminal' && c.name === 'expression' && index < semicolonIndices[0]
         );
         const loweredExpr = condExprNode ? lowerExpressionValue(condExprNode, compileContext) : null;
-        if (loweredExpr) condCode = loweredExpr;
+        if (loweredExpr !== null) {
+          condCode = loweredExpr;
+        } else if (condExprNode) {
+          reportUnsupportedLowering(
+            compileContext,
+            'for-condition-unlowerable',
+            'for loop condition expression could not be lowered'
+          );
+          if (compileContext && compileContext.strictLowering) {
+            err('unsupported lowering: for loop condition expression');
+          }
+        }
       } else {
         for (let i = semicolonIndices[0] + 1; i < semicolonIndices[1]; i++) {
           const child = iterChildren[i];
@@ -4339,8 +5252,17 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
 
           if (child.kind === 'nonterminal' && child.name === 'expression') {
             const loweredExpr = lowerExpressionValue(child, compileContext);
-            if (loweredExpr) {
+            if (loweredExpr !== null) {
               condCode = loweredExpr;
+            } else {
+              reportUnsupportedLowering(
+                compileContext,
+                'for-condition-unlowerable',
+                'for loop condition expression could not be lowered'
+              );
+              if (compileContext && compileContext.strictLowering) {
+                err('unsupported lowering: for loop condition expression');
+              }
             }
           }
         }
@@ -4354,8 +5276,17 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
 
         if (child.kind === 'nonterminal' && child.name === 'expression') {
           const loweredExpr = lowerExpressionValue(child, compileContext);
-          if (loweredExpr) {
+          if (loweredExpr !== null) {
             incrCode = loweredExpr;
+          } else {
+            reportUnsupportedLowering(
+              compileContext,
+              'for-increment-unlowerable',
+              'for loop increment expression could not be lowered'
+            );
+            if (compileContext && compileContext.strictLowering) {
+              err('unsupported lowering: for loop increment expression');
+            }
           }
         }
       }
@@ -4387,6 +5318,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       return lines;
     }
 
+    reportUnsupportedLowering(
+      compileContext,
+      'iteration-statement-unlowerable',
+      `iteration statement type not yet lowered: ${loopType}`
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err(`unsupported lowering: iteration statement type ${loopType}`);
+    }
     return [`${indent}// [iteration statement type not yet lowered: ${loopType}]`];
   }
 
@@ -4405,6 +5344,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     
     // Must have at least try block
     if (!tryBlock) {
+      reportUnsupportedLowering(
+        compileContext,
+        'try-statement-unlowerable',
+        'try statement is missing try block'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: try statement missing block');
+      }
       return [`${indent}// [try statement missing block]`];
     }
 
@@ -4482,11 +5429,29 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     const caseBlock = switchChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'caseBlock');
     
     if (!switchExpr || !caseBlock) {
+      reportUnsupportedLowering(
+        compileContext,
+        'switch-statement-unlowerable',
+        'switch statement is missing expression or case block'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: switch statement missing expression or case block');
+      }
       return [`${indent}// [switch statement missing expression or caseBlock]`];
     }
 
     const loweredExpr = lowerExpressionValue(switchExpr, compileContext);
-    lines.push(`${indent}switch (${loweredExpr || '/* expression */'}) {`);
+    if (loweredExpr === null) {
+      reportUnsupportedLowering(
+        compileContext,
+        'switch-expression-unlowerable',
+        'switch expression could not be lowered'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: switch expression');
+      }
+    }
+    lines.push(`${indent}switch (${loweredExpr !== null ? loweredExpr : '/* expression */'}) {`);
 
     // Extract case clauses and default clause
     const blockChildren = caseBlock.children || [];
@@ -4501,7 +5466,17 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
 
       if (caseExpr) {
         const loweredCaseExpr = lowerExpressionValue(caseExpr, compileContext);
-        lines.push(`${indentation(indentLevel + 1)}case ${loweredCaseExpr || '/* expression */'}:`);
+        if (loweredCaseExpr === null) {
+          reportUnsupportedLowering(
+            compileContext,
+            'switch-case-expression-unlowerable',
+            'switch case expression could not be lowered'
+          );
+          if (compileContext && compileContext.strictLowering) {
+            err('unsupported lowering: switch case expression');
+          }
+        }
+        lines.push(`${indentation(indentLevel + 1)}case ${loweredCaseExpr !== null ? loweredCaseExpr : '/* expression */'}:`);
       } else {
         lines.push(`${indentation(indentLevel + 1)}case /* expression */:`);
       }
@@ -4554,6 +5529,17 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       (c) => c && c.kind === 'nonterminal' && c.name === 'identifier'
     );
     const label = labelIdNode ? findFirstIdentifierValue(labelIdNode) : null;
+    if (label) {
+      reportUnsupportedLowering(
+        compileContext,
+        'break-label-unsupported',
+        `break statement with label '${label}' is not supported`
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err(`unsupported lowering: break label '${label}'`);
+      }
+      return [`${indent}break;`];
+    }
     return [label ? `${indent}break ${label};` : `${indent}break;`];
   }
 
@@ -4566,6 +5552,17 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       (c) => c && c.kind === 'nonterminal' && c.name === 'identifier'
     );
     const label = labelIdNode ? findFirstIdentifierValue(labelIdNode) : null;
+    if (label) {
+      reportUnsupportedLowering(
+        compileContext,
+        'continue-label-unsupported',
+        `continue statement with label '${label}' is not supported`
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err(`unsupported lowering: continue label '${label}'`);
+      }
+      return [`${indent}continue;`];
+    }
     return [label ? `${indent}continue ${label};` : `${indent}continue;`];
   }
 
@@ -4580,10 +5577,28 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     );
 
     if (!throwExpr) {
+      reportUnsupportedLowering(
+        compileContext,
+        'throw-expression-unlowerable',
+        'throw statement is missing an expression'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: throw statement missing expression');
+      }
       return [`${indent}throw nullptr;`];
     }
 
     const loweredThrowExpr = lowerExpressionValue(throwExpr, compileContext);
+    if (loweredThrowExpr === null) {
+      reportUnsupportedLowering(
+        compileContext,
+        'throw-expression-unlowerable',
+        'throw expression could not be lowered'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: throw expression');
+      }
+    }
     const throwValue = loweredThrowExpr !== null ? loweredThrowExpr : 'nullptr';
     return [`${indent}throw ${throwValue};`];
   }
@@ -4602,6 +5617,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     return lines;
   }
 
+  reportUnsupportedLowering(
+    compileContext,
+    'statement-unlowerable',
+    'statement node could not be lowered'
+  );
+  if (compileContext && compileContext.strictLowering) {
+    err('unsupported lowering: statement node');
+  }
   return [`${indent}// [statement not yet lowered]`];
 }
 
@@ -5297,7 +6320,7 @@ function main() {
   }
 
   const tree = collector.root;
-  const compileContext = profileStep('buildCompileContext', () => buildCompileContext(tree, hostRegistry));
+  const compileContext = profileStep('buildCompileContext', () => buildCompileContext(tree, hostRegistry, options));
   const hostCalls = profileStep('extractHostCallsFromTree', () => extractHostCallsFromTree(tree, compileContext));
 
   if (!tree) {
@@ -5358,6 +6381,8 @@ function main() {
       fs.writeFileSync(options.cppOut, generateCpp(inputPath, tree, hostCalls, compileContext));
     });
   }
+
+  printLoweringWarnings(compileContext);
 }
 
 main();
