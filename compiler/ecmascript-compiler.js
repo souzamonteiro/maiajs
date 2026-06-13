@@ -2226,6 +2226,14 @@ function collectArgumentExpressions(argListNode) {
 
 function lowerArgumentsNode(argumentsNode, compileContext) {
   if (!argumentsNode || argumentsNode.kind !== 'nonterminal' || argumentsNode.name !== 'arguments') {
+    reportUnsupportedLowering(
+      compileContext,
+      'argument-expression-unlowerable',
+      'arguments node is missing, malformed, or unexpected kind'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: arguments node shape');
+    }
     return '';
   }
 
@@ -2534,7 +2542,34 @@ function extractObjectLiteralProperties(objectLiteralNode) {
 }
 
 function lowerObjectLiteralValue(objectLiteralNode, compileContext) {
+  if (!objectLiteralNode || objectLiteralNode.kind !== 'nonterminal' || objectLiteralNode.name !== 'objectLiteral') {
+    reportUnsupportedLowering(
+      compileContext,
+      'object-literal-unlowerable',
+      'object literal node is missing, malformed, or unexpected kind'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: object literal node shape');
+    }
+    return null;
+  }
+
   const properties = extractObjectLiteralProperties(objectLiteralNode);
+  const propertyAssignmentCount = (objectLiteralNode.children || []).filter(
+    (child) => child && child.kind === 'nonterminal' && child.name === 'propertyAssignment'
+  ).length;
+
+  if (propertyAssignmentCount > 0 && properties.length === 0) {
+    reportUnsupportedLowering(
+      compileContext,
+      'object-literal-unlowerable',
+      'object literal contains propertyAssignment entries that could not be resolved'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: object literal propertyAssignment resolution');
+    }
+  }
+
   if (properties.length === 0) {
     return '__maia_obj_literal0()';
   }
@@ -2653,6 +2688,18 @@ function extractArrayLiteralElements(arrayLiteralNode) {
 }
 
 function lowerAdvancedArrayLiteralValue(arrayInfo, compileContext) {
+  if (!arrayInfo || !Array.isArray(arrayInfo.operations) || !Array.isArray(arrayInfo.values)) {
+    reportUnsupportedLowering(
+      compileContext,
+      'array-literal-unlowerable',
+      'advanced array literal info is missing or malformed'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: advanced array literal info shape');
+    }
+    return null;
+  }
+
   let chain = '__maia_arr_builder_begin()';
 
   for (const operation of (arrayInfo.operations || [])) {
@@ -2689,7 +2736,34 @@ function lowerAdvancedArrayLiteralValue(arrayInfo, compileContext) {
 }
 
 function lowerArrayLiteralValue(arrayLiteralNode, compileContext) {
+  if (!arrayLiteralNode || arrayLiteralNode.kind !== 'nonterminal' || arrayLiteralNode.name !== 'arrayLiteral') {
+    reportUnsupportedLowering(
+      compileContext,
+      'array-literal-unlowerable',
+      'array literal node is missing, malformed, or unexpected kind'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: array literal node shape');
+    }
+    return null;
+  }
+
   const arrayInfo = extractArrayLiteralElements(arrayLiteralNode);
+  const arrayElementCount = (arrayLiteralNode.children || []).filter(
+    (child) => child && child.kind === 'nonterminal' && child.name === 'arrayElement'
+  ).length;
+
+  if (arrayElementCount > 0 && arrayInfo.operations.length === 0) {
+    reportUnsupportedLowering(
+      compileContext,
+      'array-literal-unlowerable',
+      'array literal contains arrayElement entries that could not be resolved'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: array literal arrayElement resolution');
+    }
+  }
+
   const elements = arrayInfo.values;
 
   if (!arrayInfo.hasSpread && !arrayInfo.hasElision && elements.length === 0) {
@@ -2936,6 +3010,19 @@ function getLambdaRuntimeFunctionId(arity, captureCount, isAsync) {
 }
 
 function lowerArrowFunctionValue(arrowNode, isAsync = false, compileContext = null) {
+  const expectedNodeName = isAsync ? 'asyncArrowFunction' : 'arrowFunction';
+  if (!arrowNode || arrowNode.kind !== 'nonterminal' || arrowNode.name !== expectedNodeName) {
+    reportUnsupportedLowering(
+      compileContext,
+      'arrow-function-unlowerable',
+      `${expectedNodeName} node is missing, malformed, or unexpected kind`
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err(`unsupported lowering: ${expectedNodeName} node shape`);
+    }
+    return null;
+  }
+
   const params = extractLambdaParameterNames(arrowNode);
   const arity = params.length;
   const captures = collectLambdaCaptureNames(arrowNode, compileContext);
@@ -3011,6 +3098,18 @@ function normalizeJsStringLiteralForCpp(raw) {
 }
 
 function lowerLiteralValue(node, compileContext) {
+  if (!node || node.kind !== 'nonterminal' || node.name !== 'literal') {
+    reportUnsupportedLowering(
+      compileContext,
+      'literal-expression-unlowerable',
+      'literal node is missing, malformed, or unexpected kind'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: literal node shape');
+    }
+    return null;
+  }
+
   for (const child of (node.children || [])) {
     if (child.kind !== 'nonterminal') { continue; }
     if (child.name === 'stringLiteral') {
@@ -4290,6 +4389,18 @@ function emitLambdaRuntimeFallbackCpp(tree) {
 }
 
 function lowerCallExpressionValue(node, compileContext) {
+  if (!node || node.kind !== 'nonterminal' || node.name !== 'callExpression') {
+    reportUnsupportedLowering(
+      compileContext,
+      'call-expression-unlowerable',
+      'call expression node is missing, malformed, or unexpected kind'
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err('unsupported lowering: call expression node shape');
+    }
+    return null;
+  }
+
   const children = node.children || [];
   const memberExprNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'memberExpression');
   const argsNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'arguments');
@@ -4826,6 +4937,14 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
           err('unsupported lowering: destructuring pattern declaration');
         }
       } else {
+        reportUnsupportedLowering(
+          compileContext,
+          'variable-name-unlowerable',
+          'variable declaration has no extractable binding name and is not destructuring'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: variable binding name extraction');
+        }
         lowered.push(`${indent}// [variable declaration without supported binding name]`);
       }
       continue;
@@ -4899,6 +5018,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     );
 
     if (!returnExprNode) {
+      reportUnsupportedLowering(
+        compileContext,
+        'return-expression-unlowerable',
+        'return statement is missing expression'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: return statement missing expression');
+      }
       return [`${indent}return ${defaultCppValue(returnTypeCpp)};`];
     }
 
@@ -4929,12 +5056,29 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     const thenStatement = nestedStatements[0] || null;
     const elseStatement = hasElse ? (nestedStatements[1] || null) : null;
 
-    const loweredCondition = conditionExpr ? lowerExpressionValue(conditionExpr, compileContext) : null;
-    if (loweredCondition === null) {
+    let loweredCondition = null;
+    if (!conditionExpr) {
       reportUnsupportedLowering(
         compileContext,
         'if-condition-unlowerable',
-        'if statement condition could not be lowered'
+        'if statement is missing condition expression'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: if statement missing condition');
+      }
+    } else {
+      loweredCondition = lowerExpressionValue(conditionExpr, compileContext);
+      if (loweredCondition === null) {
+        reportUnsupportedLowering(
+          compileContext,
+          'if-condition-unlowerable',
+          'if statement condition could not be lowered'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: if statement condition');
+        }
+      }
+    }
       );
       if (compileContext && compileContext.strictLowering) {
         err('unsupported lowering: if statement condition');
@@ -4945,6 +5089,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     if (thenStatement) {
       lines.push(...lowerStatementNode(thenStatement, compileContext, indentLevel + 1, options));
     } else {
+      reportUnsupportedLowering(
+        compileContext,
+        'if-statement-unlowerable',
+        'if statement then-branch contains no statement child'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: if statement then-branch');
+      }
       lines.push(`${indentation(indentLevel + 1)}// [then statement not yet lowered]`);
     }
     lines.push(`${indent}}`);
@@ -4954,6 +5106,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       if (elseStatement) {
         lines.push(...lowerStatementNode(elseStatement, compileContext, indentLevel + 1, options));
       } else {
+        reportUnsupportedLowering(
+          compileContext,
+          'if-statement-unlowerable',
+          'if statement else-branch contains no statement child'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: if statement else-branch');
+        }
         lines.push(`${indentation(indentLevel + 1)}// [else statement not yet lowered]`);
       }
       lines.push(`${indent}}`);
@@ -4985,6 +5145,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
   if (exprStmtNode) {
     const exprNode = (exprStmtNode.children || []).find((c) => c.kind === 'nonterminal' && c.name === 'expression');
     if (!exprNode) {
+      reportUnsupportedLowering(
+        compileContext,
+        'expression-statement-unlowerable',
+        'expression statement is missing expression'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: expression statement missing expression');
+      }
       return [`${indent}// [expression statement missing expression]`];
     }
     const lowered = lowerExpressionValue(exprNode, compileContext);
@@ -5034,6 +5202,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       if (bodyStmt) {
         lines.push(...lowerStatementNode(bodyStmt, compileContext, indentLevel + 1, options));
       } else {
+        reportUnsupportedLowering(
+          compileContext,
+          'iteration-statement-unlowerable',
+          'while loop body statement is missing'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: while loop body statement');
+        }
         lines.push(`${indentation(indentLevel + 1)}// [while body not yet lowered]`);
       }
       
@@ -5051,6 +5227,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       if (bodyStmt) {
         lines.push(...lowerStatementNode(bodyStmt, compileContext, indentLevel + 1, options));
       } else {
+        reportUnsupportedLowering(
+          compileContext,
+          'iteration-statement-unlowerable',
+          'do-while loop body statement is missing'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: do-while loop body statement');
+        }
         lines.push(`${indentation(indentLevel + 1)}// [do-while body not yet lowered]`);
       }
       
@@ -5308,6 +5492,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       if (bodyStmt) {
         lines.push(...lowerStatementNode(bodyStmt, compileContext, bodyIndentLevel, options));
       } else {
+        reportUnsupportedLowering(
+          compileContext,
+          'iteration-statement-unlowerable',
+          'for loop body statement is missing'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: for loop body statement');
+        }
         lines.push(`${indentation(bodyIndentLevel)}// [for body not yet lowered]`);
       }
 
@@ -5392,6 +5584,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
           lines.push(`${indentation(indentLevel + 1)}// [empty catch block]`);
         }
       } else {
+        reportUnsupportedLowering(
+          compileContext,
+          'catch-block-unlowerable',
+          'catch clause is missing catch block'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: catch clause block');
+        }
         lines.push(`${indentation(indentLevel + 1)}// [catch block not yet lowered]`);
       }
       
@@ -5413,6 +5613,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
           lines.push(`${indentation(indentLevel)}// [empty finally block]`);
         }
       } else {
+        reportUnsupportedLowering(
+          compileContext,
+          'finally-block-unlowerable',
+          'finally clause is missing finally block'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: finally clause block');
+        }
         lines.push(`${indent}// [finally block not found]`);
       }
     }
@@ -5458,6 +5666,17 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     const caseClauses = blockChildren.filter((c) => c && c.kind === 'nonterminal' && c.name === 'caseClause');
     const defaultClause = blockChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'defaultClause');
 
+    if (caseClauses.length === 0 && !defaultClause) {
+      reportUnsupportedLowering(
+        compileContext,
+        'switch-statement-unlowerable',
+        'switch statement case block has no case clauses and no default clause'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: switch statement case block empty');
+      }
+    }
+  
     // Process each case clause
     for (const caseClause of caseClauses) {
       const caseChildren = caseClause.children || [];
@@ -5478,6 +5697,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
         }
         lines.push(`${indentation(indentLevel + 1)}case ${loweredCaseExpr !== null ? loweredCaseExpr : '/* expression */'}:`);
       } else {
+        reportUnsupportedLowering(
+          compileContext,
+          'switch-case-expression-unlowerable',
+          'switch case clause is missing expression'
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err('unsupported lowering: switch case missing expression');
+        }
         lines.push(`${indentation(indentLevel + 1)}case /* expression */:`);
       }
 
@@ -5613,7 +5840,19 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     const nestedStmt = labelChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
     const label = labelIdNode ? findFirstIdentifierValue(labelIdNode) : null;
     if (label) { lines.push(`${indent}${label}:`); }
-    if (nestedStmt) { lines.push(...lowerStatementNode(nestedStmt, compileContext, indentLevel, options)); }
+    if (nestedStmt) { 
+      lines.push(...lowerStatementNode(nestedStmt, compileContext, indentLevel, options)); 
+    } else {
+      reportUnsupportedLowering(
+        compileContext,
+        'labelled-statement-unlowerable',
+        'labelled statement is missing nested statement'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: labelled statement body');
+      }
+      lines.push(`${indentation(indentLevel)}// [labelled statement body not yet lowered]`);
+    }
     return lines;
   }
 
