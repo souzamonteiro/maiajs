@@ -3427,9 +3427,12 @@ function lowerUnaryExpressionValue(node, compileContext) {
       && (children[0].token === 'TOKEN__2B__2B_' || children[0].token === 'TOKEN__2D__2D_')
       && children[1].kind === 'nonterminal'
       && children[1].name === 'unaryExpression') {
-    const postfixNode = (children[1].children || []).find(
+    let postfixNode = (children[1].children || []).find(
       (child) => child.kind === 'nonterminal' && child.name === 'postfixExpression'
-    );
+    ) || null;
+    if (!postfixNode) {
+      postfixNode = findFirstNonterminal(children[1], 'postfixExpression');
+    }
     if (!postfixNode) {
       reportUnsupportedLowering(
         compileContext,
@@ -3442,9 +3445,12 @@ function lowerUnaryExpressionValue(node, compileContext) {
       return null;
     }
 
-    const lhsNode = (postfixNode.children || []).find(
+    let lhsNode = (postfixNode.children || []).find(
       (child) => child.kind === 'nonterminal' && child.name === 'leftHandSideExpression'
-    );
+    ) || null;
+    if (!lhsNode) {
+      lhsNode = findFirstNonterminal(postfixNode, 'leftHandSideExpression');
+    }
     const target = lowerIdentifierFromLeftHandSideExpression(lhsNode, compileContext);
     if (!target) {
       reportUnsupportedLowering(
