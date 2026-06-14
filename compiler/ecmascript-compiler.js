@@ -4423,8 +4423,14 @@ function lowerCallExpressionValue(node, compileContext) {
   }
 
   const children = node.children || [];
-  const memberExprNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'memberExpression');
-  const argsNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'arguments');
+  let memberExprNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'memberExpression') || null;
+  let argsNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'arguments') || null;
+  if (!memberExprNode) {
+    memberExprNode = findFirstNonterminal(node, 'memberExpression');
+  }
+  if (!argsNode) {
+    argsNode = findFirstNonterminal(node, 'arguments');
+  }
   if (!memberExprNode || !argsNode) {
     reportUnsupportedLowering(
       compileContext,
@@ -4444,7 +4450,10 @@ function lowerCallExpressionValue(node, compileContext) {
   const directPropertyName = directPropertyNode ? findFirstIdentifierValue(directPropertyNode) : null;
   const baseExpressionNode = directPropertyIndex > 0 ? memberChildren[0] : null;
 
-  const argListNode = (argsNode.children || []).find((c) => c.kind === 'nonterminal' && c.name === 'argumentList');
+  let argListNode = (argsNode.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'argumentList') || null;
+  if (!argListNode) {
+    argListNode = findFirstNonterminal(argsNode, 'argumentList');
+  }
   const argExprs = argListNode ? collectArgumentExpressions(argListNode) : [];
   const args = lowerArgumentsNode(argsNode, compileContext);
 
