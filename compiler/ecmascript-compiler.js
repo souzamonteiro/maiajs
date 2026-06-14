@@ -6052,10 +6052,21 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     return lines;
   }
 
+  const statementName =
+    statementNode && statementNode.kind === 'nonterminal' && statementNode.name
+      ? statementNode.name
+      : 'unknown';
+  const directChildNames = (statementNode && Array.isArray(statementNode.children)
+    ? statementNode.children
+    : [])
+    .filter((child) => child && child.kind === 'nonterminal' && typeof child.name === 'string')
+    .map((child) => child.name);
+  const childSummary = directChildNames.length > 0 ? directChildNames.join(', ') : 'none';
+
   reportUnsupportedLowering(
     compileContext,
     'statement-unlowerable',
-    'statement node could not be lowered'
+    `statement node could not be lowered (node=${statementName}, directChildren=${childSummary})`
   );
   if (compileContext && compileContext.strictLowering) {
     err('unsupported lowering: statement node');
