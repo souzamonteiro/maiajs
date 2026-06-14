@@ -5120,16 +5120,22 @@ function extractVariableDeclarationInitializer(variableDeclarationNode, compileC
     return null;
   }
 
-  const initializer = (variableDeclarationNode.children || []).find(
+  let initializer = (variableDeclarationNode.children || []).find(
     (child) => child && child.kind === 'nonterminal' && child.name === 'initializer'
-  );
+  ) || null;
+  if (!initializer) {
+    initializer = findFirstNonterminal(variableDeclarationNode, 'initializer');
+  }
   if (!initializer) {
     return null;
   }
 
-  const assignmentExpression = (initializer.children || []).find(
+  let assignmentExpression = (initializer.children || []).find(
     (child) => child && child.kind === 'nonterminal' && child.name === 'assignmentExpression'
   ) || null;
+  if (!assignmentExpression) {
+    assignmentExpression = findFirstNonterminal(initializer, 'assignmentExpression');
+  }
   if (!assignmentExpression && compileContext) {
     reportUnsupportedLowering(
       compileContext,
