@@ -4953,7 +4953,19 @@ function collectHostSignatures(tree, compileContext) {
       argsNode = findFirstNonterminal(node, 'arguments');
     }
     if (!memberExprNode || !argsNode) { return; }
-    const pathSegments = extractPathFromMemberExpression(memberExprNode);
+    let pathSegments = extractPathFromMemberExpression(memberExprNode);
+    if (!pathSegments) {
+      const nestedMemberExpr = findFirstNonterminal(memberExprNode, 'memberExpression');
+      if (nestedMemberExpr && nestedMemberExpr !== memberExprNode) {
+        pathSegments = extractPathFromMemberExpression(nestedMemberExpr);
+      }
+    }
+    if (!pathSegments) {
+      const fallbackIdentifier = findFirstIdentifierValue(memberExprNode);
+      if (fallbackIdentifier) {
+        pathSegments = [fallbackIdentifier];
+      }
+    }
     if (!pathSegments) { return; }
 
     if (isLocalFunctionPath(pathSegments, compileContext)) {
