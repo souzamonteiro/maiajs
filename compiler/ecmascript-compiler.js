@@ -3901,6 +3901,21 @@ function lowerExpressionValue(node, compileContext) {
       }
     }
 
+    const fallbackNames = ['expression', 'literal', 'objectLiteral', 'arrayLiteral', 'identifier'];
+    for (const name of fallbackNames) {
+      const fallbackNode = findFirstNonterminal(node, name);
+      if (!fallbackNode) {
+        continue;
+      }
+      if (name === 'expression') { return lowerExpressionValue(fallbackNode, compileContext); }
+      if (name === 'literal') { return lowerLiteralValue(fallbackNode, compileContext); }
+      if (name === 'objectLiteral') { return lowerObjectLiteralValue(fallbackNode, compileContext); }
+      if (name === 'arrayLiteral') { return lowerArrayLiteralValue(fallbackNode, compileContext); }
+      if (name === 'identifier') {
+        return lowerIdentifierValue(findFirstIdentifierValue(fallbackNode), compileContext);
+      }
+    }
+
     reportUnsupportedLowering(
       compileContext,
       'primary-expression-unlowerable',
