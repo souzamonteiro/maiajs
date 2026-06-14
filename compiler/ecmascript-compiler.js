@@ -3796,7 +3796,35 @@ function lowerExpressionValue(node, compileContext) {
       return result;
     }
 
-    const ntc = (node.children || []).filter((c) => c && c.kind === 'nonterminal');
+    let ntc = (node.children || []).filter((c) => c && c.kind === 'nonterminal');
+    if (ntc.length !== 1) {
+      const fallbackCandidates = [];
+      const fallbackNames = [
+        'primaryExpression',
+        'callExpression',
+        'memberExpression',
+        'leftHandSideExpression',
+        'identifier'
+      ];
+      for (const child of (node.children || [])) {
+        if (!child || child.kind !== 'nonterminal') {
+          continue;
+        }
+        let candidate = null;
+        for (const name of fallbackNames) {
+          candidate = findFirstNonterminal(child, name);
+          if (candidate) {
+            break;
+          }
+        }
+        if (candidate) {
+          fallbackCandidates.push(candidate);
+        }
+      }
+      if (fallbackCandidates.length > 0) {
+        ntc = fallbackCandidates;
+      }
+    }
     if (ntc.length !== 1) {
       reportUnsupportedLowering(
         compileContext,
