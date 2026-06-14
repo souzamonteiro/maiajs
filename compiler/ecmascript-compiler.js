@@ -4869,7 +4869,13 @@ function lowerCallExpressionValue(node, compileContext) {
     }
 
     if (child.kind === 'terminal' && child.value === '.') {
-      const propertyNode = children[i + 1];
+      let propertyNode = children[i + 1] || null;
+      if (propertyNode && (propertyNode.kind !== 'nonterminal' || propertyNode.name !== 'propertyIdentifierName')) {
+        const fallbackPropertyNode = findFirstNonterminal(propertyNode, 'propertyIdentifierName');
+        if (fallbackPropertyNode) {
+          propertyNode = fallbackPropertyNode;
+        }
+      }
       if (!propertyNode || propertyNode.kind !== 'nonterminal' || propertyNode.name !== 'propertyIdentifierName') {
         reportUnsupportedLowering(
           compileContext,
