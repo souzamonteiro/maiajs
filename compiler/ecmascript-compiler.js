@@ -5627,9 +5627,16 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
   if (switchStmtNode) {
     const switchChildren = switchStmtNode.children || [];
     
-    // Extract the switch expression
-    const switchExpr = switchChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'expression');
-    const caseBlock = switchChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'caseBlock');
+    // Extract switch header nodes, preferring direct children and falling back to AST search.
+    let switchExpr = switchChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'expression') || null;
+    let caseBlock = switchChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'caseBlock') || null;
+
+    if (!switchExpr) {
+      switchExpr = findFirstNonterminal(switchStmtNode, 'expression');
+    }
+    if (!caseBlock) {
+      caseBlock = findFirstNonterminal(switchStmtNode, 'caseBlock');
+    }
     
     if (!switchExpr || !caseBlock) {
       reportUnsupportedLowering(
