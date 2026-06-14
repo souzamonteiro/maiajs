@@ -3535,71 +3535,109 @@ function lowerUnaryExpressionValue(node, compileContext) {
   }
 
   const children = node.children || [];
-  if (children.length === 2
-      && children[0].kind === 'terminal'
-      && (children[0].token === 'TOKEN__21_' || children[0].token === 'TOKEN__2D_' || children[0].token === 'TOKEN__2B_' || children[0].token === 'TOKEN__7E_')
-      && children[1].kind === 'nonterminal') {
-    const operand = lowerExpressionValue(children[1], compileContext);
+  
+  // Try to find operator and operand even if encapsulated
+  let opTerminal = (children[0] && children[0].kind === 'terminal' 
+    && (children[0].token === 'TOKEN__21_' || children[0].token === 'TOKEN__2D_' || children[0].token === 'TOKEN__2B_' || children[0].token === 'TOKEN__7E_'))
+    ? children[0]
+    : null;
+  if (!opTerminal) {
+    for (const child of children) {
+      if (child && child.kind === 'terminal' 
+        && (child.token === 'TOKEN__21_' || child.token === 'TOKEN__2D_' || child.token === 'TOKEN__2B_' || child.token === 'TOKEN__7E_')) {
+        opTerminal = child;
+        break;
+      }
+    }
+    for (const child of children) {
+      if (!opTerminal && child && child.kind === 'nonterminal') {
+        walk(child, (n) => {
+          if (!opTerminal && n && n.kind === 'terminal' 
+            && (n.token === 'TOKEN__21_' || n.token === 'TOKEN__2D_' || n.token === 'TOKEN__2B_' || n.token === 'TOKEN__7E_')) {
+            opTerminal = n;
+          }
+        });
+      }
+    }
+  }
+  
+  let operandNode = (children[1] && children[1].kind === 'nonterminal')
+    ? children[1]
+    : null;
+  if (!operandNode) {
+    operandNode = findFirstNonterminal(node, 'postfixExpression') || findFirstNonterminal(node, 'unaryExpression') || findFirstNonterminal(node, 'primaryExpression');
+  }
+  
+  if (opTerminal && operandNode && !opTerminal.token.includes('__2B__2B_') && !opTerminal.token.includes('__2D__2D_')) {
+    const operand = lowerExpressionValue(operandNode, compileContext);
     if (operand === null) {
       reportUnsupportedLowering(
         compileContext,
         'unary-expression-unlowerable',
-        `unary expression operand could not be lowered for '${children[0].value}'`
+        `unary expression operand could not be lowered for '${opTerminal.value}'`
       );
       if (compileContext && compileContext.strictLowering) {
-        err(`unsupported lowering: unary expression operand '${children[0].value}'`);
+        err(`unsupported lowering: unary expression operand '${opTerminal.value}'`);
       }
       return null;
     }
-    if (children[0].token === 'TOKEN__21_') {
+    if (opTerminal.token === 'TOKEN__21_') {
       return `!((int)(${operand}))`;
     }
-    return `${children[0].value}(${operand})`;
+    return `${opTerminal.value}(${operand})`;
   }
 
-  if (children.length === 2
-      && children[0].kind === 'terminal'
-      && (children[0].token === 'TOKEN__2B__2B_' || children[0].token === 'TOKEN__2D__2D_')
-      && children[1].kind === 'nonterminal'
-      && children[1].name === 'unaryExpression') {
-    let postfixNode = (children[1].children || []).find(
-      (child) => child.kind === 'nonterminal' && child.name === 'postfixExpression'
+  // Try to match prefix update operators (++/--)
+  let prefixOpTerminal = (children[0] && children[0].kind === 'terminal'
+    && (children[0].token === 'TOKEN__2B__2B_' || children[0].token === 'TOKEN__2D__2D_'))
+    ? children[0]
+    : null;
+  if (!prefixOpTerminal) {
+    for (const child of children) {
+      if (child && child.kind === 'terminal' && (child.token === 'TOKEN__2B__2B_' || child.token === 'TOKEN__2D__2D_')) {
+        prefixOpTerminal = child;
+        break;
+      }
+    }
+  }
+  
+  let prefixTargetNode = (children[1] && children[1].kind === 'nonterminal' && children[1].name === 'unaryExpression')
+    ? children[1]
+    : null;
+  if (!prefixTargetNode) {
+    prefixTargetNode = findFirstNonterminal(node, 'unaryExpression');
+  }
+  
+  if (prefixOpTerminal && prefixTargetNode) {
+    let postfixNode = (prefixTargetNode.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'postfixExpression'
     ) || null;
     if (!postfixNode) {
-      postfixNode = findFirstNonterminal(children[1], 'postfixExpression');
+      postfixNode = findFirstNonterminal(prefixTargetNode, 'postfixExpression');
     }
-    if (!postfixNode) {
-      reportUnsupportedLowering(
-        compileContext,
-        'unary-expression-unlowerable',
-        `prefix update expression is missing postfix target for '${children[0].value}'`
-      );
-      if (compileContext && compileContext.strictLowering) {
-        err(`unsupported lowering: prefix update expression '${children[0].value}'`);
+    if (postfixNode) {
+      let lhsNode = (postfixNode.children || []).find(
+        (child) => child && child.kind === 'nonterminal' && child.name === 'leftHandSideExpression'
+      ) || null;
+      if (!lhsNode) {
+        lhsNode = findFirstNonterminal(postfixNode, 'leftHandSideExpression');
       }
-      return null;
-    }
-
-    let lhsNode = (postfixNode.children || []).find(
-      (child) => child.kind === 'nonterminal' && child.name === 'leftHandSideExpression'
-    ) || null;
-    if (!lhsNode) {
-      lhsNode = findFirstNonterminal(postfixNode, 'leftHandSideExpression');
-    }
-    const target = lowerIdentifierFromLeftHandSideExpression(lhsNode, compileContext);
-    if (!target) {
-      reportUnsupportedLowering(
-        compileContext,
-        'unary-expression-unlowerable',
-        `prefix update target could not be lowered for '${children[0].value}'`
-      );
-      if (compileContext && compileContext.strictLowering) {
-        err(`unsupported lowering: prefix update target '${children[0].value}'`);
+      if (lhsNode) {
+        const target = lowerIdentifierFromLeftHandSideExpression(lhsNode, compileContext);
+        if (target) {
+          return `${prefixOpTerminal.value}${target}`;
+        }
       }
-      return null;
     }
-
-    return `${children[0].value}${target}`;
+    reportUnsupportedLowering(
+      compileContext,
+      'unary-expression-unlowerable',
+      `prefix update target could not be lowered for '${prefixOpTerminal.value}'`
+    );
+    if (compileContext && compileContext.strictLowering) {
+      err(`unsupported lowering: prefix update target '${prefixOpTerminal.value}'`);
+    }
+    return null;
   }
 
   let nonterminalChildren = children.filter((child) => child && child.kind === 'nonterminal');
