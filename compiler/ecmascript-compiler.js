@@ -4753,6 +4753,11 @@ function lowerCallExpressionValue(node, compileContext) {
   }
 
   const children = node.children || [];
+  const superCallNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'superCall') || null;
+  if (superCallNode) {
+    return '';
+  }
+
   let memberExprNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'memberExpression') || null;
   let argsNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'arguments') || null;
   if (!memberExprNode) {
