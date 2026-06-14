@@ -5211,7 +5211,17 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
   const iterationStmtNode = (statementNode.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'iterationStatement');
   if (iterationStmtNode) {
     const iterChildren = iterationStmtNode.children || [];
-    const firstToken = iterChildren.find((c) => c && c.kind === 'terminal');
+    let firstToken = iterChildren.find((c) => c && c.kind === 'terminal') || null;
+    if (!firstToken) {
+      walk(iterationStmtNode, (node) => {
+        if (firstToken || !node || node.kind !== 'terminal') {
+          return;
+        }
+        if (node.token === 'TOKEN_while' || node.token === 'TOKEN_do' || node.token === 'TOKEN_for') {
+          firstToken = node;
+        }
+      });
+    }
     
     if (!firstToken) {
       reportUnsupportedLowering(
@@ -5229,8 +5239,26 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
 
     // WHILE LOOP: 'while' '(' expression ')' statement
     if (loopType === 'TOKEN_while') {
-      const condExpr = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'expression');
-      const bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+      const bodyIndex = iterChildren.findIndex((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+      let condExpr = iterChildren.find((c, i) => c && c.kind === 'nonterminal' && c.name === 'expression' && (bodyIndex < 0 || i < bodyIndex)) || null;
+      let bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement') || null;
+
+      if (!condExpr) {
+        for (let i = 0; i < iterChildren.length; i += 1) {
+          if (bodyIndex >= 0 && i >= bodyIndex) {
+            break;
+          }
+          const candidate = iterChildren[i];
+          const nestedExpr = findFirstNonterminal(candidate, 'expression');
+          if (nestedExpr) {
+            condExpr = nestedExpr;
+            break;
+          }
+        }
+      }
+      if (!bodyStmt) {
+        bodyStmt = findFirstNonterminal(iterationStmtNode, 'statement');
+      }
 
       const loweredCond = condExpr
         ? lowerRequiredExpressionValue(condExpr, compileContext, 'while-condition-unlowerable', 'while loop condition expression')
@@ -5257,8 +5285,23 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
 
     // DO-WHILE LOOP: 'do' statement 'while' '(' expression ')' semicolon
     if (loopType === 'TOKEN_do') {
-      const bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
-      const condExpr = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'expression');
+      const bodyIndex = iterChildren.findIndex((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+      let bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement') || null;
+      let condExpr = iterChildren.find((c, i) => c && c.kind === 'nonterminal' && c.name === 'expression' && (bodyIndex < 0 || i > bodyIndex)) || null;
+
+      if (!bodyStmt) {
+        bodyStmt = findFirstNonterminal(iterationStmtNode, 'statement');
+      }
+      if (!condExpr) {
+        for (let i = Math.max(0, bodyIndex + 1); i < iterChildren.length; i += 1) {
+          const candidate = iterChildren[i];
+          const nestedExpr = findFirstNonterminal(candidate, 'expression');
+          if (nestedExpr) {
+            condExpr = nestedExpr;
+            break;
+          }
+        }
+      }
 
       lines.push(`${indent}do {`);
       
@@ -5300,7 +5343,10 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       }
 
       const closeParenIndex = iterChildren.findIndex((c) => c && c.kind === 'terminal' && c.token === 'TOKEN__29_');
-      const bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+      let bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement') || null;
+      if (!bodyStmt) {
+        bodyStmt = findFirstNonterminal(iterationStmtNode, 'statement');
+      }
 
       if (closeParenIndex < 0) {
         reportUnsupportedLowering(
