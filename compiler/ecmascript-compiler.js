@@ -5656,12 +5656,28 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     }
     lines.push(`${indent}switch (${loweredExpr !== null ? loweredExpr : '/* expression */'}) {`);
 
-    // Extract case clauses and default clause
-    const blockChildren = caseBlock.children || [];
-    const caseClauses = blockChildren.filter((c) => c && c.kind === 'nonterminal' && c.name === 'caseClause');
-    const defaultClause = blockChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'defaultClause');
+    // Collect case/default clauses in AST order and avoid relying on a flat child shape.
+    const clauseNodes = [];
+    const collectClauseNodes = (node) => {
+      if (!node || typeof node !== 'object') {
+        return;
+      }
+      if (node.kind !== 'nonterminal') {
+        return;
+      }
+      if (node.name === 'caseClause' || node.name === 'defaultClause') {
+        clauseNodes.push(node);
+        return;
+      }
+      for (const child of (node.children || [])) {
+        collectClauseNodes(child);
+      }
+    };
+    for (const child of (caseBlock.children || [])) {
+      collectClauseNodes(child);
+    }
 
-    if (caseClauses.length === 0 && !defaultClause) {
+    if (clauseNodes.length === 0) {
       reportUnsupportedLowering(
         compileContext,
         'switch-statement-unlowerable',
@@ -5672,53 +5688,52 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       }
     }
   
-    // Process each case clause
-    for (const caseClause of caseClauses) {
-      const caseChildren = caseClause.children || [];
-      const caseExpr = caseChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'expression');
-      const caseStatements = caseChildren.filter((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+    // Process case/default clauses in source order.
+    for (const clauseNode of clauseNodes) {
+      if (clauseNode.name === 'caseClause') {
+        const caseChildren = clauseNode.children || [];
+        const caseExpr = caseChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'expression');
+        const caseStatements = caseChildren.filter((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
 
-      if (caseExpr) {
-        const loweredCaseExpr = lowerExpressionValue(caseExpr, compileContext);
-        if (loweredCaseExpr === null) {
+        if (caseExpr) {
+          const loweredCaseExpr = lowerExpressionValue(caseExpr, compileContext);
+          if (loweredCaseExpr === null) {
+            reportUnsupportedLowering(
+              compileContext,
+              'switch-case-expression-unlowerable',
+              'switch case expression could not be lowered'
+            );
+            if (compileContext && compileContext.strictLowering) {
+              err('unsupported lowering: switch case expression');
+            }
+          }
+          lines.push(`${indentation(indentLevel + 1)}case ${loweredCaseExpr !== null ? loweredCaseExpr : '/* expression */'}:`);
+        } else {
           reportUnsupportedLowering(
             compileContext,
             'switch-case-expression-unlowerable',
-            'switch case expression could not be lowered'
+            'switch case clause is missing expression'
           );
           if (compileContext && compileContext.strictLowering) {
-            err('unsupported lowering: switch case expression');
+            err('unsupported lowering: switch case missing expression');
           }
+          lines.push(`${indentation(indentLevel + 1)}case /* expression */:`);
         }
-        lines.push(`${indentation(indentLevel + 1)}case ${loweredCaseExpr !== null ? loweredCaseExpr : '/* expression */'}:`);
+
+        // Add case body statements through the regular AST statement lowering path.
+        for (const stmt of caseStatements) {
+          lines.push(...lowerStatementNode(stmt, compileContext, indentLevel + 2, options));
+        }
       } else {
-        reportUnsupportedLowering(
-          compileContext,
-          'switch-case-expression-unlowerable',
-          'switch case clause is missing expression'
-        );
-        if (compileContext && compileContext.strictLowering) {
-          err('unsupported lowering: switch case missing expression');
+        const defaultChildren = clauseNode.children || [];
+        const defaultStatements = defaultChildren.filter((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+
+        lines.push(`${indentation(indentLevel + 1)}default:`);
+
+        // Add default body statements through the regular AST statement lowering path.
+        for (const stmt of defaultStatements) {
+          lines.push(...lowerStatementNode(stmt, compileContext, indentLevel + 2, options));
         }
-        lines.push(`${indentation(indentLevel + 1)}case /* expression */:`);
-      }
-
-      // Add case body statements through the regular AST statement lowering path.
-      for (const stmt of caseStatements) {
-        lines.push(...lowerStatementNode(stmt, compileContext, indentLevel + 2, options));
-      }
-    }
-
-    // Process default clause (if present)
-    if (defaultClause) {
-      const defaultChildren = defaultClause.children || [];
-      const defaultStatements = defaultChildren.filter((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
-
-      lines.push(`${indentation(indentLevel + 1)}default:`);
-
-      // Add default body statements through the regular AST statement lowering path.
-      for (const stmt of defaultStatements) {
-        lines.push(...lowerStatementNode(stmt, compileContext, indentLevel + 2, options));
       }
     }
 
