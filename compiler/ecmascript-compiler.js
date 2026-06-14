@@ -5079,11 +5079,6 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
         }
       }
     }
-      );
-      if (compileContext && compileContext.strictLowering) {
-        err('unsupported lowering: if statement condition');
-      }
-    }
     lines.push(loweredCondition !== null ? `${indent}if (${loweredCondition}) {` : `${indent}if (0) {`);
 
     if (thenStatement) {
@@ -5708,17 +5703,9 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
         lines.push(`${indentation(indentLevel + 1)}case /* expression */:`);
       }
 
-      // Add case body statements
+      // Add case body statements through the regular AST statement lowering path.
       for (const stmt of caseStatements) {
-        const isBreakStmt = (stmt.children || []).some(
-          (c) => c && c.kind === 'nonterminal' && c.name === 'breakStatement'
-        );
-        
-        if (isBreakStmt) {
-          lines.push(`${indentation(indentLevel + 2)}break;`);
-        } else {
-          lines.push(...lowerStatementNode(stmt, compileContext, indentLevel + 2, options));
-        }
+        lines.push(...lowerStatementNode(stmt, compileContext, indentLevel + 2, options));
       }
     }
 
@@ -5729,17 +5716,9 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
 
       lines.push(`${indentation(indentLevel + 1)}default:`);
 
-      // Add default body statements
+      // Add default body statements through the regular AST statement lowering path.
       for (const stmt of defaultStatements) {
-        const isBreakStmt = (stmt.children || []).some(
-          (c) => c && c.kind === 'nonterminal' && c.name === 'breakStatement'
-        );
-        
-        if (isBreakStmt) {
-          lines.push(`${indentation(indentLevel + 2)}break;`);
-        } else {
-          lines.push(...lowerStatementNode(stmt, compileContext, indentLevel + 2, options));
-        }
+        lines.push(...lowerStatementNode(stmt, compileContext, indentLevel + 2, options));
       }
     }
 
