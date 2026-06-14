@@ -5179,9 +5179,16 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     return lines;
   }
 
-  const exprStmtNode = (statementNode.children || []).find((c) => c.kind === 'nonterminal' && c.name === 'expressionStatement');
+  const exprStmtNode = (statementNode.children || []).find(
+    (c) => c && c.kind === 'nonterminal' && c.name === 'expressionStatement'
+  );
   if (exprStmtNode) {
-    const exprNode = (exprStmtNode.children || []).find((c) => c.kind === 'nonterminal' && c.name === 'expression');
+    let exprNode = (exprStmtNode.children || []).find(
+      (c) => c && c.kind === 'nonterminal' && c.name === 'expression'
+    ) || null;
+    if (!exprNode) {
+      exprNode = findFirstNonterminal(exprStmtNode, 'expression');
+    }
     if (!exprNode) {
       reportUnsupportedLowering(
         compileContext,
@@ -5970,9 +5977,12 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
   );
   if (throwStmtNode) {
     const throwChildren = throwStmtNode.children || [];
-    const throwExpr = throwChildren.find(
+    let throwExpr = throwChildren.find(
       (c) => c && c.kind === 'nonterminal' && c.name === 'expression'
-    );
+    ) || null;
+    if (!throwExpr) {
+      throwExpr = findFirstNonterminal(throwStmtNode, 'expression');
+    }
 
     if (!throwExpr) {
       reportUnsupportedLowering(
@@ -6007,8 +6017,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
   );
   if (labelledStmtNode) {
     const labelChildren = labelledStmtNode.children || [];
-    const labelIdNode = labelChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'identifier');
-    const nestedStmt = labelChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+    let labelIdNode = labelChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'identifier') || null;
+    let nestedStmt = labelChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement') || null;
+    if (!labelIdNode) {
+      labelIdNode = findFirstNonterminal(labelledStmtNode, 'identifier');
+    }
+    if (!nestedStmt) {
+      nestedStmt = findFirstNonterminal(labelledStmtNode, 'statement');
+    }
     const label = labelIdNode ? findFirstIdentifierValue(labelIdNode) : null;
     if (label) { lines.push(`${indent}${label}:`); }
     if (nestedStmt) { 
