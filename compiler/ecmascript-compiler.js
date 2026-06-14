@@ -5167,9 +5167,19 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     (child) => child && child.kind === 'nonterminal' && child.name === 'block'
   );
   if (blockNode) {
-    const nestedStatements = (blockNode.children || []).filter(
+    let nestedStatements = (blockNode.children || []).filter(
       (child) => child && child.kind === 'nonterminal' && child.name === 'statement'
     );
+    if (nestedStatements.length === 0) {
+      const collected = [];
+      const collectBlockStatements = (node) => {
+        if (!node || node.kind !== 'nonterminal') { return; }
+        if (node.name === 'statement') { collected.push(node); return; }
+        for (const child of (node.children || [])) { collectBlockStatements(child); }
+      };
+      for (const child of (blockNode.children || [])) { collectBlockStatements(child); }
+      nestedStatements = collected;
+    }
 
     for (const nested of nestedStatements) {
       lines.push(...lowerStatementNode(nested, compileContext, indentLevel, options));
@@ -5880,7 +5890,17 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       if (clauseNode.name === 'caseClause') {
         const caseChildren = clauseNode.children || [];
         const caseExpr = caseChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'expression');
-        const caseStatements = caseChildren.filter((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+        let caseStatements = caseChildren.filter((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+        if (caseStatements.length === 0) {
+          const collectedCase = [];
+          const collectCaseStmts = (node) => {
+            if (!node || node.kind !== 'nonterminal') { return; }
+            if (node.name === 'statement') { collectedCase.push(node); return; }
+            for (const child of (node.children || [])) { collectCaseStmts(child); }
+          };
+          for (const child of caseChildren) { collectCaseStmts(child); }
+          caseStatements = collectedCase;
+        }
 
         if (caseExpr) {
           const loweredCaseExpr = lowerExpressionValue(caseExpr, compileContext);
@@ -5913,7 +5933,17 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
         }
       } else {
         const defaultChildren = clauseNode.children || [];
-        const defaultStatements = defaultChildren.filter((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+        let defaultStatements = defaultChildren.filter((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
+        if (defaultStatements.length === 0) {
+          const collectedDefault = [];
+          const collectDefaultStmts = (node) => {
+            if (!node || node.kind !== 'nonterminal') { return; }
+            if (node.name === 'statement') { collectedDefault.push(node); return; }
+            for (const child of (node.children || [])) { collectDefaultStmts(child); }
+          };
+          for (const child of defaultChildren) { collectDefaultStmts(child); }
+          defaultStatements = collectedDefault;
+        }
 
         lines.push(`${indentation(indentLevel + 1)}default:`);
 
