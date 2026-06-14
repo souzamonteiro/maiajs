@@ -5088,9 +5088,12 @@ function extractVariableDeclarationName(variableDeclarationNode, compileContext 
     return null;
   }
 
-  const bindingIdentifier = (variableDeclarationNode.children || []).find(
+  let bindingIdentifier = (variableDeclarationNode.children || []).find(
     (child) => child && child.kind === 'nonterminal' && child.name === 'bindingIdentifier'
-  );
+  ) || null;
+  if (!bindingIdentifier) {
+    bindingIdentifier = findFirstNonterminal(variableDeclarationNode, 'bindingIdentifier');
+  }
   const variableName = bindingIdentifier ? findFirstIdentifierValue(bindingIdentifier) : null;
   if (!variableName && compileContext) {
     reportUnsupportedLowering(
