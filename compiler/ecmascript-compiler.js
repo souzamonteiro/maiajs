@@ -5050,9 +5050,52 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
   );
   if (ifStmtNode) {
     const ifChildren = ifStmtNode.children || [];
-    const conditionExpr = ifChildren.find((child) => child.kind === 'nonterminal' && child.name === 'expression');
-    const nestedStatements = ifChildren.filter((child) => child.kind === 'nonterminal' && child.name === 'statement');
-    const hasElse = ifChildren.some((child) => child.kind === 'terminal' && child.token === 'TOKEN_else');
+    let conditionExpr = ifChildren.find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'expression'
+    ) || null;
+    if (!conditionExpr) {
+      conditionExpr = findFirstNonterminal(ifStmtNode, 'expression');
+    }
+
+    let nestedStatements = ifChildren.filter(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'statement'
+    );
+    if (nestedStatements.length === 0) {
+      const collectedStatements = [];
+      const collectBranchStatements = (node) => {
+        if (!node || typeof node !== 'object' || node.kind !== 'nonterminal') {
+          return;
+        }
+        if (node.name === 'statement') {
+          collectedStatements.push(node);
+          return;
+        }
+        for (const child of (node.children || [])) {
+          collectBranchStatements(child);
+        }
+      };
+      for (const child of ifChildren) {
+        collectBranchStatements(child);
+      }
+      nestedStatements = collectedStatements;
+    }
+
+    let hasElse = ifChildren.some(
+      (child) => child && child.kind === 'terminal' && child.token === 'TOKEN_else'
+    );
+    if (!hasElse) {
+      let foundElse = false;
+      walk(ifStmtNode, (node) => {
+        if (foundElse || !node || node.kind !== 'terminal') {
+          return;
+        }
+        if (node.token === 'TOKEN_else') {
+          foundElse = true;
+        }
+      });
+      hasElse = foundElse;
+    }
+
     const thenStatement = nestedStatements[0] || null;
     const elseStatement = hasElse ? (nestedStatements[1] || null) : null;
 
