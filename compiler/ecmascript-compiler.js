@@ -3542,7 +3542,33 @@ function lowerUnaryExpressionValue(node, compileContext) {
     return `${children[0].value}${target}`;
   }
 
-  const nonterminalChildren = children.filter((child) => child.kind === 'nonterminal');
+  let nonterminalChildren = children.filter((child) => child && child.kind === 'nonterminal');
+  if (nonterminalChildren.length === 0) {
+    const fallbackCandidates = [];
+    const fallbackNames = [
+      'postfixExpression',
+      'leftHandSideExpression',
+      'primaryExpression',
+      'memberExpression',
+      'callExpression'
+    ];
+    for (const child of children) {
+      if (!child || child.kind !== 'nonterminal') {
+        continue;
+      }
+      let candidate = null;
+      for (const name of fallbackNames) {
+        candidate = findFirstNonterminal(child, name);
+        if (candidate) {
+          break;
+        }
+      }
+      if (candidate) {
+        fallbackCandidates.push(candidate);
+      }
+    }
+    nonterminalChildren = fallbackCandidates;
+  }
   if (nonterminalChildren.length === 1) {
     const loweredChild = lowerExpressionValue(nonterminalChildren[0], compileContext);
     if (loweredChild === null) {
