@@ -2376,9 +2376,46 @@ function lowerConditionalExpressionValue(node, compileContext) {
 
   const children = node.children || [];
   const hasTernary = children.some((child) => child && child.kind === 'terminal' && child.value === '?');
-  const nonterminalChildren = children.filter((child) => child && child.kind === 'nonterminal');
+  let nonterminalChildren = children.filter((child) => child && child.kind === 'nonterminal');
 
   if (!hasTernary) {
+    if (nonterminalChildren.length !== 1) {
+      const fallbackCandidates = [];
+      const fallbackNames = [
+        'logicalORExpression',
+        'logicalANDExpression',
+        'bitwiseORExpression',
+        'bitwiseXORExpression',
+        'bitwiseANDExpression',
+        'equalityExpression',
+        'relationalExpression',
+        'shiftExpression',
+        'additiveExpression',
+        'multiplicativeExpression',
+        'unaryExpression',
+        'postfixExpression',
+        'primaryExpression'
+      ];
+      for (const child of children) {
+        if (!child || child.kind !== 'nonterminal') {
+          continue;
+        }
+        let candidate = null;
+        for (const name of fallbackNames) {
+          candidate = findFirstNonterminal(child, name);
+          if (candidate) {
+            break;
+          }
+        }
+        if (candidate) {
+          fallbackCandidates.push(candidate);
+        }
+      }
+      if (fallbackCandidates.length > 0) {
+        nonterminalChildren = fallbackCandidates;
+      }
+    }
+
     if (nonterminalChildren.length !== 1) {
       reportUnsupportedLowering(
         compileContext,
