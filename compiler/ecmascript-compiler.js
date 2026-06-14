@@ -4944,8 +4944,14 @@ function collectHostSignatures(tree, compileContext) {
   walk(tree, (node) => {
     if (!node || node.kind !== 'nonterminal' || node.name !== 'callExpression') { return; }
     const children = node.children || [];
-    const memberExprNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'memberExpression');
-    const argsNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'arguments');
+    let memberExprNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'memberExpression') || null;
+    let argsNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'arguments') || null;
+    if (!memberExprNode) {
+      memberExprNode = findFirstNonterminal(node, 'memberExpression');
+    }
+    if (!argsNode) {
+      argsNode = findFirstNonterminal(node, 'arguments');
+    }
     if (!memberExprNode || !argsNode) { return; }
     const pathSegments = extractPathFromMemberExpression(memberExprNode);
     if (!pathSegments) { return; }
@@ -4961,7 +4967,10 @@ function collectHostSignatures(tree, compileContext) {
 
     const host = compileContext.hostRegistry.resolvePath(pathSegments);
     if (!host || signatures.has(host)) { return; }
-    const argListNode = (argsNode.children || []).find((c) => c.kind === 'nonterminal' && c.name === 'argumentList');
+    let argListNode = (argsNode.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'argumentList') || null;
+    if (!argListNode) {
+      argListNode = findFirstNonterminal(argsNode, 'argumentList');
+    }
     const argExprs = argListNode ? collectArgumentExpressions(argListNode) : [];
     signatures.set(host, argExprs.map(inferExprType));
   });
