@@ -3272,7 +3272,14 @@ function lowerAssignmentExpressionValue(node, compileContext) {
       return null;
     }
 
-    const operatorToken = (children[1].children || []).find((child) => child.kind === 'terminal');
+    let operatorToken = (children[1].children || []).find((child) => child && child.kind === 'terminal') || null;
+    if (!operatorToken) {
+      walk(children[1], (child) => {
+        if (!operatorToken && child && child.kind === 'terminal') {
+          operatorToken = child;
+        }
+      });
+    }
     if (!operatorToken) {
       reportUnsupportedLowering(
         compileContext,
@@ -3313,7 +3320,34 @@ function lowerAssignmentExpressionValue(node, compileContext) {
     return `${lhs} ${operatorValue} ${rhsValue}`;
   }
 
-  const nonterminalChildren = children.filter((child) => child.kind === 'nonterminal');
+  let nonterminalChildren = children.filter((child) => child && child.kind === 'nonterminal');
+  if (nonterminalChildren.length === 0) {
+    const fallbackCandidates = [];
+    const fallbackNames = [
+      'conditionalExpression',
+      'conditionalExpressionNoIn',
+      'leftHandSideExpression',
+      'unaryExpression',
+      'postfixExpression',
+      'primaryExpression'
+    ];
+    for (const child of children) {
+      if (!child || child.kind !== 'nonterminal') {
+        continue;
+      }
+      let candidate = null;
+      for (const name of fallbackNames) {
+        candidate = findFirstNonterminal(child, name);
+        if (candidate) {
+          break;
+        }
+      }
+      if (candidate) {
+        fallbackCandidates.push(candidate);
+      }
+    }
+    nonterminalChildren = fallbackCandidates;
+  }
   if (nonterminalChildren.length === 1) {
     const loweredChild = lowerExpressionValue(nonterminalChildren[0], compileContext);
     if (loweredChild === null) {
