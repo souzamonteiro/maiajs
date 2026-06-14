@@ -3766,7 +3766,36 @@ function lowerInfixExpressionValue(node, compileContext) {
     }
 
     if (child.kind === 'nonterminal') {
-      const lowered = lowerExpressionValue(child, compileContext);
+      let lowered = lowerExpressionValue(child, compileContext);
+      
+      // Fallback: if direct lowering failed, try to find nested expression
+      if (lowered === null) {
+        const fallbackNames = [
+          'expression',
+          'assignmentExpression',
+          'conditionalExpression',
+          'conditionalExpressionNoIn',
+          'arrowFunction',
+          'asyncArrowFunction',
+          'unaryExpression',
+          'postfixExpression',
+          'callExpression',
+          'memberExpression',
+          'leftHandSideExpression',
+          'primaryExpression',
+          'identifier'
+        ];
+        for (const fallbackName of fallbackNames) {
+          const nestedExpr = findFirstNonterminal(child, fallbackName);
+          if (nestedExpr) {
+            lowered = lowerExpressionValue(nestedExpr, compileContext);
+            if (lowered !== null) {
+              break;
+            }
+          }
+        }
+      }
+      
       if (lowered === null) {
         reportUnsupportedLowering(
           compileContext,
@@ -3874,7 +3903,11 @@ function lowerExpressionValue(node, compileContext) {
       return loweredNewCall;
     }
 
-    const segments = extractPathFromMemberExpression(node, compileContext);
+    // Only attempt path extraction if the memberExpression has property access (a '.' terminal).
+    // If it's a simple passthrough (single nonterminal child, no dot), skip to passthrough logic.
+    const memberChildren = (node.children || []);
+    const hasDotAccess = memberChildren.some((c) => c && c.kind === 'terminal' && c.value === '.');
+    const segments = hasDotAccess ? extractPathFromMemberExpression(node, compileContext) : null;
     if (segments && segments.length >= 2) {
       // Use -> for this and . for local stack-instantiated class objects.
       let result = segments[0];
