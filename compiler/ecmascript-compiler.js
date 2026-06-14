@@ -3299,14 +3299,27 @@ function lowerAssignmentExpressionValue(node, compileContext) {
   }
 
   const children = node.children || [];
-  if (children.length === 3
-      && children[0].kind === 'nonterminal'
-      && children[0].name === 'leftHandSideExpression'
-      && children[1].kind === 'nonterminal'
-      && children[1].name === 'assignmentOperator'
-      && children[2].kind === 'nonterminal'
-      && children[2].name === 'assignmentExpression') {
-    const lhs = lowerIdentifierFromLeftHandSideExpression(children[0], compileContext);
+  let lhsChild = (children[0] && children[0].kind === 'nonterminal' && children[0].name === 'leftHandSideExpression') 
+    ? children[0] 
+    : null;
+  if (!lhsChild) {
+    lhsChild = findFirstNonterminal(node, 'leftHandSideExpression');
+  }
+  let opChild = (children[1] && children[1].kind === 'nonterminal' && children[1].name === 'assignmentOperator')
+    ? children[1]
+    : null;
+  if (!opChild) {
+    opChild = findFirstNonterminal(node, 'assignmentOperator');
+  }
+  let rhsChild = (children[2] && children[2].kind === 'nonterminal' && children[2].name === 'assignmentExpression')
+    ? children[2]
+    : null;
+  if (!rhsChild) {
+    rhsChild = findFirstNonterminal(node, 'assignmentExpression');
+  }
+
+  if (lhsChild && opChild && rhsChild) {
+    const lhs = lowerIdentifierFromLeftHandSideExpression(lhsChild, compileContext);
     if (!lhs) {
       reportUnsupportedLowering(
         compileContext,
@@ -3319,9 +3332,9 @@ function lowerAssignmentExpressionValue(node, compileContext) {
       return null;
     }
 
-    let operatorToken = (children[1].children || []).find((child) => child && child.kind === 'terminal') || null;
+    let operatorToken = (opChild.children || []).find((child) => child && child.kind === 'terminal') || null;
     if (!operatorToken) {
-      walk(children[1], (child) => {
+      walk(opChild, (child) => {
         if (!operatorToken && child && child.kind === 'terminal') {
           operatorToken = child;
         }
@@ -3344,7 +3357,7 @@ function lowerAssignmentExpressionValue(node, compileContext) {
       && compileContext.topLevelAssignedFunctionExpressionSymbols
       ? compileContext.topLevelAssignedFunctionExpressionSymbols.get(lhs)
       : null;
-    const rhs = assignedFunctionSymbol || lowerExpressionValue(children[2], compileContext);
+    const rhs = assignedFunctionSymbol || lowerExpressionValue(rhsChild, compileContext);
 
     if (operatorValue === '**=') {
       const rhsPowValue = rhs === null ? '0' : (rhs === 'null' ? 'nullptr' : rhs);
