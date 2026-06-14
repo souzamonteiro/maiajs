@@ -5930,9 +5930,12 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     (c) => c && c.kind === 'nonterminal' && c.name === 'breakStatement'
   );
   if (breakStmtNode) {
-    const labelIdNode = (breakStmtNode.children || []).find(
+    let labelIdNode = (breakStmtNode.children || []).find(
       (c) => c && c.kind === 'nonterminal' && c.name === 'identifier'
-    );
+    ) || null;
+    if (!labelIdNode) {
+      labelIdNode = findFirstNonterminal(breakStmtNode, 'identifier');
+    }
     const label = labelIdNode ? findFirstIdentifierValue(labelIdNode) : null;
     if (label) {
       reportUnsupportedLowering(
@@ -5953,9 +5956,12 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     (c) => c && c.kind === 'nonterminal' && c.name === 'continueStatement'
   );
   if (continueStmtNode) {
-    const labelIdNode = (continueStmtNode.children || []).find(
+    let labelIdNode = (continueStmtNode.children || []).find(
       (c) => c && c.kind === 'nonterminal' && c.name === 'identifier'
-    );
+    ) || null;
+    if (!labelIdNode) {
+      labelIdNode = findFirstNonterminal(continueStmtNode, 'identifier');
+    }
     const label = labelIdNode ? findFirstIdentifierValue(labelIdNode) : null;
     if (label) {
       reportUnsupportedLowering(
