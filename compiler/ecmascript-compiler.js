@@ -2520,12 +2520,18 @@ function extractObjectLiteralProperties(objectLiteralNode) {
       continue;
     }
 
-    const propertyNameNode = (child.children || []).find(
+    let propertyNameNode = (child.children || []).find(
       (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'propertyName'
-    );
-    const valueExprNode = (child.children || []).find(
+    ) || null;
+    if (!propertyNameNode) {
+      propertyNameNode = findFirstNonterminal(child, 'propertyName');
+    }
+    let valueExprNode = (child.children || []).find(
       (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'assignmentExpression'
-    );
+    ) || null;
+    if (!valueExprNode) {
+      valueExprNode = findFirstNonterminal(child, 'assignmentExpression');
+    }
     if (!propertyNameNode || !valueExprNode) {
       continue;
     }
@@ -2656,22 +2662,31 @@ function extractArrayLiteralElements(arrayLiteralNode) {
       continue;
     }
 
-    const spreadElement = (child.children || []).find(
+    let spreadElement = (child.children || []).find(
       (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'spreadElement'
-    );
+    ) || null;
+    if (!spreadElement) {
+      spreadElement = findFirstNonterminal(child, 'spreadElement');
+    }
     if (spreadElement) {
       hasSpread = true;
-      const spreadValue = (spreadElement.children || []).find(
+      let spreadValue = (spreadElement.children || []).find(
         (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'assignmentExpression'
-      );
+      ) || null;
+      if (!spreadValue) {
+        spreadValue = findFirstNonterminal(spreadElement, 'assignmentExpression');
+      }
       operations.push({ kind: 'spread', valueExprNode: spreadValue || null });
       previousSignificant = 'element';
       continue;
     }
 
-    const assignmentExpression = (child.children || []).find(
+    let assignmentExpression = (child.children || []).find(
       (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'assignmentExpression'
-    );
+    ) || null;
+    if (!assignmentExpression) {
+      assignmentExpression = findFirstNonterminal(child, 'assignmentExpression');
+    }
     if (assignmentExpression) {
       values.push(assignmentExpression);
       operations.push({ kind: 'value', valueExprNode: assignmentExpression });
