@@ -4023,6 +4023,16 @@ function lowerExpressionValue(node, compileContext) {
   if (compileContext && compileContext.strictLowering) {
     err(`unsupported lowering: expression node '${node.name}'`);
   }
+  
+  // Last resort: try to find ANY expression-like child and recurse
+  const anyExprChild = findFirstNonterminal(node, 'expression') || 
+                       findFirstNonterminal(node, 'primaryExpression') ||
+                       findFirstNonterminal(node, 'callExpression') ||
+                       findFirstNonterminal(node, 'memberExpression');
+  if (anyExprChild) {
+    return lowerExpressionValue(anyExprChild, compileContext);
+  }
+  
   return null;
 }
 
