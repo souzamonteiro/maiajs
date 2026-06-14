@@ -5013,9 +5013,12 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     (child) => child && child.kind === 'nonterminal' && child.name === 'returnStatement'
   );
   if (returnStmtNode) {
-    const returnExprNode = (returnStmtNode.children || []).find(
+    let returnExprNode = (returnStmtNode.children || []).find(
       (child) => child && child.kind === 'nonterminal' && child.name === 'expression'
-    );
+    ) || null;
+    if (!returnExprNode) {
+      returnExprNode = findFirstNonterminal(returnStmtNode, 'expression');
+    }
 
     if (!returnExprNode) {
       reportUnsupportedLowering(
