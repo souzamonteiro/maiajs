@@ -2478,37 +2478,47 @@ function lowerMemberExpressionNewCallValue(node, compileContext) {
   }
 
   const children = node.children || [];
-  if (children.length < 3) {
-    const startsWithNew = children[0]
-      && children[0].kind === 'terminal'
-      && children[0].token === 'TOKEN_new';
-    if (startsWithNew) {
-      reportUnsupportedLowering(
-        compileContext,
-        'new-expression-unlowerable',
-        'new expression is missing constructor/member/arguments structure'
-      );
-      if (compileContext && compileContext.strictLowering) {
-        err('unsupported lowering: malformed new expression structure');
-      }
-    }
-    return null;
-  }
-
-  const isNewCtor = children[0]
+  const startsWithNew = children[0]
     && children[0].kind === 'terminal'
-    && children[0].token === 'TOKEN_new'
-    && children[1]
+    && children[0].token === 'TOKEN_new';
+
+  let ctorMemberNode = children[1]
     && children[1].kind === 'nonterminal'
     && children[1].name === 'memberExpression'
-    && children[2]
+    ? children[1]
+    : null;
+  let argsNode = children[2]
     && children[2].kind === 'nonterminal'
-    && children[2].name === 'arguments';
+    && children[2].name === 'arguments'
+    ? children[2]
+    : null;
+
+  if (startsWithNew && (!ctorMemberNode || !argsNode)) {
+    for (const child of children) {
+      if (!child || child.kind !== 'nonterminal') {
+        continue;
+      }
+      if (!ctorMemberNode) {
+        const candidateCtor = findFirstNonterminal(child, 'memberExpression');
+        if (candidateCtor && candidateCtor !== node) {
+          ctorMemberNode = candidateCtor;
+        }
+      }
+      if (!argsNode) {
+        const candidateArgs = findFirstNonterminal(child, 'arguments');
+        if (candidateArgs) {
+          argsNode = candidateArgs;
+        }
+      }
+      if (ctorMemberNode && argsNode) {
+        break;
+      }
+    }
+  }
+
+  const isNewCtor = Boolean(startsWithNew && ctorMemberNode && argsNode);
 
   if (!isNewCtor) {
-    const startsWithNew = children[0]
-      && children[0].kind === 'terminal'
-      && children[0].token === 'TOKEN_new';
     if (startsWithNew) {
       reportUnsupportedLowering(
         compileContext,
@@ -2522,10 +2532,10 @@ function lowerMemberExpressionNewCallValue(node, compileContext) {
     return null;
   }
 
-  const ctorPath = extractPathFromMemberExpression(children[1], compileContext);
+  const ctorPath = extractPathFromMemberExpression(ctorMemberNode, compileContext);
   const ctorBase = Array.isArray(ctorPath) && ctorPath.length > 0
     ? ctorPath.join('__')
-    : findFirstIdentifierValue(children[1]);
+    : findFirstIdentifierValue(ctorMemberNode);
 
   if (!ctorBase) {
     reportUnsupportedLowering(
@@ -2539,7 +2549,7 @@ function lowerMemberExpressionNewCallValue(node, compileContext) {
     return null;
   }
 
-  const args = lowerArgumentsNode(children[2], compileContext);
+  const args = lowerArgumentsNode(argsNode, compileContext);
   if (compileContext && compileContext.topLevelClassNames && compileContext.topLevelClassNames.has(ctorBase)) {
     return `new ${ctorBase}(${args})`;
   }
