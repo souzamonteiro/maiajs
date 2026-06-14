@@ -5520,14 +5520,23 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
   if (tryStmtNode) {
     const tryChildren = tryStmtNode.children || [];
     
-    // Extract try block
-    const tryBlock = tryChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'block');
+    // Extract try/catch/finally nodes with direct-child fast path and AST fallback.
+    let tryBlock = tryChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'block') || null;
+    if (!tryBlock) {
+      tryBlock = findFirstNonterminal(tryStmtNode, 'block');
+    }
     
     // Extract catch clause (if present)
-    const catchClause = tryChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'catch');
+    let catchClause = tryChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'catch') || null;
+    if (!catchClause) {
+      catchClause = findFirstNonterminal(tryStmtNode, 'catch');
+    }
     
     // Extract finally clause (if present)
-    const finallyClause = tryChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'finally');
+    let finallyClause = tryChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'finally') || null;
+    if (!finallyClause) {
+      finallyClause = findFirstNonterminal(tryStmtNode, 'finally');
+    }
     
     // Must have at least try block
     if (!tryBlock) {
@@ -5559,8 +5568,14 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     // Catch clause (if present)
     if (catchClause) {
       const catchChildren = catchClause.children || [];
-      const catchIdentifier = catchChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'identifier');
-      const catchBlock = catchChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'block');
+      let catchIdentifier = catchChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'identifier') || null;
+      let catchBlock = catchChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'block') || null;
+      if (!catchIdentifier) {
+        catchIdentifier = findFirstNonterminal(catchClause, 'identifier');
+      }
+      if (!catchBlock) {
+        catchBlock = findFirstNonterminal(catchClause, 'block');
+      }
       
       let catchParam = 'e';
       if (catchIdentifier) {
@@ -5596,7 +5611,10 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     // Finally clause (if present)
     if (finallyClause) {
       const finallyChildren = finallyClause.children || [];
-      const finallyBlock = finallyChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'block');
+      let finallyBlock = finallyChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'block') || null;
+      if (!finallyBlock) {
+        finallyBlock = findFirstNonterminal(finallyClause, 'block');
+      }
       
       if (finallyBlock) {
         const finallyStatements = (finallyBlock.children || []).filter((c) => c && c.kind === 'nonterminal' && c.name === 'statement');
