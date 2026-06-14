@@ -5342,7 +5342,39 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
         }
       }
 
-      const closeParenIndex = iterChildren.findIndex((c) => c && c.kind === 'terminal' && c.token === 'TOKEN__29_');
+      // AST-first fallback view of the for-header (tokens/expressions before first ')').
+      let headerClosed = false;
+      let fallbackSemicolonCount = 0;
+      let fallbackVarKeyword = '';
+      const fallbackHeaderExpressions = [];
+      walk(iterationStmtNode, (node) => {
+        if (headerClosed || !node) {
+          return;
+        }
+        if (node.kind === 'terminal') {
+          if (node.token === 'TOKEN__29_') {
+            headerClosed = true;
+            return;
+          }
+          if (node.token === 'TOKEN__3B_') {
+            fallbackSemicolonCount += 1;
+            return;
+          }
+          if (!fallbackVarKeyword && (node.token === 'TOKEN_var' || node.token === 'TOKEN_let' || node.token === 'TOKEN_const')) {
+            fallbackVarKeyword = `${node.value} `;
+          }
+          return;
+        }
+        if (node.kind === 'nonterminal' && node.name === 'expression') {
+          fallbackHeaderExpressions.push(node);
+        }
+      });
+
+      let closeParenIndex = iterChildren.findIndex((c) => c && c.kind === 'terminal' && c.token === 'TOKEN__29_');
+      if (closeParenIndex < 0 && headerClosed) {
+        // Header was observed by AST walk even when ')' is not a direct child.
+        closeParenIndex = iterChildren.length;
+      }
       let bodyStmt = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'statement') || null;
       if (!bodyStmt) {
         bodyStmt = findFirstNonterminal(iterationStmtNode, 'statement');
@@ -5363,18 +5395,22 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       // Support both parser shapes:
       // 1) for (init ; cond ; incr)               -> 2 top-level semicolons
       // 2) for (lexicalDeclaration cond ; incr)   -> lexicalDeclaration contains first ';', so only 1 top-level semicolon
-      const lexicalDeclNode = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'lexicalDeclaration');
+      let lexicalDeclNode = iterChildren.find((c) => c && c.kind === 'nonterminal' && c.name === 'lexicalDeclaration') || null;
+      if (!lexicalDeclNode) {
+        lexicalDeclNode = findFirstNonterminal(iterationStmtNode, 'lexicalDeclaration');
+      }
       const hasLexicalShape = !!lexicalDeclNode;
-      if (semicolonIndices.length !== 2 && !(hasLexicalShape && semicolonIndices.length === 1)) {
+      const effectiveSemicolonCount = semicolonIndices.length > 0 ? semicolonIndices.length : fallbackSemicolonCount;
+      if (effectiveSemicolonCount !== 2 && !(hasLexicalShape && effectiveSemicolonCount === 1)) {
         reportUnsupportedLowering(
           compileContext,
           'for-statement-unlowerable',
-          `for loop header has unexpected semicolon count: ${semicolonIndices.length}`
+          `for loop header has unexpected semicolon count: ${effectiveSemicolonCount}`
         );
         if (compileContext && compileContext.strictLowering) {
-          err(`unsupported lowering: for loop semicolon count ${semicolonIndices.length}`);
+          err(`unsupported lowering: for loop semicolon count ${effectiveSemicolonCount}`);
         }
-        return [`${indent}// [for loop with unexpected semicolon count: ${semicolonIndices.length}]`];
+        return [`${indent}// [for loop with unexpected semicolon count: ${effectiveSemicolonCount}]`];
       }
 
       let initCode = '';
@@ -5435,60 +5471,68 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
         initCode = '';
       } else {
         // Legacy form with explicit first semicolon at top-level.
-        let varKeyword = '';
-        for (let i = 2; i < semicolonIndices[0]; i++) {
-          const child = iterChildren[i];
-          if (!child) continue;
+        let varKeyword = fallbackVarKeyword;
+        if (semicolonIndices.length >= 1) {
+          for (let i = 2; i < semicolonIndices[0]; i++) {
+            const child = iterChildren[i];
+            if (!child) continue;
 
-          if (child.kind === 'terminal' && (child.token === 'TOKEN_var' || child.token === 'TOKEN_let' || child.token === 'TOKEN_const')) {
-            varKeyword = child.value + ' ';
-          } else if (child.kind === 'nonterminal' && child.name === 'variableDeclarationListNoIn') {
-            const declNoInList = (child.children || []).filter((c) => c && c.kind === 'nonterminal' && c.name === 'variableDeclarationNoIn');
-            const varParts = [];
+            if (child.kind === 'terminal' && (child.token === 'TOKEN_var' || child.token === 'TOKEN_let' || child.token === 'TOKEN_const')) {
+              varKeyword = child.value + ' ';
+            } else if (child.kind === 'nonterminal' && child.name === 'variableDeclarationListNoIn') {
+              const declNoInList = (child.children || []).filter((c) => c && c.kind === 'nonterminal' && c.name === 'variableDeclarationNoIn');
+              const varParts = [];
 
-            for (const declNoIn of declNoInList) {
-              const bindingId = (declNoIn.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'bindingIdentifier');
-              const initializer = (declNoIn.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'initializerNoIn');
+              for (const declNoIn of declNoInList) {
+                const bindingId = (declNoIn.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'bindingIdentifier');
+                const initializer = (declNoIn.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'initializerNoIn');
 
-              const varName = bindingId ? findFirstIdentifierValue(bindingId) : null;
-              if (!varName) continue;
+                const varName = bindingId ? findFirstIdentifierValue(bindingId) : null;
+                if (!varName) continue;
 
-              let varDecl = varName;
-              if (initializer) {
-                const initExpr = (initializer.children || []).find((c) => c && c.kind === 'nonterminal');
-                const loweredInitExpr = initExpr ? lowerExpressionValue(initExpr, compileContext) : null;
-                if (initExpr && loweredInitExpr === null) {
-                  reportUnsupportedLowering(
-                    compileContext,
-                    'for-init-unlowerable',
-                    `for initializer expression for '${varName}' could not be lowered`
-                  );
-                  if (compileContext && compileContext.strictLowering) {
-                    err(`unsupported lowering: for initializer '${varName}'`);
+                let varDecl = varName;
+                if (initializer) {
+                  const initExpr = (initializer.children || []).find((c) => c && c.kind === 'nonterminal');
+                  const loweredInitExpr = initExpr ? lowerExpressionValue(initExpr, compileContext) : null;
+                  if (initExpr && loweredInitExpr === null) {
+                    reportUnsupportedLowering(
+                      compileContext,
+                      'for-init-unlowerable',
+                      `for initializer expression for '${varName}' could not be lowered`
+                    );
+                    if (compileContext && compileContext.strictLowering) {
+                      err(`unsupported lowering: for initializer '${varName}'`);
+                    }
+                  }
+                  if (loweredInitExpr !== null) {
+                    varDecl += ' = ' + loweredInitExpr;
                   }
                 }
-                if (loweredInitExpr !== null) {
-                  varDecl += ' = ' + loweredInitExpr;
+                varParts.push(varDecl);
+              }
+
+              initCode = varParts.join(', ');
+            } else if (child.kind === 'nonterminal' && child.name === 'expression') {
+              const loweredExpr = lowerExpressionValue(child, compileContext);
+              if (loweredExpr !== null) {
+                initCode += loweredExpr;
+              } else {
+                reportUnsupportedLowering(
+                  compileContext,
+                  'for-init-unlowerable',
+                  'for initializer expression could not be lowered'
+                );
+                if (compileContext && compileContext.strictLowering) {
+                  err('unsupported lowering: for initializer expression');
                 }
               }
-              varParts.push(varDecl);
             }
-
-            initCode = varParts.join(', ');
-          } else if (child.kind === 'nonterminal' && child.name === 'expression') {
-            const loweredExpr = lowerExpressionValue(child, compileContext);
-            if (loweredExpr !== null) {
-              initCode += loweredExpr;
-            } else {
-              reportUnsupportedLowering(
-                compileContext,
-                'for-init-unlowerable',
-                'for initializer expression could not be lowered'
-              );
-              if (compileContext && compileContext.strictLowering) {
-                err('unsupported lowering: for initializer expression');
-              }
-            }
+          }
+        } else if (fallbackHeaderExpressions.length > 0) {
+          // No top-level semicolon indexes available: use first header expression as initializer.
+          const loweredExpr = lowerExpressionValue(fallbackHeaderExpressions[0], compileContext);
+          if (loweredExpr !== null) {
+            initCode = loweredExpr;
           }
         }
 
@@ -5497,9 +5541,11 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
 
       let condCode = '';
       if (hasLexicalShape) {
-        const condExprNode = iterChildren.find(
-          (c, index) => c && c.kind === 'nonterminal' && c.name === 'expression' && index < semicolonIndices[0]
-        );
+        const condExprNode = semicolonIndices.length >= 1
+          ? iterChildren.find(
+              (c, index) => c && c.kind === 'nonterminal' && c.name === 'expression' && index < semicolonIndices[0]
+            )
+          : (fallbackHeaderExpressions[0] || null);
         const loweredExpr = condExprNode ? lowerExpressionValue(condExprNode, compileContext) : null;
         if (loweredExpr !== null) {
           condCode = loweredExpr;
@@ -5514,47 +5560,64 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
           }
         }
       } else {
-        for (let i = semicolonIndices[0] + 1; i < semicolonIndices[1]; i++) {
+        if (semicolonIndices.length >= 2) {
+          for (let i = semicolonIndices[0] + 1; i < semicolonIndices[1]; i++) {
+            const child = iterChildren[i];
+            if (!child || child.kind === 'terminal') continue;
+
+            if (child.kind === 'nonterminal' && child.name === 'expression') {
+              const loweredExpr = lowerExpressionValue(child, compileContext);
+              if (loweredExpr !== null) {
+                condCode = loweredExpr;
+              } else {
+                reportUnsupportedLowering(
+                  compileContext,
+                  'for-condition-unlowerable',
+                  'for loop condition expression could not be lowered'
+                );
+                if (compileContext && compileContext.strictLowering) {
+                  err('unsupported lowering: for loop condition expression');
+                }
+              }
+            }
+          }
+        } else if (fallbackHeaderExpressions.length >= 2) {
+          const loweredExpr = lowerExpressionValue(fallbackHeaderExpressions[1], compileContext);
+          if (loweredExpr !== null) {
+            condCode = loweredExpr;
+          }
+        }
+      }
+
+      let incrCode = '';
+      if (semicolonIndices.length >= (hasLexicalShape ? 1 : 2)) {
+        const incrStart = hasLexicalShape ? (semicolonIndices[0] + 1) : (semicolonIndices[1] + 1);
+        for (let i = incrStart; i < closeParenIndex; i++) {
           const child = iterChildren[i];
           if (!child || child.kind === 'terminal') continue;
 
           if (child.kind === 'nonterminal' && child.name === 'expression') {
             const loweredExpr = lowerExpressionValue(child, compileContext);
             if (loweredExpr !== null) {
-              condCode = loweredExpr;
+              incrCode = loweredExpr;
             } else {
               reportUnsupportedLowering(
                 compileContext,
-                'for-condition-unlowerable',
-                'for loop condition expression could not be lowered'
+                'for-increment-unlowerable',
+                'for loop increment expression could not be lowered'
               );
               if (compileContext && compileContext.strictLowering) {
-                err('unsupported lowering: for loop condition expression');
+                err('unsupported lowering: for loop increment expression');
               }
             }
           }
         }
-      }
-
-      let incrCode = '';
-      const incrStart = hasLexicalShape ? (semicolonIndices[0] + 1) : (semicolonIndices[1] + 1);
-      for (let i = incrStart; i < closeParenIndex; i++) {
-        const child = iterChildren[i];
-        if (!child || child.kind === 'terminal') continue;
-
-        if (child.kind === 'nonterminal' && child.name === 'expression') {
-          const loweredExpr = lowerExpressionValue(child, compileContext);
+      } else {
+        const fallbackIndex = hasLexicalShape ? 1 : 2;
+        if (fallbackHeaderExpressions.length > fallbackIndex) {
+          const loweredExpr = lowerExpressionValue(fallbackHeaderExpressions[fallbackIndex], compileContext);
           if (loweredExpr !== null) {
             incrCode = loweredExpr;
-          } else {
-            reportUnsupportedLowering(
-              compileContext,
-              'for-increment-unlowerable',
-              'for loop increment expression could not be lowered'
-            );
-            if (compileContext && compileContext.strictLowering) {
-              err('unsupported lowering: for loop increment expression');
-            }
           }
         }
       }
