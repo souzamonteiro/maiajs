@@ -5006,9 +5006,12 @@ function extractArrayBindingIdentifiers(arrayBindingPatternNode, compileContext 
     return names;
   }
 
-  const bel = (arrayBindingPatternNode.children || []).find(
+  let bel = (arrayBindingPatternNode.children || []).find(
     (c) => c && c.kind === 'nonterminal' && c.name === 'bindingElementList'
-  );
+  ) || null;
+  if (!bel) {
+    bel = findFirstNonterminal(arrayBindingPatternNode, 'bindingElementList');
+  }
   if (!bel) { return names; }
   for (const child of (bel.children || [])) {
     if (!child || child.kind !== 'nonterminal' || child.name !== 'bindingElisionElement') { continue; }
@@ -5035,9 +5038,12 @@ function extractObjectBindingIdentifiers(objectBindingPatternNode, compileContex
     return names;
   }
 
-  const bpl = (objectBindingPatternNode.children || []).find(
+  let bpl = (objectBindingPatternNode.children || []).find(
     (c) => c && c.kind === 'nonterminal' && c.name === 'bindingPropertyList'
-  );
+  ) || null;
+  if (!bpl) {
+    bpl = findFirstNonterminal(objectBindingPatternNode, 'bindingPropertyList');
+  }
   if (!bpl) { return names; }
   for (const child of (bpl.children || [])) {
     if (!child || child.kind !== 'nonterminal' || child.name !== 'bindingProperty') { continue; }
