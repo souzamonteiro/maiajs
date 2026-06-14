@@ -4728,6 +4728,20 @@ function lowerCallExpressionValue(node, compileContext) {
   if (!argsNode) {
     argsNode = findFirstNonterminal(node, 'arguments');
   }
+  
+  // Additional fallback: search for argumentList directly if arguments wrapper not found
+  if (!argsNode) {
+    for (const child of children) {
+      if (child && child.kind === 'nonterminal') {
+        const argListCandidate = findFirstNonterminal(child, 'argumentList');
+        if (argListCandidate) {
+          argsNode = child;
+          break;
+        }
+      }
+    }
+  }
+  
   if (!memberExprNode || !argsNode) {
     reportUnsupportedLowering(
       compileContext,
