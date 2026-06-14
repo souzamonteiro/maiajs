@@ -5068,9 +5068,21 @@ function extractVariableDeclarations(variableDeclarationListNode, compileContext
     return [];
   }
 
-  return (variableDeclarationListNode.children || []).filter(
+  let declarations = (variableDeclarationListNode.children || []).filter(
     (child) => child && child.kind === 'nonterminal' && child.name === 'variableDeclaration'
   );
+  if (declarations.length === 0) {
+    const fallbackCandidates = [];
+    walk(variableDeclarationListNode, (node) => {
+      if (node && node.kind === 'nonterminal' && node.name === 'variableDeclaration' && node !== variableDeclarationListNode) {
+        fallbackCandidates.push(node);
+      }
+    });
+    if (fallbackCandidates.length > 0) {
+      declarations = fallbackCandidates;
+    }
+  }
+  return declarations;
 }
 
 function extractVariableDeclarationName(variableDeclarationNode, compileContext = null) {
