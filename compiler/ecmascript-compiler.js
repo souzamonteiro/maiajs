@@ -5449,7 +5449,7 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
     const newClassInfo = extractDirectNewClassInfo(initializerExpr, compileContext);
     if (newClassInfo) {
       lowered.push(`${indent}${newClassInfo.className} ${variableName};`);
-      const ctorSymbol = getClassInitWrapperName(newClassInfo.className);
+      const ctorSymbol = getClassInitWrapperMangledName(newClassInfo.className, newClassInfo.argCount);
       lowered.push(`${indent}${ctorSymbol}((${newClassInfo.className}*)&${variableName}${newClassInfo.args && newClassInfo.args.trim() ? `, ${newClassInfo.args}` : ''});`);
       continue;
     }
@@ -6902,6 +6902,10 @@ function getClassInitWrapperName(className) {
   return `${className}_ctor_init`;
 }
 
+function getClassInitWrapperMangledName(className, arity = 0) {
+  return `${getClassInitWrapperName(className)}__pv${'i'.repeat(Math.max(0, Number(arity) || 0))}`;
+}
+
 function getClassMethodWrapperName(className, methodName) {
   return `${className}_meth_${methodName}`;
 }
@@ -6967,14 +6971,19 @@ function emitTopLevelClassDefinitions(tree, compileContext) {
       if (isConstructor) {
         hasConstructor = true;
         const initWrapperName = getClassInitWrapperName(className);
+        const initWrapperMangledName = getClassInitWrapperMangledName(className, params.length);
         const wrapperBodyLines = rewriteClassMethodBodyLinesForWrapper(methodBodyLines, className);
         wrapperLines.push(`void ${initWrapperName}(${className}* self${cppParams === 'void' ? '' : `, ${cppParams}`}) {`);
         if (heritageName) {
-          wrapperLines.push(`  ${getClassInitWrapperName(heritageName)}((${heritageName}*)self);`);
+          wrapperLines.push(`  ${getClassInitWrapperMangledName(heritageName, 0)}((${heritageName}*)self);`);
         }
         for (const line of wrapperBodyLines) {
           wrapperLines.push(line.replace(/^ {4}/, '  '));
         }
+        wrapperLines.push('}');
+        const forwardedArgs = params.length > 0 ? `, ${params.join(', ')}` : '';
+        wrapperLines.push(`void ${initWrapperMangledName}(${className}* self${cppParams === 'void' ? '' : `, ${cppParams}`}) {`);
+        wrapperLines.push(`  ${initWrapperName}(self${forwardedArgs});`);
         wrapperLines.push('}');
         continue;
       }
@@ -6992,14 +7001,18 @@ function emitTopLevelClassDefinitions(tree, compileContext) {
 
     if (!hasConstructor) {
       const initWrapperName = getClassInitWrapperName(className);
+      const initWrapperMangledName = getClassInitWrapperMangledName(className, 0);
       if (heritageName) {
         wrapperLines.unshift(`void ${initWrapperName}(${className}* self) {`);
-        wrapperLines.splice(1, 0, `  ${getClassInitWrapperName(heritageName)}((${heritageName}*)self);`);
+        wrapperLines.splice(1, 0, `  ${getClassInitWrapperMangledName(heritageName, 0)}((${heritageName}*)self);`);
         wrapperLines.splice(2, 0, '}');
       } else {
         wrapperLines.unshift(`void ${initWrapperName}(${className}* self) {`);
         wrapperLines.splice(1, 0, '}');
       }
+      wrapperLines.push(`void ${initWrapperMangledName}(${className}* self) {`);
+      wrapperLines.push(`  ${initWrapperName}(self);`);
+      wrapperLines.push('}');
     }
 
     if (inferredFieldNames.size > 0) {
