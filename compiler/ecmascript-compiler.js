@@ -1779,6 +1779,19 @@ function inferExprType(node, compileContext = null) {
     return branchTypes.every((type) => type === 'number' || type === 'bool') ? 'number' : 'any';
   }
   if (INFIX_EXPRESSION_NODES.has(node.name) || node.name === 'unaryExpression' || node.name === 'postfixExpression') {
+    if (INFIX_EXPRESSION_NODES.has(node.name)) {
+      const operatorTokens = (node.children || [])
+        .filter((child) => child && child.kind === 'terminal')
+        .map((child) => mapInfixOperator(String(child.value || '').trim()))
+        .filter(Boolean);
+      if (operatorTokens.includes('instanceof')) {
+        return 'bool';
+      }
+      if (operatorTokens.some((token) => INT_ONLY_INFIX_OPERATORS.has(token))) {
+        return 'number';
+      }
+    }
+
     const loweredKinds = (node.children || []).filter((child) => child && child.kind === 'nonterminal');
     const childTypes = loweredKinds.map((child) => inferExprType(child, compileContext));
     if (childTypes.some((type) => type === 'string')) {
@@ -1874,6 +1887,25 @@ function inferInitializerCppType(initializerExpr, compileContext) {
   const classPtrType = inferDirectNewClassCppType(initializerExpr, compileContext);
   if (classPtrType) {
     return classPtrType;
+  }
+
+  // Bitwise/shift expressions must be materialized as integers in C++98.
+  let normalizedExpr = initializerExpr;
+  while (normalizedExpr && normalizedExpr.kind === 'nonterminal' && EXPR_PASSTHROUGH_NODES.has(normalizedExpr.name)) {
+    const ntc = (normalizedExpr.children || []).filter((child) => child && child.kind === 'nonterminal');
+    if (ntc.length !== 1) {
+      break;
+    }
+    normalizedExpr = ntc[0];
+  }
+  if (normalizedExpr && normalizedExpr.kind === 'nonterminal' && INFIX_EXPRESSION_NODES.has(normalizedExpr.name)) {
+    const operatorTokens = (normalizedExpr.children || [])
+      .filter((child) => child && child.kind === 'terminal')
+      .map((child) => String(child.value || '').trim())
+      .filter(Boolean);
+    if (operatorTokens.some((token) => INT_ONLY_INFIX_OPERATORS.has(mapInfixOperator(token)))) {
+      return 'int';
+    }
   }
 
   const inferredType = initializerExpr ? inferExprType(initializerExpr, compileContext) : 'any';
@@ -3742,7 +3774,11 @@ function lowerInfixExpressionValue(node, compileContext) {
       }
     }
     if (nonterminalChildren.length === 2) {
-      const lhs = lowerExpressionValue(nonterminalChildren[0], compileContext);
+      let lhs = lowerExpressionValue(nonterminalChildren[0], compileContext);
+      const lhsIdentifier = findFirstIdentifierValue(nonterminalChildren[0]);
+      if (lhsIdentifier && compileContext && findBoundClassInstanceTypeAtNode(lhsIdentifier, node, compileContext)) {
+        lhs = `&${lhsIdentifier}`;
+      }
       const rhsClassName = findFirstIdentifierValue(nonterminalChildren[1]);
       if (lhs !== null && rhsClassName) {
         return `(dynamic_cast<${rhsClassName}*>(${lhs}) != 0)`;
@@ -5413,7 +5449,7 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
     const newClassInfo = extractDirectNewClassInfo(initializerExpr, compileContext);
     if (newClassInfo) {
       lowered.push(`${indent}${newClassInfo.className} ${variableName};`);
-      const ctorSymbol = `${getClassInitWrapperName(newClassInfo.className)}__pv${'i'.repeat(Math.max(0, Number(newClassInfo.argCount) || 0))}`;
+      const ctorSymbol = getClassInitWrapperName(newClassInfo.className);
       lowered.push(`${indent}${ctorSymbol}((${newClassInfo.className}*)&${variableName}${newClassInfo.args && newClassInfo.args.trim() ? `, ${newClassInfo.args}` : ''});`);
       continue;
     }
@@ -5430,10 +5466,13 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
         err(`unsupported lowering: variable initializer '${variableName}'`);
       }
     }
-    const initValue = loweredInit !== null ? loweredInit : defaultCppValue(cppType);
+    const inferredFromLoweredInit = loweredInit && /(^|[^A-Za-z0-9_])(\||\^|&|<<|>>)([^A-Za-z0-9_]|$)/.test(loweredInit)
+      ? 'int'
+      : cppType;
+    const initValue = loweredInit !== null ? loweredInit : defaultCppValue(inferredFromLoweredInit);
 
-    const constQualifier = isConst && cppType !== 'const char*' ? 'const ' : '';
-    lowered.push(`${indent}${constQualifier}${cppType} ${variableName} = ${initValue};`);
+    const constQualifier = isConst && inferredFromLoweredInit !== 'const char*' ? 'const ' : '';
+    lowered.push(`${indent}${constQualifier}${inferredFromLoweredInit} ${variableName} = ${initValue};`);
   }
 
   return lowered;
@@ -6881,7 +6920,6 @@ function emitTopLevelClassDefinitions(tree, compileContext) {
 
     const classBodyLines = [];
     const wrapperLines = [];
-    const wrapperAliasLines = [];
     const inferredFieldNames = new Set();
     if (methodEntries.length === 0) {
       classBodyLines.push('  // [empty class body]');
@@ -6938,7 +6976,6 @@ function emitTopLevelClassDefinitions(tree, compileContext) {
           wrapperLines.push(line.replace(/^ {4}/, '  '));
         }
         wrapperLines.push('}');
-        wrapperAliasLines.push(`#define ${initWrapperName} ${initWrapperName}__pv${'i'.repeat(params.length)}`);
         continue;
       }
 
@@ -6950,7 +6987,6 @@ function emitTopLevelClassDefinitions(tree, compileContext) {
           wrapperLines.push(line.replace(/^ {4}/, '  '));
         }
         wrapperLines.push('}');
-        wrapperAliasLines.push(`#define ${methodWrapperName} ${methodWrapperName}__pv${'i'.repeat(params.length)}`);
       }
     }
 
@@ -6964,7 +7000,6 @@ function emitTopLevelClassDefinitions(tree, compileContext) {
         wrapperLines.unshift(`void ${initWrapperName}(${className}* self) {`);
         wrapperLines.splice(1, 0, '}');
       }
-      wrapperAliasLines.unshift(`#define ${initWrapperName} ${initWrapperName}__pv`);
     }
 
     if (inferredFieldNames.size > 0) {
@@ -6977,7 +7012,7 @@ function emitTopLevelClassDefinitions(tree, compileContext) {
     classDefinitions.push(
       `struct ${className}${heritageName ? ` : public ${heritageName}` : ''} {\n`
       + `${classBodyLines.join('\n')}\n`
-      + `};${wrapperLines.length > 0 ? `\n\n${wrapperLines.join('\n')}` : ''}${wrapperAliasLines.length > 0 ? `\n${wrapperAliasLines.join('\n')}` : ''}`
+      + `};${wrapperLines.length > 0 ? `\n\n${wrapperLines.join('\n')}` : ''}`
     );
   }
 
