@@ -4755,6 +4755,25 @@ function lowerCallExpressionValue(node, compileContext) {
   const children = node.children || [];
   const superCallNode = children.find((c) => c && c.kind === 'nonterminal' && c.name === 'superCall') || null;
   if (superCallNode) {
+    const superArgsNode = findFirstNonterminal(superCallNode, 'arguments');
+    let superArgListNode = superArgsNode
+      ? (superArgsNode.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'argumentList') || null
+      : null;
+    if (!superArgListNode && superArgsNode) {
+      superArgListNode = findFirstNonterminal(superArgsNode, 'argumentList');
+    }
+    const superArgs = superArgListNode ? collectArgumentExpressions(superArgListNode) : [];
+    if (superArgs.length > 0) {
+      reportUnsupportedLowering(
+        compileContext,
+        'call-expression-unlowerable',
+        'super call with arguments is not supported by current class wrapper lowering'
+      );
+      if (compileContext && compileContext.strictLowering) {
+        err('unsupported lowering: super call arguments');
+      }
+      return null;
+    }
     return '';
   }
 
