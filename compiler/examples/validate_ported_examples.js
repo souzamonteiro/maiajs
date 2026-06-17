@@ -79,6 +79,48 @@ function walkFiles(root, predicate, out = []) {
   return out;
 }
 
+function loadJsonIfExists(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function collectTranspileCorpus(repoRoot) {
+  const examplesRoot = path.join(repoRoot, 'compiler', 'examples');
+  const fixturesRoot = path.join(repoRoot, 'compiler', 'tests', 'fixtures');
+  const files = [];
+
+  for (const name of ['test.js', 'full_es8_test.js']) {
+    const filePath = path.join(examplesRoot, name);
+    if (fs.existsSync(filePath)) {
+      files.push(filePath);
+    }
+  }
+
+  if (fs.existsSync(fixturesRoot)) {
+    const expectFiles = fs.readdirSync(fixturesRoot)
+      .filter((name) => name.endsWith('.expect.json'))
+      .sort();
+
+    for (const expectName of expectFiles) {
+      const expectPath = path.join(fixturesRoot, expectName);
+      const expect = loadJsonIfExists(expectPath);
+      const stages = expect && Array.isArray(expect.stages) ? expect.stages : [];
+      if (!expect || !stages.includes('transpiler') || expect.shouldTranspile === false) {
+        continue;
+      }
+      const stem = expectName.slice(0, -'.expect.json'.length);
+      const sourcePath = path.join(fixturesRoot, `${stem}.js`);
+      if (fs.existsSync(sourcePath)) {
+        files.push(sourcePath);
+      }
+    }
+  }
+
+  return Array.from(new Set(files)).sort();
+}
+
 function normalizeOutput(text) {
   const lines = String(text).replace(/\r\n/g, '\n').split('\n');
   const filtered = lines.filter((line) => !/^\[webc\] program returned: \d+$/.test(line));
@@ -106,7 +148,7 @@ function runNodeScript(filePath, input, timeoutMs) {
 }
 
 function runTranspile(compilerPath, jsFilePath, cppOutPath, timeoutMs) {
-  const result = spawnSync('node', [compilerPath, jsFilePath, '--output', cppOutPath], {
+  const result = spawnSync('node', [compilerPath, '--file', jsFilePath, '--cpp-out', cppOutPath], {
     encoding: 'utf8',
     timeout: timeoutMs,
     maxBuffer: 20 * 1024 * 1024
@@ -152,17 +194,17 @@ function main() {
     courseRoot,
     (p) => p.endsWith('.js') && !p.includes('/dist/')
   ).sort();
+  const transpileJsFiles = collectTranspileCorpus(repoRoot);
 
   const failures = [];
   let suitePass = 0;
   let coursePass = 0;
-  let suiteTranspilePass = 0;
-  let courseTranspilePass = 0;
+  let transpilePass = 0;
 
   const checkRuntime = options.runRuntime;
   const checkTranspile = options.runTranspile;
 
-  function validateTranspile(jsFile, bucket) {
+  function validateTranspile(jsFile) {
     if (!checkTranspile) {
       return true;
     }
@@ -172,7 +214,7 @@ function main() {
     const transpile = runTranspile(compilerPath, jsFile, cppOutPath, options.transpileTimeoutMs);
     if (transpile.timedOut || transpile.status !== 0 || !fs.existsSync(cppOutPath)) {
       failures.push({
-        type: `${bucket}-transpile`,
+        type: 'maiajs-transpile',
         file: relPath,
         message: `status=${transpile.status} signal=${transpile.signal || 'none'} stderr=${transpile.stderr.trim().slice(0, 500)}`
       });
@@ -183,15 +225,27 @@ function main() {
 
   try {
 
+    if (checkTranspile) {
+      if (transpileJsFiles.length === 0) {
+        failures.push({
+          type: 'maiajs-transpile-corpus',
+          file: 'compiler/examples',
+          message: 'no MaiaJS transpile corpus files found'
+        });
+      }
+
+      for (const jsFile of transpileJsFiles) {
+        if (validateTranspile(jsFile)) {
+          transpilePass += 1;
+        }
+      }
+    }
+
     for (const jsFile of suiteJsFiles) {
     const dir = path.dirname(jsFile);
     const expectedFile = path.join(dir, 'expected_output.txt');
     const inputFile = jsFile.replace(/\.js$/, '.input.txt');
     const input = fs.existsSync(inputFile) ? fs.readFileSync(inputFile, 'utf8') : '';
-
-    if (validateTranspile(jsFile, 'suite')) {
-      suiteTranspilePass += 1;
-    }
 
     if (!checkRuntime) {
       continue;
@@ -235,10 +289,6 @@ function main() {
     const inputFile = jsFile.replace(/\.js$/, '.input.txt');
     const input = fs.existsSync(inputFile) ? fs.readFileSync(inputFile, 'utf8') : '';
 
-    if (validateTranspile(jsFile, 'course')) {
-      courseTranspilePass += 1;
-    }
-
     if (!checkRuntime) {
       continue;
     }
@@ -262,8 +312,7 @@ function main() {
       console.log(`[validate] course runtime passed: ${coursePass}/${courseJsFiles.length}`);
     }
     if (checkTranspile) {
-      console.log(`[validate] suite transpile passed: ${suiteTranspilePass}/${suiteJsFiles.length}`);
-      console.log(`[validate] course transpile passed: ${courseTranspilePass}/${courseJsFiles.length}`);
+      console.log(`[validate] MaiaJS transpile passed: ${transpilePass}/${transpileJsFiles.length}`);
     }
 
     if (failures.length > 0) {

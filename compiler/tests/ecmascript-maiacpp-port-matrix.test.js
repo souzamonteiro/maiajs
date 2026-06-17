@@ -82,7 +82,7 @@ test('MaiaCpp port matrix: classes, arrays, objects, and new expressions stay co
   assert.match(cpp, /struct Point \{/, 'class declaration must emit a struct');
   assert.match(cpp, /Point\(int x, int y\) \{/, 'constructor must emit typed parameters');
   assert.match(cpp, /__maia_arr_literal2\(\(int\)\(1\), \(int\)\(2\)\);/, 'array literal must emit the arity-based helper');
-  assert.match(cpp, /__maia_obj_literal2\("a", \(int\)\(1\), "b", \(int\)\(2\)\);/, 'object literal must emit the arity-based helper');
+  assert.match(cpp, /__maia_obj_literal2\(\(char\*\)"a", \(int\)\(1\), \(char\*\)"b", \(int\)\(2\)\);/, 'object literal must emit the arity-based helper');
   assert.match(cpp, /__new__Point\(1, 2\);/, 'new expression must use the constructor helper');
   assert.match(cpp, /__console__log\(arr\);/, 'array variable must remain routable through host calls');
   assert.match(cpp, /__console__log\(obj\);/, 'object variable must remain routable through host calls');

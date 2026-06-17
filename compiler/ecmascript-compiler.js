@@ -2663,7 +2663,7 @@ function lowerObjectLiteralValue(objectLiteralNode, compileContext) {
     // Use builder pattern for large objects
     let chain = '__maia_obj_builder_begin()';
     for (const property of properties) {
-      const keyLiteral = JSON.stringify(property.key);
+      const keyLiteral = `(char*)${JSON.stringify(property.key)}`;
       const loweredValue = lowerRequiredExpressionValue(
         property.valueExprNode,
         compileContext,
@@ -2677,7 +2677,7 @@ function lowerObjectLiteralValue(objectLiteralNode, compileContext) {
 
   const args = [];
   for (const property of properties) {
-    const keyLiteral = JSON.stringify(property.key);
+    const keyLiteral = `(char*)${JSON.stringify(property.key)}`;
     const loweredValue = lowerRequiredExpressionValue(
       property.valueExprNode,
       compileContext,
@@ -2794,6 +2794,53 @@ function lowerAdvancedArrayLiteralValue(arrayInfo, compileContext) {
     return null;
   }
 
+  if (compileContext) {
+    if (!Array.isArray(compileContext._preludeStatements)) {
+      compileContext._preludeStatements = [];
+    }
+    if (compileContext._arrayBuilderTempCount === undefined) {
+      compileContext._arrayBuilderTempCount = 0;
+    }
+    let currentTempName = `__maia_arr_builder_tmp${compileContext._arrayBuilderTempCount++}`;
+    compileContext._preludeStatements.push(`void* ${currentTempName} = __maia_arr_builder_begin();`);
+
+    for (const operation of (arrayInfo.operations || [])) {
+      const nextTempName = `__maia_arr_builder_tmp${compileContext._arrayBuilderTempCount++}`;
+      if (operation.kind === 'hole') {
+        compileContext._preludeStatements.push(`void* ${nextTempName} = __maia_arr_builder_push_hole(${currentTempName});`);
+        currentTempName = nextTempName;
+        continue;
+      }
+
+      if (operation.kind === 'spread') {
+        const loweredSpread = operation.valueExprNode
+          ? lowerRequiredExpressionValue(
+            operation.valueExprNode,
+            compileContext,
+            'array-spread-unlowerable',
+            'array spread expression'
+          )
+          : 'nullptr';
+        compileContext._preludeStatements.push(`void* ${nextTempName} = __maia_arr_builder_spread(${currentTempName}, (void*)(${loweredSpread}));`);
+        currentTempName = nextTempName;
+        continue;
+      }
+
+      const loweredValue = operation.valueExprNode
+        ? lowerRequiredExpressionValue(
+          operation.valueExprNode,
+          compileContext,
+          'array-element-unlowerable',
+          'array element expression'
+          )
+        : '0';
+      compileContext._preludeStatements.push(`void* ${nextTempName} = __maia_arr_builder_push_value(${currentTempName}, (int)(${loweredValue}));`);
+      currentTempName = nextTempName;
+    }
+
+    return `__maia_arr_builder_end(${currentTempName})`;
+  }
+
   let chain = '__maia_arr_builder_begin()';
 
   for (const operation of (arrayInfo.operations || [])) {
@@ -2827,6 +2874,14 @@ function lowerAdvancedArrayLiteralValue(arrayInfo, compileContext) {
   }
 
   return `__maia_arr_builder_end(${chain})`;
+}
+
+function takePreludeStatements(compileContext, indent = '  ') {
+  if (!compileContext || !Array.isArray(compileContext._preludeStatements) || compileContext._preludeStatements.length === 0) {
+    return [];
+  }
+  const statements = compileContext._preludeStatements.splice(0);
+  return statements.map((statement) => `${indent}${statement}`);
 }
 
 function lowerArrayLiteralValue(arrayLiteralNode, compileContext) {
@@ -3295,6 +3350,19 @@ function lowerIdentifierFromLeftHandSideExpression(node, compileContext = null) 
   if (memberExprNode) {
     const segments = extractPathFromMemberExpression(memberExprNode, compileContext);
     if (segments && segments.length >= 2) {
+      const isThisMember = segments[0] === 'this';
+      const localClassType = isThisMember ? null : findBoundClassInstanceTypeAtNode(segments[0], memberExprNode, compileContext);
+      if (!isThisMember && !localClassType) {
+        reportUnsupportedLowering(
+          compileContext,
+          'left-hand-side-unlowerable',
+          `member assignment target '${segments.join('.')}' is not a known C++ object`
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err(`unsupported lowering: member assignment target '${segments.join('.')}'`);
+        }
+        return null;
+      }
       let result = segments[0];
       for (let i = 1; i < segments.length; i++) {
         result += (i === 1 && segments[0] === 'this') ? '->' + segments[i] : '.' + segments[i];
@@ -3946,9 +4014,22 @@ function lowerExpressionValue(node, compileContext) {
     const segments = hasDotAccess ? extractPathFromMemberExpression(node, compileContext) : null;
     if (segments && segments.length >= 2) {
       // Use -> for this and . for local stack-instantiated class objects.
+      const isThisMember = segments[0] === 'this';
+      const localClassType = isThisMember ? null : findBoundClassInstanceTypeAtNode(segments[0], node, compileContext);
+      if (!isThisMember && !localClassType) {
+        reportUnsupportedLowering(
+          compileContext,
+          'member-expression-unlowerable',
+          `member access '${segments.join('.')}' is not a known C++ object and falls back to 0`
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err(`unsupported lowering: member access '${segments.join('.')}'`);
+        }
+        return '0';
+      }
       let result = segments[0];
       for (let i = 1; i < segments.length; i++) {
-        const usePointerAccess = i === 1 && segments[0] === 'this';
+        const usePointerAccess = i === 1 && isThisMember;
         result += usePointerAccess ? '->' + segments[i] : '.' + segments[i];
       }
       return result;
@@ -4132,7 +4213,7 @@ function emitObjectLiteralRuntimeDeclsCpp(tree) {
     return '';
   }
 
-  const decls = ['/* object literal runtime hooks (runtime-provided) */'];
+  const decls = [];
 
   if (simpleArities.size > 0) {
     const maxArity = Math.max(...Array.from(simpleArities.values()));
@@ -4143,7 +4224,7 @@ function emitObjectLiteralRuntimeDeclsCpp(tree) {
       }
       const params = [];
       for (let i = 1; i <= arity; i += 1) {
-        params.push(`const char* k${i}`);
+        params.push(`char* k${i}`);
         params.push(`int v${i}`);
       }
       decls.push(`extern void* __maia_obj_literal${arity}(${params.join(', ')});`);
@@ -4154,7 +4235,7 @@ function emitObjectLiteralRuntimeDeclsCpp(tree) {
 
   if (requiresBuilderHooks) {
     decls.push('extern void* __maia_obj_builder_begin(void);');
-    decls.push('extern void* __maia_obj_builder_set_key(void* builder, const char* key, int value);');
+    decls.push('extern void* __maia_obj_builder_set_key(void* builder, char* key, int value);');
     decls.push('extern void* __maia_obj_builder_end(void* builder);');
   }
 
@@ -4201,9 +4282,6 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
   }
 
   return [
-    '/* shared local runtime helpers for literal/lambda fallbacks */',
-    '#ifndef MAIA_RUNTIME_LOCAL_HELPERS_DEFINED',
-    '#define MAIA_RUNTIME_LOCAL_HELPERS_DEFINED 1',
     'struct __maia_runtime_value {',
     '  int tag;',
     '  int a;',
@@ -4219,12 +4297,6 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
     '  return (void*)v;',
     '}',
     ...(hasLambdaCapturePayload ? [
-      '/* lambda closure/env fallback contract (local MVP)',
-      ' * - function_id is deterministic per lowered lambda hook signature.',
-      ' * - capture_count is the canonical total capture count via env/value API.',
-      ' * - __maia_runtime_lambda_get_capture_at returns capture value by index or 0 if out-of-range.',
-      ' * - mirror fields (capture1..capture4, extra_*) are legacy-only compatibility projections; env-backed accessors are canonical.',
-      ' */',
       'struct __maia_runtime_lambda_env {',
       '  int capture_count;',
       '  int truncated_captures;',
@@ -4235,7 +4307,7 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
       '  int extra_capture_count;',
       '  int* extra_captures;',
       '};',
-      'static void* __maia_runtime_alloc_lambda_env(int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, const int* extra_captures) {',
+      'static void* __maia_runtime_alloc_lambda_env(int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, int* extra_captures) {',
       '  __maia_runtime_lambda_env* env = new __maia_runtime_lambda_env();',
       '  env->capture_count = capture_count;',
       '  env->truncated_captures = 0;',
@@ -4398,7 +4470,7 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
       '  if (!function_id) { return 0; }',
       '  return __maia_runtime_lambda_invoke_known_case(lambda_value, function_id, argc);',
       '}',
-      'static void* __maia_runtime_alloc_lambda_value(int function_id, int arity, int is_async, int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, const int* extra_captures) {',
+      'static void* __maia_runtime_alloc_lambda_value(int function_id, int arity, int is_async, int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, int* extra_captures) {',
       '  __maia_runtime_lambda_value* fn = new __maia_runtime_lambda_value();',
       '  __maia_runtime_lambda_env* env = (__maia_runtime_lambda_env*)__maia_runtime_alloc_lambda_env(capture_count, c1, c2, c3, c4, extra_capture_count, extra_captures);',
       '  fn->function_id = function_id;',
@@ -4407,22 +4479,19 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
       '  fn->env = (void*)env;',
       '  fn->capture_count = __maia_runtime_lambda_get_capture_count((void*)fn);',
       '  fn->truncated_captures = env ? env->truncated_captures : 0;',
-      '  /* legacy-only mirror projection seed from constructor arguments */',
       '  fn->capture1 = c1;',
       '  fn->capture2 = c2;',
       '  fn->capture3 = c3;',
       '  fn->capture4 = c4;',
       '  fn->extra_capture_count = env ? env->extra_capture_count : extra_capture_count;',
       '  fn->extra_captures = env ? env->extra_captures : 0;',
-      '  /* legacy-only mirror projection from canonical runtime capture API */',
       '  fn->capture1 = __maia_runtime_lambda_get_capture_at((void*)fn, 0);',
       '  fn->capture2 = __maia_runtime_lambda_get_capture_at((void*)fn, 1);',
       '  fn->capture3 = __maia_runtime_lambda_get_capture_at((void*)fn, 2);',
       '  fn->capture4 = __maia_runtime_lambda_get_capture_at((void*)fn, 3);',
       '  return (void*)fn;',
       '}'
-    ] : []),
-    '#endif'
+    ] : [])
   ].join('\n');
 }
 
@@ -4434,10 +4503,7 @@ function emitObjectLiteralRuntimeFallbackCpp(tree) {
   }
 
   const maxArity = simpleArities.size > 0 ? Math.max(...Array.from(simpleArities.values())) : 0;
-  const lines = [
-    '/* local fallback runtime for object literal hooks */',
-    '#ifndef MAIA_RUNTIME_PROVIDES_OBJECT_HOOKS'
-  ];
+  const lines = [];
 
   lines.push('void* __maia_obj_literal0(void) {');
   lines.push('  return __maia_runtime_alloc_value(1, 0, 0, 0);');
@@ -4446,7 +4512,7 @@ function emitObjectLiteralRuntimeFallbackCpp(tree) {
   for (let arity = 1; arity <= maxArity; arity += 1) {
     const params = [];
     for (let i = 1; i <= arity; i += 1) {
-      params.push(`const char* k${i}`);
+      params.push(`char* k${i}`);
       params.push(`int v${i}`);
     }
     lines.push(`void* __maia_obj_literal${arity}(${params.join(', ')}) {`);
@@ -4462,7 +4528,7 @@ function emitObjectLiteralRuntimeFallbackCpp(tree) {
     lines.push('void* __maia_obj_builder_begin(void) {');
     lines.push('  return __maia_runtime_alloc_value(5, 0, 0, 0);');
     lines.push('}');
-    lines.push('void* __maia_obj_builder_set_key(void* builder, const char* key, int value) {');
+    lines.push('void* __maia_obj_builder_set_key(void* builder, char* key, int value) {');
     lines.push('  (void)key;');
     lines.push('  (void)value;');
     lines.push('  __maia_runtime_value* b = (__maia_runtime_value*)builder;');
@@ -4479,7 +4545,6 @@ function emitObjectLiteralRuntimeFallbackCpp(tree) {
     lines.push('}');
   }
 
-  lines.push('#endif');
   return lines.join('\n');
 }
 
@@ -4515,7 +4580,7 @@ function emitArrayLiteralRuntimeDeclsCpp(tree) {
   const maxArity = stats.simpleArities.size > 0
     ? Math.min(4, Math.max(...Array.from(stats.simpleArities.values())))
     : -1;
-  const decls = ['/* array literal runtime hooks (runtime-provided) */'];
+  const decls = [];
 
   if (maxArity >= 0) {
     for (let arity = 0; arity <= maxArity; arity += 1) {
@@ -4552,10 +4617,7 @@ function emitArrayLiteralRuntimeFallbackCpp(tree) {
   const maxArity = stats.simpleArities.size > 0
     ? Math.min(4, Math.max(...Array.from(stats.simpleArities.values())))
     : -1;
-  const lines = [
-    '/* local fallback runtime for array literal hooks */',
-    '#ifndef MAIA_RUNTIME_PROVIDES_ARRAY_HOOKS'
-  ];
+  const lines = [];
 
   lines.push('void* __maia_arr_literal0(void) {');
   lines.push('  return __maia_runtime_alloc_value(2, 0, 0, 0);');
@@ -4608,7 +4670,6 @@ function emitArrayLiteralRuntimeFallbackCpp(tree) {
     lines.push('}');
   }
 
-  lines.push('#endif');
   return lines.join('\n');
 }
 
@@ -4651,7 +4712,7 @@ function emitLambdaRuntimeDeclsCpp(tree) {
     return '';
   }
 
-  const decls = ['/* lambda runtime hooks (runtime-provided, non-closure MVP) */'];
+  const decls = [];
   for (const signature of Array.from(syncSignatures.values()).sort((a, b) => {
     if (a.arity !== b.arity) {
       return a.arity - b.arity;
@@ -4698,10 +4759,7 @@ function emitLambdaRuntimeFallbackCpp(tree) {
     return '';
   }
 
-  const lines = [
-    '/* local fallback runtime for lambda hooks */',
-    '#ifndef MAIA_RUNTIME_PROVIDES_LAMBDA_HOOKS'
-  ];
+  const lines = [];
 
   for (const signature of Array.from(syncSignatures.values()).sort((a, b) => {
     if (a.arity !== b.arity) {
@@ -4771,7 +4829,6 @@ function emitLambdaRuntimeFallbackCpp(tree) {
     lines.push('}');
   }
 
-  lines.push('#endif');
   return lines.join('\n');
 }
 
@@ -4862,9 +4919,23 @@ function lowerCallExpressionValue(node, compileContext) {
   const args = lowerArgumentsNode(argsNode, compileContext);
 
   let loweredCall = null;
+  const lambdaBindingState = getLambdaBindingStateAtCallNode(node, pathSegments, compileContext);
+  let droppedJsRuntimeMethodCall = false;
+
+  if (compileContext
+    && compileContext.hasLambdaCapturePayload
+    && lambdaBindingState
+    && lambdaBindingState.isCaptureAware
+    && Array.isArray(pathSegments)
+    && pathSegments.length === 1) {
+    const asyncCallFlag = lambdaBindingState.isAsync ? 1 : 0;
+    loweredCall = `__maia_runtime_lambda_invoke_function_id((void*)${pathSegments[0]}, ${argExprs.length}, ${asyncCallFlag})`;
+  }
 
   if (pathSegments && pathSegments.length > 0 && isLocalFunctionPath(pathSegments, compileContext)) {
-    loweredCall = `${pathSegments[0]}(${args})`;
+    if (!loweredCall) {
+      loweredCall = `${pathSegments[0]}(${args})`;
+    }
   }
 
   if (!loweredCall && pathSegments && pathSegments.length === 1 && isIdentifierBoundAtNode(pathSegments[0], node, compileContext)) {
@@ -4963,11 +5034,12 @@ function lowerCallExpressionValue(node, compileContext) {
         'js-runtime-method-call',
         `dropping JS runtime member call '${directPropertyName}' on non-host base expression`
       );
+      droppedJsRuntimeMethodCall = true;
     }
   }
 
-  const lambdaBindingState = getLambdaBindingStateAtCallNode(node, pathSegments, compileContext);
   if (!loweredCall
+    && !droppedJsRuntimeMethodCall
     && compileContext
     && compileContext.hasLambdaCapturePayload
     && lambdaBindingState
@@ -4985,6 +5057,10 @@ function lowerCallExpressionValue(node, compileContext) {
       const asyncCallFlag = lambdaBindingState.isAsync ? 1 : 0;
       loweredCall = `__maia_runtime_lambda_invoke_function_id((void*)${pathSegments[0]}, ${argExprs.length}, ${asyncCallFlag})`;
     }
+  }
+
+  if (!loweredCall && droppedJsRuntimeMethodCall) {
+    return null;
   }
 
   if (!loweredCall) {
@@ -5456,6 +5532,7 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
 
     const cppType = inferInitializerCppType(initializerExpr, compileContext);
     const loweredInit = initializerExpr ? lowerExpressionValue(initializerExpr, compileContext) : null;
+    lowered.push(...takePreludeStatements(compileContext, indent));
     if (initializerExpr && loweredInit === null) {
       reportUnsupportedLowering(
         compileContext,
@@ -5536,7 +5613,10 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       return [`${indent}return ${defaultCppValue(returnTypeCpp)};`];
     }
 
-    return [`${indent}return ${castReturnExpression(loweredReturn, returnTypeCpp)};`];
+    return [
+      ...takePreludeStatements(compileContext, indent),
+      `${indent}return ${castReturnExpression(loweredReturn, returnTypeCpp)};`
+    ];
   }
 
   const ifStmtNode = (statementNode.children || []).find(
@@ -5616,6 +5696,7 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
         }
       }
     }
+    lines.push(...takePreludeStatements(compileContext, indent));
     lines.push(loweredCondition !== null ? `${indent}if (${loweredCondition}) {` : `${indent}if (0) {`);
 
     if (thenStatement) {
@@ -5716,7 +5797,10 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       }
       return [`${indent}(void)0;`];
     }
-    return [`${indent}${lowered};`];
+    return [
+      ...takePreludeStatements(compileContext, indent),
+      `${indent}${lowered};`
+    ];
   }
 
   const iterationStmtNode = (statementNode.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'iterationStatement');
@@ -7063,7 +7147,6 @@ function buildAsyncRuntimeBridgePlan(asyncFunctions) {
 }
 
 function generateCpp(inputPath, tree, hostCalls, compileContext) {
-  const base = path.basename(inputPath);
 
 function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map()) {
   if (!machines || machines.length === 0) { return ''; }
@@ -7191,7 +7274,6 @@ function emitExponentiationAssignmentHelpersCpp(tree) {
   }
 
   return [
-    '/* local helper for ES exponentiation-assignment lowering (C++98-safe) */',
     'static int __maia_pow_i32(int base, int exponent) {',
     '  if (exponent < 0) {',
     '    return 0;',
@@ -7243,20 +7325,13 @@ function emitExponentiationAssignmentHelpersCpp(tree) {
   const asyncSchedulerHooks = profileStep('emitAsyncSchedulerHookDeclsCpp', () => emitAsyncSchedulerHookDeclsCpp(asyncIr.asyncFunctions));
   const asyncCpp = profileStep('emitAsyncStateMachinesCpp', () => emitAsyncStateMachinesCpp(asyncIr.asyncFunctions, bridgePlanByFunctionName));
 
-  const hostMapComments = hostCalls.length === 0
-    ? '// Host-call map: (none detected)'
-    : hostCalls.map((call) => `// Host-call map: ${call.source} -> ${call.host}`).join('\n');
-
   const statements = profileStep('lowerProgramToCppStatements', () => lowerProgramToCppStatements(tree, compileContext, {
     includeFunctionDeclarations: false,
     includeClassDeclarations: false
   }));
-  const body = statements.length > 0 ? statements.join('\n') : '  // empty program';
+  const body = statements.length > 0 ? statements.join('\n') : '';
 
-  return `// Auto-generated by ecmascript-compiler.js\n`
-    + `// Source: ${base}\n`
-    + `${hostMapComments}\n\n`
-    + `${hostDecls}${hostDecls ? '\n\n' : ''}`
+  return `${hostDecls}${hostDecls ? '\n\n' : ''}`
     + `${sharedRuntimeFallbackHelpers}${sharedRuntimeFallbackHelpers ? '\n\n' : ''}`
     + `${exponentiationAssignmentHelpers}${exponentiationAssignmentHelpers ? '\n\n' : ''}`
     + `${objectLiteralDecls}${objectLiteralDecls ? '\n\n' : ''}`

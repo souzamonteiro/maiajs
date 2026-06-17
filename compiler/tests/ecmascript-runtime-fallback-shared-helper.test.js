@@ -40,7 +40,7 @@ test('runtime fallback dedup: emits shared helper once and reuses allocator acro
   const helperAllocCount = (cpp.match(/static void\* __maia_runtime_alloc_value\(int tag, int a, int b, int c\) \{/g) || []).length;
   assert.equal(helperAllocCount, 1, 'shared allocator helper must be emitted exactly once');
 
-  assert.match(cpp, /void\* __maia_obj_literal1\(const char\* k1, int v1\) \{[\s\S]*__maia_runtime_alloc_value\(1, 1, 0, 0\);/,
+  assert.match(cpp, /void\* __maia_obj_literal1\(char\* k1, int v1\) \{[\s\S]*__maia_runtime_alloc_value\(1, 1, 0, 0\);/,
     'object fallback must reuse shared allocator');
 
   assert.match(cpp, /void\* __maia_arr_builder_begin\(void\) \{[\s\S]*__maia_runtime_alloc_value\(4, 0, 0, 0\);/,
@@ -53,13 +53,10 @@ test('runtime fallback dedup: emits shared helper once and reuses allocator acro
 test('runtime fallback dedup: capture-aware lambda fallback reuses shared lambda payload allocator', () => {
   const cpp = runCompilerCpp('const y = 7;\nconst f = x => x + y;\n');
 
-  assert.match(cpp, /\/\* lambda closure\/env fallback contract \(local MVP\)[\s\S]*function_id is deterministic per lowered lambda hook signature\.[\s\S]*capture_count is the canonical total capture count via env\/value API\.[\s\S]*__maia_runtime_lambda_get_capture_at returns capture value by index or 0 if out-of-range\.[\s\S]*mirror fields \(capture1\.\.capture4, extra_\*\) are legacy-only compatibility projections; env-backed accessors are canonical\.[\s\S]*\*\//,
-    'capture-aware outputs must include explicit local closure/env runtime contract documentation');
-
   const lambdaEnvStructCount = (cpp.match(/struct __maia_runtime_lambda_env \{/g) || []).length;
   assert.equal(lambdaEnvStructCount, 1, 'shared lambda env struct must be emitted exactly once');
 
-  const lambdaEnvAllocCount = (cpp.match(/static void\* __maia_runtime_alloc_lambda_env\(int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, const int\* extra_captures\) \{/g) || []).length;
+  const lambdaEnvAllocCount = (cpp.match(/static void\* __maia_runtime_alloc_lambda_env\(int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, int\* extra_captures\) \{/g) || []).length;
   assert.equal(lambdaEnvAllocCount, 1, 'shared lambda env allocator helper must be emitted exactly once');
 
   const lambdaEnvCaptureAtCount = (cpp.match(/static int __maia_runtime_lambda_env_capture_at\(__maia_runtime_lambda_env\* env, int index\) \{/g) || []).length;
@@ -117,40 +114,38 @@ test('runtime fallback dedup: capture-aware lambda fallback reuses shared lambda
   const lambdaPayloadStructCount = (cpp.match(/struct __maia_runtime_lambda_value \{/g) || []).length;
   assert.equal(lambdaPayloadStructCount, 1, 'shared lambda payload struct must be emitted exactly once');
 
-  const lambdaPayloadAllocCount = (cpp.match(/static void\* __maia_runtime_alloc_lambda_value\(int function_id, int arity, int is_async, int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, const int\* extra_captures\) \{/g) || []).length;
+  const lambdaPayloadAllocCount = (cpp.match(/static void\* __maia_runtime_alloc_lambda_value\(int function_id, int arity, int is_async, int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, int\* extra_captures\) \{/g) || []).length;
   assert.equal(lambdaPayloadAllocCount, 1, 'shared lambda payload allocator helper must be emitted exactly once');
 
   assert.match(cpp, /__maia_runtime_lambda_env\* env = \(__maia_runtime_lambda_env\*\)__maia_runtime_alloc_lambda_env\(capture_count, c1, c2, c3, c4, extra_capture_count, extra_captures\);[\s\S]*fn->env = \(void\*\)env;/,
     'lambda payload allocator must create an explicit env handle and attach it to the closure payload');
   assert.match(cpp, /fn->capture_count = __maia_runtime_lambda_get_capture_count\(\(void\*\)fn\);[\s\S]*fn->capture1 = c1;[\s\S]*fn->capture4 = c4;[\s\S]*fn->capture1 = __maia_runtime_lambda_get_capture_at\(\(void\*\)fn, 0\);[\s\S]*fn->capture4 = __maia_runtime_lambda_get_capture_at\(\(void\*\)fn, 3\);/,
     'lambda payload allocator must consume capture metadata through runtime-facing capture APIs and project compatibility mirrors from that path');
-  assert.match(cpp, /\/\* legacy-only mirror projection seed from constructor arguments \*\/[\s\S]*\/\* legacy-only mirror projection from canonical runtime capture API \*\//,
-    'lambda payload allocator must keep explicit legacy-only projection labels at mirror assignment sites');
 
   assert.match(cpp, /void\* __maia_lambda1_capture1\(int c1\) \{[\s\S]*__maia_runtime_alloc_lambda_value\(1001, 1, 0, 1, c1, 0, 0, 0, 0, 0\);/,
     'capture-aware sync lambda fallback must reuse shared lambda payload allocator');
 });
 
-test('runtime fallback dedup: legacy-only projection labels scoped to allocator, not runtime APIs', () => {
+test('runtime fallback dedup: mirror projection assignments are scoped to allocator, not runtime APIs', () => {
   const cpp = runCompilerCpp('const y = 7;\nconst f = x => x + y;\n');
 
   const allocatorMatch = cpp.match(/static void\* __maia_runtime_alloc_lambda_value\([^}]*?\{[\s\S]*?\n\}/);
   assert.ok(allocatorMatch, 'must find lambda payload allocator');
   const allocatorBody = allocatorMatch[0];
-  assert.match(allocatorBody, /\/\* legacy-only mirror projection seed from constructor arguments \*\/[\s\S]*\/\* legacy-only mirror projection from canonical runtime capture API \*\//,
-    'legacy-only labels must appear in allocator body');
+  assert.match(allocatorBody, /fn->capture1 = c1;[\s\S]*fn->capture1 = __maia_runtime_lambda_get_capture_at\(\(void\*\)fn, 0\);/,
+    'mirror projection assignments must appear in allocator body');
 
   const getCaptureCountMatch = cpp.match(/static int __maia_runtime_lambda_get_capture_count\(void\* lambda_value\) \{[\s\S]*?\n\}/);
   assert.ok(getCaptureCountMatch, 'must find runtime-facing capture-count API');
   const getCaptureCountBody = getCaptureCountMatch[0];
-  assert.doesNotMatch(getCaptureCountBody, /legacy-only/,
-    'legacy-only labels must not appear in get_capture_count API body');
+  assert.doesNotMatch(getCaptureCountBody, /fn->capture1 =/,
+    'mirror projection assignments must not appear in get_capture_count API body');
 
   const getCaptureAtMatch = cpp.match(/static int __maia_runtime_lambda_get_capture_at\(void\* lambda_value, int index\) \{[\s\S]*?\n\}/);
   assert.ok(getCaptureAtMatch, 'must find runtime-facing capture-by-index API');
   const getCaptureAtBody = getCaptureAtMatch[0];
-  assert.doesNotMatch(getCaptureAtBody, /legacy-only/,
-    'legacy-only labels must not appear in get_capture_at API body');
+  assert.doesNotMatch(getCaptureAtBody, /fn->capture1 =/,
+    'mirror projection assignments must not appear in get_capture_at API body');
 });
 
 test('runtime fallback dedup: mixed sync and async overflow hooks reuse one shared lambda payload allocator', () => {
@@ -167,7 +162,7 @@ test('runtime fallback dedup: mixed sync and async overflow hooks reuse one shar
   const lambdaEnvStructCount = (cpp.match(/struct __maia_runtime_lambda_env \{/g) || []).length;
   assert.equal(lambdaEnvStructCount, 1, 'shared lambda env struct must still be emitted exactly once with mixed sync/async overflow hooks');
 
-  const lambdaEnvAllocCount = (cpp.match(/static void\* __maia_runtime_alloc_lambda_env\(int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, const int\* extra_captures\) \{/g) || []).length;
+  const lambdaEnvAllocCount = (cpp.match(/static void\* __maia_runtime_alloc_lambda_env\(int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, int\* extra_captures\) \{/g) || []).length;
   assert.equal(lambdaEnvAllocCount, 1, 'shared lambda env allocator helper must still be emitted exactly once with mixed sync/async overflow hooks');
 
   const lambdaEnvCaptureAtCount = (cpp.match(/static int __maia_runtime_lambda_env_capture_at\(__maia_runtime_lambda_env\* env, int index\) \{/g) || []).length;
@@ -185,7 +180,7 @@ test('runtime fallback dedup: mixed sync and async overflow hooks reuse one shar
   const lambdaPayloadStructCount = (cpp.match(/struct __maia_runtime_lambda_value \{/g) || []).length;
   assert.equal(lambdaPayloadStructCount, 1, 'shared lambda payload struct must still be emitted exactly once with mixed sync/async overflow hooks');
 
-  const lambdaPayloadAllocCount = (cpp.match(/static void\* __maia_runtime_alloc_lambda_value\(int function_id, int arity, int is_async, int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, const int\* extra_captures\) \{/g) || []).length;
+  const lambdaPayloadAllocCount = (cpp.match(/static void\* __maia_runtime_alloc_lambda_value\(int function_id, int arity, int is_async, int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, int\* extra_captures\) \{/g) || []).length;
   assert.equal(lambdaPayloadAllocCount, 1, 'shared lambda payload allocator helper must still be emitted exactly once with mixed sync/async overflow hooks');
 
   assert.match(cpp, /void\* __maia_lambda1_capture5\(int c1, int c2, int c3, int c4, int c5\) \{[\s\S]*int extra_captures\[1\];[\s\S]*__maia_runtime_alloc_lambda_value\(1005, 1, 0, 5, c1, c2, c3, c4, 1, extra_captures\);/,
@@ -280,7 +275,6 @@ test('runtime fallback dedup: no-capture-only lambda programs do not emit captur
     'const g = async x => await x;'
   ].join('\n'));
 
-  assert.doesNotMatch(cpp, /\/\* lambda closure\/env fallback contract \(local MVP\)/, 'no-capture-only programs must not emit closure/env contract comment block');
   assert.doesNotMatch(cpp, /struct __maia_runtime_lambda_env \{/, 'no-capture-only programs must not emit lambda env struct');
   assert.doesNotMatch(cpp, /static void\* __maia_runtime_alloc_lambda_env\(/, 'no-capture-only programs must not emit lambda env allocator');
   assert.doesNotMatch(cpp, /static int __maia_runtime_lambda_get_capture_count\(void\* lambda_value\) \{/, 'no-capture-only programs must not emit runtime-facing capture-count helper');

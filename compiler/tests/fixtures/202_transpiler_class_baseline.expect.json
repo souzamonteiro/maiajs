@@ -3,7 +3,6 @@
   "shouldTranspile": true,
   "cppContains": [
     "struct Animal",
-    "// Host-call map: a.speak -> __a__speak",
     "const void* a = __new__Animal();"
   ]
 }

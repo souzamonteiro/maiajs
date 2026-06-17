@@ -91,16 +91,13 @@ test('golden: nested lambdas preserve capture chain', () => {
   assert.match(cpp, /struct __maia_runtime_lambda_value \{/, 'should emit shared lambda payload struct');
 });
 
-test('golden: capture-aware lambda emits full contract documentation', () => {
+test('golden: capture-aware lambda emits closure payload helpers', () => {
   const cpp = runCompilerCpp('const y = 7; const f = x => x + y;');
 
-  // Verify contract block is emitted
-  assert.match(cpp, /\/\* lambda closure\/env fallback contract \(local MVP\)/, 
-    'should emit contract documentation block');
-  assert.match(cpp, /function_id is deterministic/, 'should document function_id contract');
-  assert.match(cpp, /capture_count is the canonical total capture count/, 
-    'should document capture_count contract');
-  assert.match(cpp, /mirror fields.*legacy-only/, 'should document legacy-only mirror fields');
+  assert.match(cpp, /struct __maia_runtime_lambda_env \{/, 'should emit shared env struct');
+  assert.match(cpp, /struct __maia_runtime_lambda_value \{/, 'should emit shared lambda payload struct');
+  assert.match(cpp, /static void\* __maia_runtime_alloc_lambda_env\(int capture_count, int c1, int c2, int c3, int c4, int extra_capture_count, int\* extra_captures\) \{/,
+    'should emit MaiaCpp-friendly env allocator signature');
 });
 
 test('golden: runtime API helpers avoid direct mirror reads', () => {
@@ -176,21 +173,18 @@ test('golden: assignment-defined capture-aware identifier call lowers through in
     'assignment-defined capture-aware identifier call should lower to runtime invocation function-id bridge');
 });
 
-test('golden: legacy-only labels appear in allocator only', () => {
+test('golden: mirror projection assignments appear in allocator only', () => {
   const cpp = runCompilerCpp('const y = 7; const f = x => x + y;');
 
-  // Count legacy-only labels in allocator
   const allocMatch = cpp.match(/static void\* __maia_runtime_alloc_lambda_value\([^}]*\{[\s\S]*?\n\}/);
   assert.ok(allocMatch, 'should find allocator');
   const allocBody = allocMatch[0];
-  const allocLegacy = allocBody.match(/\/\* legacy-only/g) || [];
-  assert.ok(allocLegacy.length >= 2, 'allocator should have at least 2 legacy-only labels');
+  assert.match(allocBody, /fn->capture1 = c1;[\s\S]*fn->capture1 = __maia_runtime_lambda_get_capture_at\(\(void\*\)fn, 0\);/,
+    'allocator should project mirror fields from constructor arguments and runtime API');
 
-  // Verify they don't appear in API helpers
   const getCCMatch = cpp.match(/static int __maia_runtime_lambda_get_capture_count\([^}]*\{[\s\S]*?\n\}/);
   if (getCCMatch) {
-    assert.doesNotMatch(getCCMatch[0], /\/\* legacy-only/, 
-      'get_capture_count should not have legacy-only labels');
+    assert.doesNotMatch(getCCMatch[0], /fn->capture1 =/,
+      'get_capture_count should not project mirror fields');
   }
 });
-

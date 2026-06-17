@@ -88,7 +88,7 @@ test('inline function expressions in object literals and call arguments lower to
   );
 
   assert.match(cpp, /const char\* __maia_fn_person_greet\(void\)/, 'object literal method value should emit a synthesized helper');
-  assert.match(cpp, /const void\* person = __maia_obj_literal1\("greet", \(int\)\(__maia_fn_person_greet\)\);/, 'object literal should reference the synthesized helper instead of nullptr');
+  assert.match(cpp, /const void\* person = __maia_obj_literal1\(\(char\*\)"greet", \(int\)\(__maia_fn_person_greet\)\);/, 'object literal should reference the synthesized helper instead of nullptr');
   assert.match(cpp, /int __maia_fn_arg_rangeValues_forEach_0\(int num\)/, 'inline callback argument should emit a synthesized helper');
   assert.match(cpp, /__rangeValues__forEach\(__maia_fn_arg_rangeValues_forEach_0\);/, 'call argument should reference the synthesized helper instead of nullptr');
   assert.doesNotMatch(cpp, /"greet", \(int\)\(nullptr\)/, 'object literal function value must not degrade to nullptr');
