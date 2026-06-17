@@ -99,11 +99,12 @@ struct C {
 void C_ctor_init(C* self, int x) {
   self->value = x;
 }
+void C_ctor_init__pvi(C* self, int x) {
+  C_ctor_init(self, x);
+}
 int C_meth_getValue(C* self) {
   return (int)(self->value);
 }
-#define C_ctor_init C_ctor_init__pvi
-#define C_meth_getValue C_meth_getValue__pv
 
 struct Box {
   int d0;
@@ -117,6 +118,9 @@ void Box_ctor_init(Box* self) {
   self->d1 = 0;
   self->d2 = 0;
   self->d3 = 0;
+}
+void Box_ctor_init__pv(Box* self) {
+  Box_ctor_init(self);
 }
 int Box_meth_at(Box* self, int i) {
   if (i == 0) {
@@ -146,9 +150,6 @@ int Box_meth_setAt(Box* self, int i, int v) {
   self->d3 = v;
   return (int)(0);
 }
-#define Box_ctor_init Box_ctor_init__pv
-#define Box_meth_at Box_meth_at__pvi
-#define Box_meth_setAt Box_meth_setAt__pvii
 
 struct BBase {
 
@@ -156,22 +157,25 @@ struct BBase {
 
 void BBase_ctor_init(BBase* self) {
 }
-#define BBase_ctor_init BBase_ctor_init__pv
+void BBase_ctor_init__pv(BBase* self) {
+  BBase_ctor_init(self);
+}
 
 struct DDerived : public BBase {
   int number;
 };
 
 void DDerived_ctor_init(DDerived* self, int n) {
-  BBase_ctor_init((BBase*)self);
-  (void)0;
+  BBase_ctor_init__pv((BBase*)self);
+  ;
   self->number = n;
+}
+void DDerived_ctor_init__pvi(DDerived* self, int n) {
+  DDerived_ctor_init(self, n);
 }
 int DDerived_meth_value(DDerived* self) {
   return (int)(self->number);
 }
-#define DDerived_ctor_init DDerived_ctor_init__pvi
-#define DDerived_meth_value DDerived_meth_value__pv
 
 struct P {
   int value;
@@ -180,11 +184,12 @@ struct P {
 void P_ctor_init(P* self, int x) {
   self->value = x;
 }
+void P_ctor_init__pvi(P* self, int x) {
+  P_ctor_init(self, x);
+}
 int P_meth_getValue(P* self) {
   return (int)(self->value);
 }
-#define P_ctor_init P_ctor_init__pvi
-#define P_meth_getValue P_meth_getValue__pv
 
 int add(int a, int b);
 int multiply(int a, int b);
@@ -222,7 +227,7 @@ int run_template_tests(void) {
   Box_ctor_init__pv((Box*)&box);
   Box_meth_setAt(&box, 0, 10);
   Box_meth_setAt(&box, 1, 20);
-  return (int)(((Box_meth_at(&box, 0) + Box_meth_at(&box, 1) == 30) ? (1) : (0)));
+  return (int)(((+(+(Box_meth_at(&box, 0) + Box_meth_at(&box, 1)) == 30)) ? (1) : (0)));
 }
 
 int run_function_pointer_tests(void) {
@@ -234,8 +239,8 @@ int run_function_pointer_tests(void) {
 int run_cast_tests(void) {
   DDerived b;
   DDerived_ctor_init__pvi((DDerived*)&b, 15);
-  const double isDerived = (((dynamic_cast<DDerived*>(b) != 0)) ? (1) : (0));
-  const void* n = (int)(3.2) | (int)(0);
+  const double isDerived = (((dynamic_cast<DDerived*>(&b) != 0)) ? (1) : (0));
+  const int n = (int)(3.2) | (int)(0);
   if (isDerived != 1) {
     return (int)(0);
   }
@@ -408,11 +413,11 @@ int run_main_baseline_sections(void) {
   __console__log("a&&b => 1");
   __console__log("a||0 => 1");
   __console__log("--- Bitwise Operators ---");
-  const void* bitAnd = (int)(a) & (int)(b);
-  const void* bitOr = (int)(a) | (int)(b);
-  const void* bitXor = (int)(a) ^ (int)(b);
-  const void* shiftLeft = (int)(a) << (int)(2);
-  const void* shiftRight = (int)(b) >> (int)(1);
+  const int bitAnd = (int)(a) & (int)(b);
+  const int bitOr = (int)(a) | (int)(b);
+  const int bitXor = (int)(a) ^ (int)(b);
+  const int shiftLeft = (int)(a) << (int)(2);
+  const int shiftRight = (int)(b) >> (int)(1);
   if (bitAnd != 0) {
     return (int)(0);
   }
