@@ -115,18 +115,16 @@ test('Phase 7 marker: consecutive console.log calls all emit in main body', () =
 });
 
 test('Phase 7 marker: console.log with string concat emits extern and call with concat expression', () => {
-  // CURRENT STATE: string + numeric-var concat emits void* extern (not const char*).
-  // The call emits the inlined JS-style concat "value: " + x.
-  // MaiaCpp will handle the C++ string concat via its own runtime.
   const cpp = runCompilerCpp(`var x = 5;\nconsole.log("value: " + x);\n`);
 
-  // The extern must be present (void* for mixed-type concat)
-  assert.match(cpp, /extern void __console__log\(/,
+  assert.match(cpp, /extern void __console__log\(const char\*\)/,
     'extern __console__log must appear');
-
-  // The call must appear with the concat expression
-  assert.match(cpp, /__console__log\("value: " \+ x\)/,
-    '__console__log must emit the string-concat expression as its argument');
+  assert.match(cpp, /static const char\* __maia_console_concat2\(const char\* left, const char\* right\)/,
+    'console concat helper must be emitted for mixed string concatenation');
+  assert.match(cpp, /const char\* __maia_console_tmp0 = __maia_console_concat2\("value: ", __maia_console_to_cstr_[a-z]+\(.+\)\);/,
+    'concat lowering must build a formatted temporary string');
+  assert.match(cpp, /\+?\(__console__log\(__maia_console_tmp0\)\);|__console__log\(__maia_console_tmp0\);/,
+    '__console__log must consume the formatted concat result');
 });
 
 test('Phase 7 marker: section headers from full_es8_test.js produce correct C++ calls', () => {

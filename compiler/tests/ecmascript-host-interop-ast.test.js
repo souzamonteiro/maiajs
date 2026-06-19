@@ -183,7 +183,7 @@ test('C++ lowering emits relational and logical expressions in if conditions', (
 test('C++ lowering emits bitwise and shift expressions', () => {
   const cpp = runCompilerCpp('let a = 1;\nlet b = 2;\nlet y = 0;\ny = a << 1 | b;\nconsole.log(y);\n');
 
-  assert.match(cpp, /y = a << 1 \| b;/, 'C++ must lower shift and bitwise expression chain');
+  assert.match(cpp, /y = \(int\)\(\(int\)\(a\) << \(int\)\(1\)\) \| \(int\)\(b\);/, 'C++ must lower shift and bitwise expression chain');
   assert.match(cpp, /__console__log\(y\);/, 'C++ must preserve host call after bitwise expression');
 });
 
