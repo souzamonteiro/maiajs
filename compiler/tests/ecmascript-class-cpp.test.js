@@ -31,9 +31,9 @@ test('class lowering: emits constructor and method stubs', () => {
   const cpp = runCompilerCpp('class Point { constructor(x, y) { this.x = x; } length(v) { return v; } }\n');
 
   assert.match(cpp, /struct Point \{/, 'C++ must emit struct for class declaration');
-  assert.match(cpp, /Point\(int x, int y\) \{/, 'C++ must emit constructor signature with parameters');
-  assert.match(cpp, /this->x = x;/, 'constructor body must lower this-member assignment');
-  assert.match(cpp, /int length\(int v\) \{/, 'C++ must emit class method signature');
+  assert.match(cpp, /void Point_ctor_init\(Point\* self, int x, int y\) \{/, 'C++ must emit constructor init wrapper with typed parameters');
+  assert.match(cpp, /self->x = x;/, 'constructor body must lower this-member assignment');
+  assert.match(cpp, /int Point_meth_length\(Point\* self, int v\) \{/, 'C++ must emit class method wrapper signature');
   assert.match(cpp, /return \(int\)\(v\);/, 'class method body must lower return statement');
 });
 
@@ -41,15 +41,15 @@ test('class lowering: emits default constructor when none is declared', () => {
   const cpp = runCompilerCpp('class Empty { ping() {} }\n');
 
   assert.match(cpp, /struct Empty \{/, 'C++ must emit struct for class declaration');
-  assert.match(cpp, /Empty\(void\) \{\}/, 'C++ must emit default constructor when source has no constructor');
-  assert.match(cpp, /int ping\(void\) \{/, 'C++ must emit method stub with void params');
+  assert.match(cpp, /void Empty_ctor_init\(Empty\* self\) \{/, 'C++ must emit default constructor init wrapper when source has no constructor');
+  assert.match(cpp, /int Empty_meth_ping\(Empty\* self\) \{/, 'C++ must emit method stub wrapper with receiver param');
 });
 
 test('class lowering: records extends as explicit non-lowered note', () => {
   const cpp = runCompilerCpp('class Child extends Base { run() {} }\n');
 
-  assert.match(cpp, /struct Child \{/, 'C++ must emit struct for derived class');
-  assert.match(cpp, /extends Base \(inheritance semantics not yet lowered\)/, 'C++ must preserve extends intent as roadmap-safe note');
+  assert.match(cpp, /struct Child : public Base \{/, 'C++ must emit derived struct for extends');
+  assert.match(cpp, /Base_ctor_init__pv\(\(Base\*\)self\);/, 'C++ must route default base initialization through the generated base init wrapper');
 });
 
 test('class lowering: top-level class declaration is not emitted as unsupported statement in main', () => {

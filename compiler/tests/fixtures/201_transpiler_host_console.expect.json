@@ -3,7 +3,7 @@
   "shouldTranspile": true,
   "cppContains": [
     "extern void __hostGetNumber(void);",
-    "extern void __console__log(void*);"
+    "extern void __console__log(const char*);"
   ],
   "compilerOutputExclude": [
     "[expression not yet lowered]",

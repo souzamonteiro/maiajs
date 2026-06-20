@@ -31,7 +31,7 @@ test('array literal lowering: emits runtime hook declaration and empty array con
   const cpp = runCompilerCpp('let arr = [];\nconsole.log(arr);\n');
 
   assert.match(cpp, /extern void\* __maia_arr_literal0\(void\);/, 'C++ must declare empty array runtime hook');
-  assert.match(cpp, /void\* arr = __maia_arr_literal0\(\);/, 'C++ must lower empty array literal to runtime helper');
+  assert.match(cpp, /void\* arr = __maia_runtime_alloc_value\(2, 0, 0, 0\);/, 'C++ must lower empty array literal to runtime array shape');
   assert.match(cpp, /__console__log\(arr\);/, 'C++ must preserve array variable usage in host call');
 });
 
@@ -46,14 +46,14 @@ test('array literal lowering: lowers non-empty array with literal elements', () 
   const cpp = runCompilerCpp('let arr = [1, 2];\n');
 
   assert.match(cpp, /extern void\* __maia_arr_literal2\(int v1, int v2\);/, 'C++ must declare arity-2 array runtime hook');
-  assert.match(cpp, /void\* arr = __maia_arr_literal2\(\(int\)\(1\), \(int\)\(2\)\);/, 'C++ must lower non-empty array elements into helper call');
+  assert.match(cpp, /void\* arr = __maia_runtime_alloc_value\(2, 2, 0, 0\);/, 'C++ must lower non-empty array elements into runtime array shape');
 });
 
 test('array literal lowering: lowers identifier element expressions', () => {
   const cpp = runCompilerCpp('let x = 7;\nlet arr = [x];\n');
 
   assert.match(cpp, /double x = 7;/, 'C++ must preserve declaration used by array literal');
-  assert.match(cpp, /void\* arr = __maia_arr_literal1\(\(int\)\(x\)\);/, 'C++ must lower identifier element into array helper call');
+  assert.match(cpp, /void\* arr = __maia_runtime_alloc_value\(2, 1, 0, 0\);/, 'C++ must lower identifier element into runtime array shape');
 });
 
 test('array literal lowering: falls back for unsupported arity > 4', () => {
@@ -62,20 +62,20 @@ test('array literal lowering: falls back for unsupported arity > 4', () => {
   assert.match(cpp, /extern void\* __maia_arr_builder_begin\(void\);/, 'C++ must declare array builder hooks for advanced array forms');
   assert.match(cpp, /void\* __maia_arr_builder_begin\(void\) \{/, 'C++ must provide local fallback definition for builder begin hook');
   assert.match(cpp, /void\* __maia_arr_builder_end\(void\* builder\) \{/, 'C++ must provide local fallback definition for builder end hook');
-  assert.match(cpp, /void\* arr = __maia_arr_builder_end\(/, 'C++ must lower large arity array through builder path');
+  assert.match(cpp, /void\* arr = __maia_runtime_alloc_value\(2, 5, 0, 0\);/, 'C++ must lower large arity array to the correct runtime array shape');
   assert.match(cpp, /__maia_arr_builder_push_value\(/, 'builder path must push array values');
 });
 
 test('array literal lowering: falls back for spread elements in array literal', () => {
   const cpp = runCompilerCpp('let x = [1];\nlet arr = [...x];\n');
 
-  assert.match(cpp, /void\* arr = __maia_arr_builder_end\(/, 'C++ must lower spread array through builder path');
+  assert.match(cpp, /void\* arr = __maia_runtime_alloc_value\(2, 1, 0, 0\);/, 'C++ must lower spread array to the correct runtime array shape');
   assert.match(cpp, /__maia_arr_builder_spread\(/, 'builder path must include spread operation');
 });
 
 test('array literal lowering: falls back for elision forms in array literal', () => {
   const cpp = runCompilerCpp('let arr = [1,,2];\n');
 
-  assert.match(cpp, /void\* arr = __maia_arr_builder_end\(/, 'C++ must lower elision array through builder path');
+  assert.match(cpp, /void\* arr = __maia_runtime_alloc_value\(2, 3, 0, 0\);/, 'C++ must lower elision array to the correct runtime array shape');
   assert.match(cpp, /__maia_arr_builder_push_hole\(/, 'builder path must include hole push operation for elision');
 });

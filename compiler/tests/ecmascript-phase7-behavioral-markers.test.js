@@ -119,11 +119,11 @@ test('Phase 7 marker: console.log with string concat emits extern and call with 
 
   assert.match(cpp, /extern void __console__log\(const char\*\)/,
     'extern __console__log must appear');
-  assert.match(cpp, /static const char\* __maia_console_concat2\(const char\* left, const char\* right\)/,
+  assert.match(cpp, /static void\* __maia_console_concat2\(void\* left, void\* right\)/,
     'console concat helper must be emitted for mixed string concatenation');
-  assert.match(cpp, /const char\* __maia_console_tmp0 = __maia_console_concat2\("value: ", __maia_console_to_cstr_[a-z]+\(.+\)\);/,
+  assert.match(cpp, /const char\* __maia_console_tmp0 = \(const char\*\)__maia_console_concat2\("value: ", __maia_console_to_cstr_[a-z]+\(.+\)\);/,
     'concat lowering must build a formatted temporary string');
-  assert.match(cpp, /\+?\(__console__log\(__maia_console_tmp0\)\);|__console__log\(__maia_console_tmp0\);/,
+  assert.match(cpp, /__console__log\(__maia_console_tmp0\);/,
     '__console__log must consume the formatted concat result');
 });
 

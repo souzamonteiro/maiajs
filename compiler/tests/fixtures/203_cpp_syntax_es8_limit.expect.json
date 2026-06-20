@@ -3,7 +3,7 @@
   "shouldTranspile": true,
   "shouldCppSyntax": false,
   "cppContains": [
-    "const void* x = nullptr;"
+    "const void* x = ((a == nullptr) ? (0) : (a));"
   ],
   "cppSyntaxOutputContains": [
     "nullptr"

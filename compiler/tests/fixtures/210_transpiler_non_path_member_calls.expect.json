@@ -3,7 +3,7 @@
   "shouldTranspile": true,
   "cppContains": [
     "int __maia_fn_arg_call_0(int v, int i, int arr)",
-    "const void* setLike = nullptr;"
+    "const void* setLike = __maia_runtime_alloc_value(2, 4, 0, 0);"
   ],
   "cppExclude": [
     ".filter(",

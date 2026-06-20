@@ -3,6 +3,7 @@
   "shouldTranspile": true,
   "cppContains": [
     "struct Animal",
-    "const void* a = __new__Animal();"
+    "Animal a;",
+    "Animal_ctor_init__pv((Animal*)&a);"
   ]
 }

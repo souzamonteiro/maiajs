@@ -1539,12 +1539,6 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
         if (methodName === 'map') {
           return { kind: 'array', length: baseModel.length };
         }
-        if (methodName === 'filter') {
-          const uniqueCount = Array.isArray(baseModel.values)
-            ? new Set(baseModel.values.map((valueModel) => JSON.stringify(valueModel))).size
-            : 0;
-          return { kind: 'array', length: uniqueCount };
-        }
       }
     }
   }
@@ -4856,20 +4850,10 @@ function lowerUnaryExpressionValue(node, compileContext) {
     : null;
   if (!opTerminal) {
     for (const child of children) {
-      if (child && child.kind === 'terminal' 
+      if (child && child.kind === 'terminal'
         && (child.token === 'TOKEN__21_' || child.token === 'TOKEN__2D_' || child.token === 'TOKEN__2B_' || child.token === 'TOKEN__7E_')) {
         opTerminal = child;
         break;
-      }
-    }
-    for (const child of children) {
-      if (!opTerminal && child && child.kind === 'nonterminal') {
-        walk(child, (n) => {
-          if (!opTerminal && n && n.kind === 'terminal' 
-            && (n.token === 'TOKEN__21_' || n.token === 'TOKEN__2D_' || n.token === 'TOKEN__2B_' || n.token === 'TOKEN__7E_')) {
-            opTerminal = n;
-          }
-        });
       }
     }
   }
@@ -6298,11 +6282,6 @@ function lowerCallExpressionValue(node, compileContext) {
     }
   }
 
-  const staticPromiseChainLowered = tryLowerStaticPromiseThenChain(node, compileContext);
-  if (staticPromiseChainLowered !== null) {
-    return staticPromiseChainLowered;
-  }
-
   const args = lowerArgumentsNode(argsNode, compileContext);
 
   let loweredCall = null;
@@ -6407,21 +6386,6 @@ function lowerCallExpressionValue(node, compileContext) {
     const loweredFiltered = lowerStaticModelToRuntimeExpression(filteredModel);
     if (loweredFiltered !== null) {
       loweredCall = loweredFiltered;
-    } else if (argExprs.length >= 1 && baseExpressionNode) {
-      const callbackText = (() => {
-        const parts = [];
-        walk(argExprs[0], (candidate) => {
-          if (candidate && candidate.kind === 'terminal' && candidate.value != null) {
-            parts.push(String(candidate.value));
-          }
-        });
-        return parts.join('').replace(/\s+/g, '');
-      })();
-      const baseModel = resolveStaticModelFromExpression(baseExpressionNode, node, compileContext, new Set());
-      if (baseModel && baseModel.kind === 'array' && Array.isArray(baseModel.values) && callbackText.includes('indexOf') && callbackText.includes('===i')) {
-        const uniqueCount = new Set(baseModel.values.map((valueModel) => JSON.stringify(valueModel))).size;
-        loweredCall = `__maia_runtime_alloc_value(2, ${uniqueCount}, 0, 0)`;
-      }
     }
   }
 
