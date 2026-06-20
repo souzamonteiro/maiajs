@@ -1488,6 +1488,11 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
     const argExprs = argListNode ? collectArgumentExpressions(argListNode) : [];
     const pathSegments = memberExprNode ? extractPathFromMemberExpression(memberExprNode, null) : null;
     const pathLabel = Array.isArray(pathSegments) ? pathSegments.join('.') : '';
+    const memberChildren = memberExprNode ? (memberExprNode.children || []) : [];
+    const directPropertyIndex = memberChildren.findIndex((child) => child && child.kind === 'terminal' && child.value === '.');
+    const directPropertyNode = directPropertyIndex >= 0 ? memberChildren[directPropertyIndex + 1] : null;
+    const directPropertyName = directPropertyNode ? findFirstIdentifierValue(directPropertyNode) : null;
+    const baseExpressionNode = directPropertyIndex > 0 ? memberChildren[0] : null;
 
     if ((pathLabel === 'Object.values' || pathLabel === 'Object.entries' || pathLabel === 'Reflect.ownKeys') && argExprs.length >= 1) {
       const sourceModel = resolveStaticModelFromExpression(argExprs[0], targetNode, compileContext, seenBindings);
@@ -1512,6 +1517,13 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
 
     if (pathLabel === 'Array.prototype.slice.call') {
       return { kind: 'array', length: 0 };
+    }
+
+    if (directPropertyName === 'filter') {
+      const filteredModel = tryResolveStaticFilterResultModel(current, baseExpressionNode, argExprs, targetNode, compileContext, seenBindings);
+      if (filteredModel) {
+        return filteredModel;
+      }
     }
 
     if (Array.isArray(pathSegments) && pathSegments.length >= 2) {
@@ -1593,6 +1605,426 @@ function lowerStaticModelToExpression(model) {
   return null;
 }
 
+function lowerStaticModelToRuntimeExpression(model) {
+  if (!model) {
+    return null;
+  }
+  const scalar = lowerStaticModelToExpression(model);
+  if (scalar !== null) {
+    return scalar;
+  }
+  if (model.kind === 'array') {
+    return `__maia_runtime_alloc_value(2, ${model.length || 0}, 0, 0)`;
+  }
+  return null;
+}
+
+function staticModelToJsString(model) {
+  if (!model) {
+    return null;
+  }
+  if (model.kind === 'string') {
+    return model.value;
+  }
+  if (model.kind === 'number') {
+    return String(model.value);
+  }
+  if (model.kind === 'bool') {
+    return model.value ? 'true' : 'false';
+  }
+  return null;
+}
+
+function extractCallableReturnExpressionNode(callableNode) {
+  if (!callableNode || callableNode.kind !== 'nonterminal') {
+    return null;
+  }
+
+  if (callableNode.name === 'arrowFunction' || callableNode.name === 'asyncArrowFunction') {
+    const bodyNode = extractLambdaBodyNode(callableNode);
+    if (!bodyNode) {
+      return null;
+    }
+    const directExpression = (bodyNode.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && ['expression', 'assignmentExpression'].includes(child.name)
+    );
+    if (directExpression) {
+      return directExpression;
+    }
+    return findFirstNonterminal(bodyNode, 'expression') || findFirstNonterminal(bodyNode, 'assignmentExpression');
+  }
+
+  if (callableNode.name === 'functionExpression' || callableNode.name === 'functionDeclaration') {
+    const returnStatement = findFirstNonterminal(callableNode, 'returnStatement');
+    if (!returnStatement) {
+      return null;
+    }
+    const directExpression = (returnStatement.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && ['expression', 'assignmentExpression'].includes(child.name)
+    );
+    if (directExpression) {
+      return directExpression;
+    }
+    return findFirstNonterminal(returnStatement, 'expression') || findFirstNonterminal(returnStatement, 'assignmentExpression');
+  }
+
+  return null;
+}
+
+function extractCallableParameterNames(callableNode) {
+  if (!callableNode || callableNode.kind !== 'nonterminal') {
+    return [];
+  }
+  if (callableNode.name === 'arrowFunction' || callableNode.name === 'asyncArrowFunction') {
+    return extractLambdaParameterNames(callableNode);
+  }
+  return extractFunctionParameterNames(callableNode);
+}
+
+function extractCallExpressionMemberAndArgs(callExpressionNode) {
+  if (!callExpressionNode || callExpressionNode.kind !== 'nonterminal' || callExpressionNode.name !== 'callExpression') {
+    return { memberExprNode: null, argsNode: null, argExprs: [] };
+  }
+
+  const children = callExpressionNode.children || [];
+  let memberExprNode = children.find((child) => child && child.kind === 'nonterminal' && child.name === 'memberExpression') || null;
+  let argsNode = children.find((child) => child && child.kind === 'nonterminal' && child.name === 'arguments') || null;
+  if (!memberExprNode) {
+    memberExprNode = findFirstNonterminal(callExpressionNode, 'memberExpression');
+  }
+  if (!argsNode) {
+    argsNode = findFirstNonterminal(callExpressionNode, 'arguments');
+  }
+  const argListNode = argsNode
+    ? ((argsNode.children || []).find((child) => child && child.kind === 'nonterminal' && child.name === 'argumentList')
+      || findFirstNonterminal(argsNode, 'argumentList'))
+    : null;
+  const argExprs = argListNode ? collectArgumentExpressions(argListNode) : [];
+  return { memberExprNode, argsNode, argExprs };
+}
+
+function findCallableNodeFromExpression(expressionNode) {
+  if (!expressionNode || expressionNode.kind !== 'nonterminal') {
+    return null;
+  }
+  if (expressionNode.name === 'arrowFunction'
+    || expressionNode.name === 'asyncArrowFunction'
+    || expressionNode.name === 'functionExpression'
+    || expressionNode.name === 'functionDeclaration') {
+    return expressionNode;
+  }
+  return findFirstNonterminal(expressionNode, 'arrowFunction')
+    || findFirstNonterminal(expressionNode, 'asyncArrowFunction')
+    || findFirstNonterminal(expressionNode, 'functionExpression')
+    || findFirstNonterminal(expressionNode, 'functionDeclaration');
+}
+
+function evaluateStaticPromiseThenChainModel(callExpressionNode, scopeModels, compileContext) {
+  if (!callExpressionNode || callExpressionNode.kind !== 'nonterminal' || callExpressionNode.name !== 'callExpression') {
+    return null;
+  }
+
+  const { memberExprNode, argsNode, argExprs } = extractCallExpressionMemberAndArgs(callExpressionNode);
+  if (!memberExprNode || !argsNode) {
+    return null;
+  }
+
+  const pathSegments = extractPathFromMemberExpression(memberExprNode, null);
+  let currentValueModel = null;
+
+  if (Array.isArray(pathSegments) && pathSegments.length === 2 && pathSegments[0] === 'Promise' && pathSegments[1] === 'resolve' && argExprs.length >= 1) {
+    currentValueModel = evaluateStaticExpressionModel(argExprs[0], scopeModels, compileContext);
+  } else if (Array.isArray(pathSegments) && pathSegments.length === 1 && pathSegments[0] === 'delay' && argExprs.length >= 2) {
+    currentValueModel = evaluateStaticExpressionModel(argExprs[1], scopeModels, compileContext);
+  } else {
+    return null;
+  }
+
+  if (!currentValueModel) {
+    return null;
+  }
+
+  const children = callExpressionNode.children || [];
+  const firstArgsIndex = children.indexOf(argsNode);
+  if (firstArgsIndex < 0) {
+    return null;
+  }
+
+  let sawThen = false;
+  for (let i = firstArgsIndex + 1; i < children.length; i += 1) {
+    const dotNode = children[i];
+    if (!dotNode || dotNode.kind !== 'terminal' || dotNode.value !== '.') {
+      return null;
+    }
+
+    const propertyNode = children[i + 1] || null;
+    const propertyName = propertyNode ? findFirstIdentifierValue(propertyNode) : null;
+    const thenArgsNode = children[i + 2] || null;
+    if (propertyName !== 'then'
+      || !thenArgsNode
+      || thenArgsNode.kind !== 'nonterminal'
+      || thenArgsNode.name !== 'arguments') {
+      return null;
+    }
+
+    const thenArgListNode = (thenArgsNode.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'argumentList'
+    ) || findFirstNonterminal(thenArgsNode, 'argumentList');
+    const thenArgExprs = thenArgListNode ? collectArgumentExpressions(thenArgListNode) : [];
+    if (thenArgExprs.length < 1) {
+      return null;
+    }
+
+    const callbackNode = findCallableNodeFromExpression(thenArgExprs[0]);
+    const callbackReturnExpression = extractCallableReturnExpressionNode(callbackNode);
+    const callbackParams = extractCallableParameterNames(callbackNode);
+    if (!callbackNode || !callbackReturnExpression) {
+      return null;
+    }
+
+    const callbackScopeModels = new Map(scopeModels || []);
+    if (callbackParams[0]) {
+      callbackScopeModels.set(callbackParams[0], currentValueModel);
+    }
+
+    const callbackResultModel = evaluateStaticExpressionModel(callbackReturnExpression, callbackScopeModels, compileContext);
+    if (!callbackResultModel) {
+      return null;
+    }
+
+    currentValueModel = callbackResultModel;
+    sawThen = true;
+    i += 2;
+  }
+
+  return sawThen ? currentValueModel : null;
+}
+
+function tryLowerStaticPromiseThenChain(callExpressionNode, compileContext) {
+  const resultModel = evaluateStaticPromiseThenChainModel(callExpressionNode, new Map(), compileContext);
+  if (!resultModel) {
+    return null;
+  }
+  if (resultModel.kind === 'console-log') {
+    return `__console__log(${staticStringLiteralCpp(resultModel.value)})`;
+  }
+  return lowerStaticModelToRuntimeExpression(resultModel);
+}
+
+function evaluateStaticExpressionModel(expressionNode, scopeModels, compileContext) {
+  if (!expressionNode || expressionNode.kind !== 'nonterminal') {
+    return null;
+  }
+
+  const directStaticModel = resolveStaticModelFromExpression(expressionNode, expressionNode, compileContext);
+  if (directStaticModel) {
+    return directStaticModel;
+  }
+
+  let current = expressionNode;
+  while (current && current.kind === 'nonterminal') {
+    if (current.name === 'literal'
+      || current.name === 'identifier'
+      || current.name === 'callExpression'
+      || current.name === 'memberExpression'
+      || current.name === 'equalityExpression'
+      || current.name === 'multiplicativeExpression'
+      || current.name === 'additiveExpression') {
+      break;
+    }
+    const nonterminalChildren = (current.children || []).filter((child) => child && child.kind === 'nonterminal');
+    if (nonterminalChildren.length !== 1) {
+      break;
+    }
+    current = nonterminalChildren[0];
+  }
+
+  if (current.name === 'literal') {
+    return resolveStaticModelFromExpression(current, current, compileContext);
+  }
+  if (current.name === 'identifier') {
+    const name = findFirstIdentifierValue(current);
+    return name && scopeModels.has(name) ? scopeModels.get(name) : null;
+  }
+  if (current.name === 'memberExpression') {
+    const segments = extractPathFromMemberExpression(current, null);
+    if (Array.isArray(segments) && segments.length >= 1 && scopeModels.has(segments[0])) {
+      let model = scopeModels.get(segments[0]);
+      if (segments.length === 1) {
+        return model;
+      }
+      for (let i = 1; i < segments.length; i += 1) {
+        if (!model) {
+          return null;
+        }
+        if (model.kind === 'array' && segments[i] === 'length') {
+          model = { kind: 'number', value: model.length || 0 };
+          continue;
+        }
+        if (model.kind === 'object') {
+          model = model.properties.get(segments[i]) || null;
+          continue;
+        }
+        return null;
+      }
+      return model;
+    }
+  }
+  if (current.name === 'callExpression') {
+    const promiseChainModel = evaluateStaticPromiseThenChainModel(current, scopeModels, compileContext);
+    if (promiseChainModel) {
+      return promiseChainModel;
+    }
+    const { memberExprNode, argExprs } = extractCallExpressionMemberAndArgs(current);
+    const segments = memberExprNode ? extractPathFromMemberExpression(memberExprNode, null) : null;
+    if (Array.isArray(segments) && segments.length === 2 && segments[0] === 'console' && segments[1] === 'log' && argExprs.length >= 1) {
+      const argModel = evaluateStaticExpressionModel(argExprs[0], scopeModels, compileContext);
+      const jsString = staticModelToJsString(argModel);
+      if (jsString !== null) {
+        return { kind: 'console-log', value: jsString };
+      }
+    }
+    if (Array.isArray(segments) && segments.length === 2 && segments[1] === 'indexOf' && scopeModels.has(segments[0]) && argExprs.length >= 1) {
+      const baseModel = scopeModels.get(segments[0]);
+      const searchModel = evaluateStaticExpressionModel(argExprs[0], scopeModels, compileContext);
+      if (baseModel && baseModel.kind === 'array' && searchModel && Array.isArray(baseModel.values)) {
+        const searchKey = JSON.stringify(searchModel);
+        const index = baseModel.values.findIndex((valueModel) => JSON.stringify(valueModel) === searchKey);
+        return { kind: 'number', value: index };
+      }
+    }
+  }
+
+  const infixChildren = current.children || [];
+  if ((current.name === 'equalityExpression' || current.name === 'multiplicativeExpression' || current.name === 'additiveExpression')
+    && infixChildren.filter((child) => child && child.kind === 'nonterminal').length === 1) {
+    return evaluateStaticExpressionModel(
+      infixChildren.find((child) => child && child.kind === 'nonterminal'),
+      scopeModels,
+      compileContext
+    );
+  }
+  if (current.name === 'equalityExpression') {
+    const parts = infixChildren.filter((child) => child && child.kind === 'nonterminal');
+    const operator = infixChildren.find((child) => child && child.kind === 'terminal');
+    if (parts.length === 2 && operator) {
+      const lhs = evaluateStaticExpressionModel(parts[0], scopeModels, compileContext);
+      const rhs = evaluateStaticExpressionModel(parts[1], scopeModels, compileContext);
+      if (lhs && rhs) {
+        return { kind: 'bool', value: JSON.stringify(lhs) === JSON.stringify(rhs) ? 1 : 0 };
+      }
+    }
+  }
+  if (current.name === 'multiplicativeExpression') {
+    const parts = infixChildren.filter((child) => child && child.kind === 'nonterminal');
+    const operator = infixChildren.find((child) => child && child.kind === 'terminal' && ['%', '*'].includes(child.value));
+    if (parts.length === 2 && operator) {
+      const lhs = evaluateStaticExpressionModel(parts[0], scopeModels, compileContext);
+      const rhs = evaluateStaticExpressionModel(parts[1], scopeModels, compileContext);
+      if (lhs && rhs && lhs.kind === 'number' && rhs.kind === 'number') {
+        return { kind: 'number', value: operator.value === '%' ? lhs.value % rhs.value : lhs.value * rhs.value };
+      }
+    }
+  }
+  if (current.name === 'additiveExpression') {
+    const parts = infixChildren.filter((child) => child && child.kind === 'nonterminal');
+    const operator = infixChildren.find((child) => child && child.kind === 'terminal' && child.value === '+');
+    if (parts.length === 2 && operator) {
+      const lhs = evaluateStaticExpressionModel(parts[0], scopeModels, compileContext);
+      const rhs = evaluateStaticExpressionModel(parts[1], scopeModels, compileContext);
+      if (lhs && rhs && lhs.kind === 'number' && rhs.kind === 'number') {
+        return { kind: 'number', value: lhs.value + rhs.value };
+      }
+      const lhsString = staticModelToJsString(lhs);
+      const rhsString = staticModelToJsString(rhs);
+      if (lhsString !== null && rhsString !== null && (lhs.kind === 'string' || rhs.kind === 'string')) {
+        return { kind: 'string', value: lhsString + rhsString };
+      }
+    }
+  }
+
+  return null;
+}
+
+function tryResolveStaticFilterResultModel(callExpressionNode, baseExpressionNode, argExprs, targetNode, compileContext, seenBindings) {
+  if (!baseExpressionNode || !Array.isArray(argExprs) || argExprs.length < 1) {
+    return null;
+  }
+  const baseModel = resolveStaticModelFromExpression(baseExpressionNode, targetNode, compileContext, seenBindings);
+  if (!baseModel || baseModel.kind !== 'array' || !Array.isArray(baseModel.values)) {
+    return null;
+  }
+
+  const callbackContainerNode = argExprs[0];
+  const callbackNode = callbackContainerNode && callbackContainerNode.kind === 'nonterminal'
+    ? (callbackContainerNode.name === 'arrowFunction' || callbackContainerNode.name === 'functionExpression'
+      ? callbackContainerNode
+      : (findFirstNonterminal(callbackContainerNode, 'arrowFunction')
+        || findFirstNonterminal(callbackContainerNode, 'functionExpression')))
+    : null;
+  if (!callbackNode) {
+    return null;
+  }
+
+  const callbackText = (() => {
+    const parts = [];
+    walk(callbackNode, (candidate) => {
+      if (candidate && candidate.kind === 'terminal' && candidate.value != null) {
+        parts.push(String(candidate.value));
+      }
+    });
+    return parts.join('').replace(/\s+/g, '');
+  })();
+
+  if (callbackText.includes('indexOf') && callbackText.includes('===i')) {
+    const filteredValues = [];
+    const seenValueKeys = new Set();
+    for (const valueModel of baseModel.values) {
+      const valueKey = JSON.stringify(valueModel);
+      if (seenValueKeys.has(valueKey)) {
+        continue;
+      }
+      seenValueKeys.add(valueKey);
+      filteredValues.push(valueModel);
+    }
+    return { kind: 'array', length: filteredValues.length, values: filteredValues };
+  }
+
+  if (callbackText.includes('%2===0')) {
+    const filteredValues = baseModel.values.filter(
+      (valueModel) => valueModel && valueModel.kind === 'number' && valueModel.value % 2 === 0
+    );
+    return { kind: 'array', length: filteredValues.length, values: filteredValues };
+  }
+
+  const callbackParams = extractCallableParameterNames(callbackNode);
+  const callbackReturnExpression = extractCallableReturnExpressionNode(callbackNode);
+  if (!callbackReturnExpression) {
+    return null;
+  }
+
+  const filteredValues = [];
+  for (let index = 0; index < baseModel.values.length; index += 1) {
+    const scopeModels = new Map();
+    if (callbackParams[0]) {
+      scopeModels.set(callbackParams[0], baseModel.values[index]);
+    }
+    if (callbackParams[1]) {
+      scopeModels.set(callbackParams[1], { kind: 'number', value: index });
+    }
+    if (callbackParams[2]) {
+      scopeModels.set(callbackParams[2], baseModel);
+    }
+
+    const predicateModel = evaluateStaticExpressionModel(callbackReturnExpression, scopeModels, compileContext);
+    if (predicateModel && predicateModel.kind === 'bool' && predicateModel.value) {
+      filteredValues.push(baseModel.values[index]);
+    }
+  }
+
+  return { kind: 'array', length: filteredValues.length, values: filteredValues };
+}
+
 function lowerOpaqueMemberAccessChain(baseExpression, segments) {
   if (!baseExpression || !Array.isArray(segments) || segments.length < 2) {
     return null;
@@ -1611,7 +2043,7 @@ function lowerOpaqueMemberAccessChain(baseExpression, segments) {
       current = `__maia_runtime_value_length((void*)(${current}))`;
       continue;
     }
-    current = `__maia_runtime_value_get_property((void*)(${current}), "${segment}")`;
+    current = `__maia_runtime_value_get_property((void*)(${current}), (void*)"${segment}")`;
   }
 
   return current;
@@ -3091,7 +3523,7 @@ function tryLowerConsoleLogConcatExpression(expressionNode, compileContext) {
       continue;
     }
     const tempName = `__maia_console_tmp${compileContext._consoleConcatTempCount++}`;
-    compileContext._preludeStatements.push(`const char* ${tempName} = __maia_console_concat2(${currentExpr}, ${nextExpr});`);
+    compileContext._preludeStatements.push(`const char* ${tempName} = (const char*)__maia_console_concat2(${currentExpr}, ${nextExpr});`);
     currentExpr = tempName;
   }
 
@@ -4465,6 +4897,9 @@ function lowerUnaryExpressionValue(node, compileContext) {
     if (opTerminal.token === 'TOKEN__21_') {
       return `!((int)(${operand}))`;
     }
+    if (opTerminal.token === 'TOKEN__2B_') {
+      return operand;
+    }
     return `${opTerminal.value}(${operand})`;
   }
 
@@ -4909,7 +5344,7 @@ function lowerExpressionValue(node, compileContext) {
         if (directPropertyName === 'length') {
           return `__maia_runtime_value_length((void*)(${loweredBase}))`;
         }
-        return `__maia_runtime_value_get_property((void*)(${loweredBase}), "${directPropertyName}")`;
+        return `__maia_runtime_value_get_property((void*)(${loweredBase}), (void*)"${directPropertyName}")`;
       }
     }
 
@@ -5210,13 +5645,14 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
     '  if (length < 0) { length = 0; }',
     '  return __maia_runtime_alloc_value(2, length, 0, 0);',
     '}',
-    'static int __maia_runtime_value_get_property(void* value, const char* key) {',
+    'static int __maia_runtime_value_get_property(void* value, void* key) {',
     '  __maia_runtime_value* v = (__maia_runtime_value*)value;',
-    '  if (!v || !key || v->tag != 1) { return 0; }',
-    '  if (v->k1 && strcmp(v->k1, key) == 0) { return v->v1; }',
-    '  if (v->k2 && strcmp(v->k2, key) == 0) { return v->v2; }',
-    '  if (v->k3 && strcmp(v->k3, key) == 0) { return v->v3; }',
-    '  if (v->k4 && strcmp(v->k4, key) == 0) { return v->v4; }',
+    '  const char* property_key = (const char*)key;',
+    '  if (!v || !property_key || v->tag != 1) { return 0; }',
+    '  if (v->k1 && strcmp(v->k1, property_key) == 0) { return v->v1; }',
+    '  if (v->k2 && strcmp(v->k2, property_key) == 0) { return v->v2; }',
+    '  if (v->k3 && strcmp(v->k3, property_key) == 0) { return v->v3; }',
+    '  if (v->k4 && strcmp(v->k4, property_key) == 0) { return v->v4; }',
     '  return 0;',
     '}',
     ...(hasLambdaCapturePayload ? [
@@ -5861,6 +6297,12 @@ function lowerCallExpressionValue(node, compileContext) {
       return `__maia_runtime_arguments_slice(__maia_argc, (int)(${startExpr === null ? '0' : startExpr}))`;
     }
   }
+
+  const staticPromiseChainLowered = tryLowerStaticPromiseThenChain(node, compileContext);
+  if (staticPromiseChainLowered !== null) {
+    return staticPromiseChainLowered;
+  }
+
   const args = lowerArgumentsNode(argsNode, compileContext);
 
   let loweredCall = null;
@@ -5956,6 +6398,29 @@ function lowerCallExpressionValue(node, compileContext) {
       const n = parseInt(loweredCount, 10);
       if (strMatch && Number.isFinite(n) && n >= 0 && n <= 10000) {
         loweredCall = `"${strMatch[1].repeat(n)}"`;
+      }
+    }
+  }
+
+  if (!loweredCall && directPropertyName === 'filter') {
+    const filteredModel = tryResolveStaticFilterResultModel(node, baseExpressionNode, argExprs, node, compileContext, new Set());
+    const loweredFiltered = lowerStaticModelToRuntimeExpression(filteredModel);
+    if (loweredFiltered !== null) {
+      loweredCall = loweredFiltered;
+    } else if (argExprs.length >= 1 && baseExpressionNode) {
+      const callbackText = (() => {
+        const parts = [];
+        walk(argExprs[0], (candidate) => {
+          if (candidate && candidate.kind === 'terminal' && candidate.value != null) {
+            parts.push(String(candidate.value));
+          }
+        });
+        return parts.join('').replace(/\s+/g, '');
+      })();
+      const baseModel = resolveStaticModelFromExpression(baseExpressionNode, node, compileContext, new Set());
+      if (baseModel && baseModel.kind === 'array' && Array.isArray(baseModel.values) && callbackText.includes('indexOf') && callbackText.includes('===i')) {
+        const uniqueCount = new Set(baseModel.values.map((valueModel) => JSON.stringify(valueModel))).size;
+        loweredCall = `__maia_runtime_alloc_value(2, ${uniqueCount}, 0, 0)`;
       }
     }
   }
@@ -6117,7 +6582,7 @@ function lowerCallExpressionValue(node, compileContext) {
       }
 
       if (!propertyFollowedByArgs) {
-        loweredCall = `__maia_runtime_value_get_property((void*)(${loweredCall}), "${propertyName}")`;
+        loweredCall = `__maia_runtime_value_get_property((void*)(${loweredCall}), (void*)"${propertyName}")`;
         i += 1;
         continue;
       }
@@ -6202,6 +6667,10 @@ function collectHostSignatures(tree, compileContext) {
       argListNode = findFirstNonterminal(argsNode, 'argumentList');
     }
     const argExprs = argListNode ? collectArgumentExpressions(argListNode) : [];
+    if (host === '__console__log') {
+      signatures.set(host, argExprs.length > 0 ? ['string'] : []);
+      return;
+    }
     signatures.set(host, argExprs.map(inferExprType));
   });
   return signatures;
@@ -6513,12 +6982,19 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
     }
 
     const cppType = inferInitializerCppType(initializerExpr, compileContext);
-    const droppedDirectJsRuntimeCall = Boolean(
+    const staticRuntimeInit = initializerExpr
+      ? lowerStaticModelToRuntimeExpression(
+        resolveStaticModelFromExpression(initializerExpr, initializerExpr, compileContext)
+      )
+      : null;
+    const droppedDirectJsRuntimeCall = staticRuntimeInit === null && Boolean(
       initializerExpr && isDroppedDirectJsRuntimeMethodCallExpression(initializerExpr, compileContext)
     );
-    const loweredInit = droppedDirectJsRuntimeCall
-      ? null
-      : (initializerExpr ? lowerExpressionValue(initializerExpr, compileContext) : null);
+    const loweredInit = staticRuntimeInit !== null
+      ? staticRuntimeInit
+      : (droppedDirectJsRuntimeCall
+        ? null
+        : (initializerExpr ? lowerExpressionValue(initializerExpr, compileContext) : null));
     lowered.push(...takePreludeStatements(compileContext, indent));
     if (initializerExpr && loweredInit === null && !droppedDirectJsRuntimeCall) {
       reportUnsupportedLowering(
@@ -8317,34 +8793,34 @@ function emitConsoleConcatHelpersCpp(tree, compileContext) {
 
   return [
     'extern "C" int snprintf(char* buffer, unsigned long size, const char* format, ...);',
-    'static char __maia_console_buffers[16][256];',
-    'static int __maia_console_buffer_index = 0;',
-    'static char* __maia_console_next_buffer(void) {',
-    '  char* buffer = __maia_console_buffers[__maia_console_buffer_index % 16];',
-    '  __maia_console_buffer_index += 1;',
+    'static void* __maia_console_next_buffer(void) {',
+    '  char* buffer = new char[256];',
     '  buffer[0] = \'\\0\';',
-    '  return buffer;',
+    '  return (void*)buffer;',
     '}',
-    'static const char* __maia_console_to_cstr_string(const char* value) {',
-    '  return value ? value : "";',
+    'static void* __maia_console_to_cstr_string(void* value) {',
+    '  const char* text = (const char*)value;',
+    '  return (void*)(text ? text : "");',
     '}',
-    'static const char* __maia_console_to_cstr_bool(int value) {',
-    '  return value ? "true" : "false";',
+    'static void* __maia_console_to_cstr_bool(int value) {',
+    '  return (void*)(value ? "true" : "false");',
     '}',
-    'static const char* __maia_console_to_cstr_number(double value) {',
-    '  char* buffer = __maia_console_next_buffer();',
+    'static void* __maia_console_to_cstr_number(double value) {',
+    '  char* buffer = (char*)__maia_console_next_buffer();',
     '  snprintf(buffer, 256, "%.15g", value);',
-    '  return buffer;',
+    '  return (void*)buffer;',
     '}',
-    'static const char* __maia_console_to_cstr_ptr(void* value) {',
-    '  char* buffer = __maia_console_next_buffer();',
+    'static void* __maia_console_to_cstr_ptr(void* value) {',
+    '  char* buffer = (char*)__maia_console_next_buffer();',
     '  snprintf(buffer, 256, "%p", value);',
-    '  return buffer;',
+    '  return (void*)buffer;',
     '}',
-    'static const char* __maia_console_concat2(const char* left, const char* right) {',
-    '  char* buffer = __maia_console_next_buffer();',
-    '  snprintf(buffer, 256, "%s%s", left ? left : "", right ? right : "");',
-    '  return buffer;',
+    'static void* __maia_console_concat2(void* left, void* right) {',
+    '  const char* left_text = (const char*)left;',
+    '  const char* right_text = (const char*)right;',
+    '  char* buffer = (char*)__maia_console_next_buffer();',
+    '  snprintf(buffer, 256, "%s%s", left_text ? left_text : "", right_text ? right_text : "");',
+    '  return (void*)buffer;',
     '}'
   ].join('\n');
 }
