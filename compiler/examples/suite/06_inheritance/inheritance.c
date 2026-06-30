@@ -42,7 +42,7 @@ typedef struct Rectangle {
 
 void Rectangle_init__dd(Rectangle* self, double w, double h);
 void Rectangle_destroy(Rectangle* self);
-double Rectangle_area(Rectangle* self);
+int Rectangle_area(Rectangle* self);
 
 void Rectangle_init__dd(Rectangle* self, double w, double h) {
   (void)self;
@@ -56,7 +56,7 @@ void Rectangle_destroy(Rectangle* self) {
   (void)self;
 }
 
-double Rectangle_area(Rectangle* self) {
+int Rectangle_area(Rectangle* self) {
   (void)self;
   return self->w_ * self->h_;
 }
@@ -68,7 +68,7 @@ typedef struct Circle {
 
 void Circle_init__d(Circle* self, double r);
 void Circle_destroy(Circle* self);
-double Circle_area(Circle* self);
+int Circle_area(Circle* self);
 
 void Circle_init__d(Circle* self, double r) {
   (void)self;
@@ -79,7 +79,7 @@ void Circle_destroy(Circle* self) {
   (void)self;
 }
 
-double Circle_area(Circle* self) {
+int Circle_area(Circle* self) {
   (void)self;
   return 3.14159 * self->r_ * self->r_;
 }

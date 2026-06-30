@@ -186,7 +186,7 @@
   )
 
   ;; function Rectangle_area
-  (func $Rectangle_area (param $self i32) (result f64)
+  (func $Rectangle_area (param $self i32) (result i32)
     (local $__frame i32)
     (local $__parent_frame i32)
     global.get $__frame_ptr
@@ -224,12 +224,13 @@
     i32.add
     f64.load
     f64.mul
+    i32.trunc_f64_s
     local.get $__parent_frame
     global.set $__frame_ptr
     local.get $__frame
     global.set $__stack_ptr
     return
-    f64.const 0
+    i32.const 0
     local.get $__parent_frame
     global.set $__frame_ptr
     local.get $__frame
@@ -311,7 +312,7 @@
   )
 
   ;; function Circle_area
-  (func $Circle_area (param $self i32) (result f64)
+  (func $Circle_area (param $self i32) (result i32)
     (local $__frame i32)
     (local $__parent_frame i32)
     global.get $__frame_ptr
@@ -351,12 +352,13 @@
     i32.add
     f64.load
     f64.mul
+    i32.trunc_f64_s
     local.get $__parent_frame
     global.set $__frame_ptr
     local.get $__frame
     global.set $__stack_ptr
     return
-    f64.const 0
+    i32.const 0
     local.get $__parent_frame
     global.set $__frame_ptr
     local.get $__frame
@@ -389,6 +391,7 @@
     i32.const 0
     i32.add
     call $Rectangle_area
+    f64.convert_i32_s
     f64.const 12
     f64.eq
     i32.eqz

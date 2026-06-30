@@ -37,12 +37,12 @@
   ;; function main
   (func $main (result i32)
     (local $__frame i32)
-    (local $p i32)
-    (local $arr i32)
-    (local $d i32)
-    (local $__tmp_i32 i32)
     (local $i i32)
+    (local $p i32)
+    (local $__tmp_i32 i32)
+    (local $arr i32)
     (local $__tmp_addr i32)
+    (local $d i32)
     (local $__tmp_f64 f64)
     (local $__parent_frame i32)
     global.get $__frame_ptr
@@ -56,27 +56,13 @@
     i32.add
     global.set $__stack_ptr
     local.get $__frame
-    i32.const 0
+    i32.const 4
     i32.add
     i32.const 4
     call $imp___malloc
     i32.store
     local.get $__frame
     i32.const 4
-    i32.add
-    i32.const 6
-    i32.const 4
-    i32.mul
-    call $imp___malloc
-    i32.store
-    local.get $__frame
-    i32.const 8
-    i32.add
-    i32.const 8
-    call $imp___malloc
-    i32.store
-    local.get $__frame
-    i32.const 0
     i32.add
     i32.load
     i32.const 0
@@ -97,7 +83,7 @@
       drop
     end
     local.get $__frame
-    i32.const 0
+    i32.const 4
     i32.add
     i32.load
     i32.const 42
@@ -107,7 +93,7 @@
     local.get $__tmp_i32
     drop
     local.get $__frame
-    i32.const 0
+    i32.const 4
     i32.add
     i32.load
     i32.load
@@ -129,12 +115,20 @@
       drop
     end
     local.get $__frame
-    i32.const 0
+    i32.const 4
     i32.add
     i32.load
     call $imp___free
     local.get $__frame
+    i32.const 8
+    i32.add
+    i32.const 6
     i32.const 4
+    i32.mul
+    call $imp___malloc
+    i32.store
+    local.get $__frame
+    i32.const 8
     i32.add
     i32.load
     i32.const 0
@@ -155,14 +149,18 @@
       drop
     end
     local.get $__frame
-    i32.const 12
+    i32.const 0
     i32.add
     i32.const 0
+    local.set $__tmp_i32
+    local.get $__tmp_i32
     i32.store
+    local.get $__tmp_i32
+    drop
     block $main_for_exit_0
       loop $main_for_loop_2
         local.get $__frame
-        i32.const 12
+        i32.const 0
         i32.add
         i32.load
         i32.const 6
@@ -173,24 +171,24 @@
         br_if $main_for_exit_0
         block $main_for_continue_1
           local.get $__frame
-          i32.const 4
+          i32.const 8
           i32.add
           i32.load
           local.get $__frame
-          i32.const 12
+          i32.const 0
           i32.add
           i32.load
           i32.const 4
           i32.mul
           i32.add
           local.get $__frame
-          i32.const 12
+          i32.const 0
           i32.add
           i32.load
           i32.const 1
           i32.add
           local.get $__frame
-          i32.const 12
+          i32.const 0
           i32.add
           i32.load
           i32.const 1
@@ -203,7 +201,7 @@
           drop
         end
         local.get $__frame
-        i32.const 12
+        i32.const 0
         i32.add
         local.tee $__tmp_addr
         i32.load
@@ -219,7 +217,7 @@
       end
     end
     local.get $__frame
-    i32.const 4
+    i32.const 8
     i32.add
     i32.load
     i32.const 0
@@ -233,7 +231,7 @@
     i32.eqz
     if (result i32)
       local.get $__frame
-      i32.const 4
+      i32.const 8
       i32.add
       i32.load
       i32.const 5
@@ -264,12 +262,18 @@
       drop
     end
     local.get $__frame
-    i32.const 4
+    i32.const 8
     i32.add
     i32.load
     call $imp___free
     local.get $__frame
+    i32.const 12
+    i32.add
     i32.const 8
+    call $imp___malloc
+    i32.store
+    local.get $__frame
+    i32.const 12
     i32.add
     i32.load
     i32.const 0
@@ -290,7 +294,7 @@
       drop
     end
     local.get $__frame
-    i32.const 8
+    i32.const 12
     i32.add
     i32.load
     f64.const 3.14
@@ -300,7 +304,7 @@
     local.get $__tmp_f64
     drop
     local.get $__frame
-    i32.const 8
+    i32.const 12
     i32.add
     i32.load
     f64.load
@@ -310,7 +314,7 @@
     i32.eqz
     if (result i32)
       local.get $__frame
-      i32.const 8
+      i32.const 12
       i32.add
       i32.load
       f64.load
@@ -337,7 +341,7 @@
       drop
     end
     local.get $__frame
-    i32.const 8
+    i32.const 12
     i32.add
     i32.load
     call $imp___free

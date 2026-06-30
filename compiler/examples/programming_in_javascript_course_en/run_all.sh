@@ -12,6 +12,7 @@ STRICT="${STRICT:-1}"
 PASS=0
 FAIL=0
 SKIP=0
+NO_EXPECTED=0
 MAIACPP_PASS=0
 MAIACPP_FAIL=0
 MAIACPP_SKIP=0
@@ -165,7 +166,7 @@ run_cpp_one() {
         fi
     else
         echo "    g++    SKIP — no expected_output reference"
-        SKIP=$((SKIP + 1))
+        NO_EXPECTED=$((NO_EXPECTED + 1))
     fi
 
     if [[ ! -f "$wasm_file" ]]; then
@@ -267,6 +268,7 @@ done
 echo ""
 echo "========================================"
 echo "g++ results : $PASS passed  /  $FAIL failed  /  $SKIP skipped"
+echo "g++ results : $NO_EXPECTED without expected_output reference"
 echo "MaiaCpp WASM: $MAIACPP_PASS passed  /  $MAIACPP_FAIL failed  /  $MAIACPP_SKIP skipped"
 echo "MaiaJS ports: $MAIAJS_PASS passed  /  $MAIAJS_FAIL failed  /  $MAIAJS_SKIP skipped"
 echo "MaiaJS ports: $MAIAJS_NO_PORTS cpp files without matching .port.js"

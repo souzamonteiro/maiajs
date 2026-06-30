@@ -13,12 +13,7 @@
     "nodeRunnerShell": "node-runner.sh"
   },
   "linkedLibraries": [],
-  "copiedLibraries": [
-    "ctype",
-    "setjmp",
-    "stdlib",
-    "string"
-  ],
+  "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
   "sourceBytes": 16013
