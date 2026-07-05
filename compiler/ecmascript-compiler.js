@@ -6283,6 +6283,10 @@ function lowerCallExpressionValue(node, compileContext) {
   }
 
   const args = lowerArgumentsNode(argsNode, compileContext);
+  const loweredStaticPromiseThenChain = tryLowerStaticPromiseThenChain(node, compileContext);
+  if (loweredStaticPromiseThenChain !== null) {
+    return loweredStaticPromiseThenChain;
+  }
 
   let loweredCall = null;
   const lambdaBindingState = getLambdaBindingStateAtCallNode(node, pathSegments, compileContext);

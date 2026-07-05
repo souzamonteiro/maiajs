@@ -27,11 +27,12 @@ function runCompilerCpp(sourceCode) {
   return fs.readFileSync(cppOut, 'utf8');
 }
 
-test('call-chain lowering: JS-runtime .then() chain is truncated (not emitted as C++)', () => {
+test('call-chain lowering: static Promise.then() chains lower to concrete C++ output', () => {
   const cpp = runCompilerCpp('Promise.resolve(5).then(x => x).then(y => y);\n');
 
-  assert.match(cpp, /__Promise__resolve\(5\);/, 'base host call must still be emitted after chain truncation');
+  assert.doesNotMatch(cpp, /__Promise__resolve\(5\);/, 'static promise chains should fold instead of keeping the host resolve call');
   assert.doesNotMatch(cpp, /\.then\(/, 'JS-only .then() chain must not appear in C++ output');
+  assert.match(cpp, /5;/, 'folded result should be emitted directly');
 });
 
 test('new-expression lowering: lowers constructor call to __new__ helper symbol', () => {
