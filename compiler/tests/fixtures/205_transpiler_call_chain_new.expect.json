@@ -3,9 +3,10 @@
   "shouldTranspile": true,
   "cppContains": [
     "__new__Animal(\"Rex\");",
-    "__Promise__resolve(5);"
+    "5;"
   ],
   "cppExclude": [
+    "__Promise__resolve(5);",
     ".then(",
     ".catch(",
     "[expression not yet lowered]",
