@@ -3237,6 +3237,21 @@ function collectArgumentExpressions(argListNode) {
       );
       if (assignmentExpression) {
         result.push(assignmentExpression);
+        continue;
+      }
+
+      const directCallable = (child.children || []).find(
+        (candidate) => candidate
+          && candidate.kind === 'nonterminal'
+          && (
+            candidate.name === 'functionExpression'
+            || candidate.name === 'arrowFunction'
+            || candidate.name === 'asyncArrowFunction'
+            || candidate.name === 'asyncFunctionExpression'
+          )
+      );
+      if (directCallable) {
+        result.push(directCallable);
       }
     }
   }
@@ -3772,8 +3787,20 @@ function extractObjectLiteralProperties(objectLiteralNode) {
       propertyNameNode = findFirstNonterminal(child, 'propertyName');
     }
     let valueExprNode = (child.children || []).find(
-      (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'assignmentExpression'
+      (candidate) => candidate
+        && candidate.kind === 'nonterminal'
+        && (
+          candidate.name === 'functionExpression'
+          || candidate.name === 'arrowFunction'
+          || candidate.name === 'asyncArrowFunction'
+          || candidate.name === 'asyncFunctionExpression'
+        )
     ) || null;
+    if (!valueExprNode) {
+      valueExprNode = (child.children || []).find(
+        (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'assignmentExpression'
+      ) || null;
+    }
     if (!valueExprNode) {
       valueExprNode = findFirstNonterminal(child, 'assignmentExpression');
     }
@@ -4118,7 +4145,9 @@ function extractLambdaParameterNames(node) {
     }
 
     const directIdentifier = (arrowParams.children || []).find(
-      (child) => child && child.kind === 'nonterminal' && child.name === 'identifier'
+      (child) => child
+        && child.kind === 'nonterminal'
+        && (child.name === 'identifier' || child.name === 'identifierReference')
     );
     if (directIdentifier) {
       const id = findFirstIdentifierValue(directIdentifier);
