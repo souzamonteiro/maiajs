@@ -2665,6 +2665,35 @@ function isIdentifierBoundAtNode(name, node, compileContext) {
   );
 }
 
+function getCallableParameterArityAtNode(name, node, compileContext) {
+  if (!name || !node || !compileContext || !compileContext.tree) {
+    return null;
+  }
+
+  const path = findNodePath(compileContext.tree, node);
+  if (path.length === 0) {
+    return null;
+  }
+
+  for (let i = path.length - 2; i >= 0; i -= 1) {
+    const ancestor = path[i];
+    if (!ancestor || ancestor.kind !== 'nonterminal') {
+      continue;
+    }
+
+    if (ancestor.name === 'functionDeclaration'
+      || ancestor.name === 'functionExpression'
+      || ancestor.name === 'asyncFunctionDeclaration'
+      || ancestor.name === 'asyncArrowFunction'
+      || ancestor.name === 'arrowFunction'
+      || ancestor.name === 'methodDefinition') {
+      return extractCallableParameterArities(ancestor).get(name) ?? null;
+    }
+  }
+
+  return null;
+}
+
 function extractDirectNewClassInfo(node, compileContext) {
   if (!compileContext || !compileContext.topLevelClassNames) {
     return null;
@@ -3093,6 +3122,12 @@ function extractHostCallsFromTree(tree, compileContext) {
     }
 
     if (isLocalFunctionPath(pathSegments, compileContext)) {
+      return;
+    }
+
+    if (Array.isArray(pathSegments)
+      && pathSegments.length === 1
+      && getCallableParameterArityAtNode(pathSegments[0], node, compileContext) !== null) {
       return;
     }
 
@@ -7229,6 +7264,13 @@ function lowerCallExpressionValue(node, compileContext) {
 
   if (!loweredCall && pathSegments && pathSegments.length === 1 && isLocalFunctionPath(pathSegments, compileContext)) {
     loweredCall = `${pathSegments[0]}(${buildLocalFunctionCallArgs(pathSegments[0], args, argExprs, compileContext)})`;
+  }
+
+  if (!loweredCall && pathSegments && pathSegments.length === 1) {
+    const callableParamArity = getCallableParameterArityAtNode(pathSegments[0], node, compileContext);
+    if (callableParamArity !== null) {
+      loweredCall = `${pathSegments[0]}(${args})`;
+    }
   }
 
   if (!loweredCall && pathSegments && pathSegments.length === 1) {
