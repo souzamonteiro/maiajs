@@ -1544,6 +1544,83 @@ function collectVisibleVariableBindingsAtNode(targetNode, compileContext) {
     return bindings;
   }
 
+  function extractRootBindingNameFromExpressionNode(expressionNode) {
+    if (!expressionNode || expressionNode.kind !== 'nonterminal') {
+      return null;
+    }
+    const directIdentifier = expressionNode.name === 'identifier'
+      ? findFirstIdentifierValue(expressionNode)
+      : null;
+    if (directIdentifier) {
+      return directIdentifier;
+    }
+    const memberExprNode = expressionNode.name === 'memberExpression'
+      ? expressionNode
+      : findFirstNonterminal(expressionNode, 'memberExpression');
+    if (memberExprNode) {
+      const pathSegments = extractPathFromMemberExpression(memberExprNode, null);
+      if (Array.isArray(pathSegments) && pathSegments.length > 0) {
+        return pathSegments[0];
+      }
+    }
+    return findFirstIdentifierValue(expressionNode) || null;
+  }
+
+  function collectMutatedBindingNamesFromExpression(expressionNode) {
+    const mutatedNames = new Set();
+    if (!expressionNode || expressionNode.kind !== 'nonterminal') {
+      return mutatedNames;
+    }
+
+    const assignmentExpressionNode = expressionNode.name === 'assignmentExpression'
+      ? expressionNode
+      : findFirstNonterminal(expressionNode, 'assignmentExpression');
+    if (assignmentExpressionNode) {
+      const assignmentChildren = assignmentExpressionNode.children || [];
+      if (assignmentChildren.length === 3) {
+        const lhsIdentifier = lowerIdentifierFromLeftHandSideExpression(assignmentChildren[0], null);
+        let operatorToken = (assignmentChildren[1] && assignmentChildren[1].children || []).find(
+          (child) => child && child.kind === 'terminal'
+        ) || null;
+        if (!operatorToken && assignmentChildren[1]) {
+          walk(assignmentChildren[1], (child) => {
+            if (!operatorToken && child && child.kind === 'terminal') {
+              operatorToken = child;
+            }
+          });
+        }
+        const operatorValue = String(operatorToken && operatorToken.value || '').trim();
+        if (lhsIdentifier && lhsIdentifier.includes('.')) {
+          mutatedNames.add(lhsIdentifier.split('.')[0]);
+        } else if (lhsIdentifier && operatorValue && operatorValue !== '=') {
+          mutatedNames.add(lhsIdentifier);
+        }
+      }
+    }
+
+    const callExpressionNode = extractDirectCallExpressionNode(expressionNode);
+    if (callExpressionNode) {
+      const { memberExprNode, argExprs } = extractCallExpressionMemberAndArgs(callExpressionNode);
+      const pathSegments = memberExprNode ? extractPathFromMemberExpression(memberExprNode, null) : null;
+      const pathLabel = Array.isArray(pathSegments) ? pathSegments.join('.') : '';
+      if ((pathLabel === 'Reflect.set' || pathLabel === 'Reflect.deleteProperty' || pathLabel === 'Object.defineProperty')
+        && argExprs.length >= 1) {
+        const targetName = extractRootBindingNameFromExpressionNode(argExprs[0]);
+        if (targetName) {
+          mutatedNames.add(targetName);
+        }
+      }
+      if (pathLabel === 'Object.assign' && argExprs.length >= 1) {
+        const targetName = extractRootBindingNameFromExpressionNode(argExprs[0]);
+        if (targetName) {
+          mutatedNames.add(targetName);
+        }
+      }
+    }
+
+    return mutatedNames;
+  }
+
   const path = findNodePath(compileContext.tree, targetNode);
   const scopeContainers = [compileContext.tree];
 
@@ -1589,6 +1666,10 @@ function collectVisibleVariableBindingsAtNode(targetNode, compileContext) {
     const expressionNode = (expressionStatementNode.children || []).find(
       (child) => child && child.kind === 'nonterminal' && child.name === 'expression'
     ) || null;
+    const mutatedBindingNames = collectMutatedBindingNamesFromExpression(expressionNode);
+    for (const bindingName of mutatedBindingNames) {
+      bindings.set(bindingName, { kind: 'mutated' });
+    }
     const assignmentExpressionNode = expressionNode ? (expressionNode.children || []).find(
       (child) => child && child.kind === 'nonterminal' && child.name === 'assignmentExpression'
     ) : null;
@@ -1745,6 +1826,9 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
     if (bindingInfo.kind === 'catch-param') {
       return { kind: 'catch-param', name: identifierName };
     }
+    if (bindingInfo.kind === 'mutated') {
+      return null;
+    }
     if (!bindingInfo.expressionNode) {
       return null;
     }
@@ -1783,15 +1867,24 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
     const baseExpressionNode = directPropertyIndex > 0 ? memberChildren[0] : null;
 
     let staticCallModel = null;
+    const directObjectArgNode = argExprs.length >= 1 ? unwrapExpressionNode(argExprs[0]) : null;
+    const canFoldReflectiveObjectShape = directObjectArgNode
+      && directObjectArgNode.kind === 'nonterminal'
+      && directObjectArgNode.name === 'objectLiteral';
 
-    if ((pathLabel === 'Object.values' || pathLabel === 'Object.entries' || pathLabel === 'Reflect.ownKeys') && argExprs.length >= 1) {
+    if (canFoldReflectiveObjectShape
+      && (pathLabel === 'Object.values' || pathLabel === 'Object.entries' || pathLabel === 'Reflect.ownKeys')
+      && argExprs.length >= 1) {
       const sourceModel = resolveStaticModelFromExpression(argExprs[0], targetNode, compileContext, seenBindings);
       if (sourceModel && sourceModel.kind === 'object') {
         staticCallModel = { kind: 'array', length: sourceModel.properties.size };
       }
     }
 
-    if (!staticCallModel && pathLabel === 'Object.getOwnPropertyDescriptors' && argExprs.length >= 1) {
+    if (!staticCallModel
+      && canFoldReflectiveObjectShape
+      && pathLabel === 'Object.getOwnPropertyDescriptors'
+      && argExprs.length >= 1) {
       const sourceModel = resolveStaticModelFromExpression(argExprs[0], targetNode, compileContext, seenBindings);
       if (sourceModel && sourceModel.kind === 'object') {
         const descriptorMap = new Map();
@@ -3214,6 +3307,53 @@ function inferCppParamTypeFromExprType(exprType) {
   return null;
 }
 
+function mergeStaticModelArrayElementExprTypes(valueModels) {
+  if (!Array.isArray(valueModels) || valueModels.length === 0) {
+    return null;
+  }
+  const exprTypes = new Set();
+  for (const model of valueModels) {
+    if (!model || !model.kind) {
+      exprTypes.add('any');
+      continue;
+    }
+    if (model.kind === 'string') {
+      exprTypes.add('string');
+      continue;
+    }
+    if (model.kind === 'number') {
+      exprTypes.add('number');
+      continue;
+    }
+    if (model.kind === 'bool') {
+      exprTypes.add('bool');
+      continue;
+    }
+    if (model.kind === 'array') {
+      exprTypes.add('array');
+      continue;
+    }
+    if (model.kind === 'object' || model.kind === 'catch-param' || model.kind === 'null') {
+      exprTypes.add('object');
+      continue;
+    }
+    exprTypes.add('any');
+  }
+  if (exprTypes.size === 1) {
+    return Array.from(exprTypes)[0];
+  }
+  if (exprTypes.has('string')) {
+    return 'string';
+  }
+  if (exprTypes.has('object') || exprTypes.has('array')) {
+    return 'object';
+  }
+  if (exprTypes.has('number') || exprTypes.has('bool')) {
+    return 'number';
+  }
+  return 'any';
+}
+
 function extractNewExpressionMemberAndArgs(memberExpressionNode) {
   if (!memberExpressionNode || memberExpressionNode.kind !== 'nonterminal') {
     return { ctorMemberNode: null, argsNode: null, argExprs: [] };
@@ -3298,6 +3438,9 @@ function collectCallableParameterCppTypes(tree, baseCompileContext = null) {
   for (const { bindingName, arrowFunctionNode } of collectTopLevelArrowFunctionBindings(tree)) {
     registerCallable(bindingName, arrowFunctionNode, extractCallableParameterNames(arrowFunctionNode));
   }
+  for (const { symbolName, functionExpressionNode } of collectTopLevelCallArgumentFunctionExpressionBindings(tree)) {
+    registerCallable(symbolName, functionExpressionNode, extractCallableParameterNames(functionExpressionNode));
+  }
   for (const { bindingName, functionExpressionNode } of collectTopLevelConstructorFunctionExpressionBindings(tree)) {
     registerCallable(bindingName, functionExpressionNode, extractCallableParameterNames(functionExpressionNode));
   }
@@ -3313,6 +3456,32 @@ function collectCallableParameterCppTypes(tree, baseCompileContext = null) {
     functionReturnTypes: baseCompileContext ? baseCompileContext.functionReturnTypes : new Map(),
     callableParameterTypesByNode
   });
+
+  const mergeCallbackParamTypeHints = (callbackExprNode, hintedCppTypes = []) => {
+    const callbackNode = findCallableNodeFromExpression(callbackExprNode);
+    if (!callbackNode) {
+      return false;
+    }
+    const currentTypes = callableParameterTypesByNode.get(callbackNode);
+    const parameterNames = extractCallableParameterNames(callbackNode);
+    if (!currentTypes || parameterNames.length === 0) {
+      return false;
+    }
+    let changed = false;
+    for (let i = 0; i < parameterNames.length && i < hintedCppTypes.length; i += 1) {
+      const parameterName = parameterNames[i];
+      const hintedCppType = hintedCppTypes[i] || null;
+      if (!parameterName || !hintedCppType) {
+        continue;
+      }
+      const mergedType = mergeInferredCppParamTypes(currentTypes.get(parameterName), hintedCppType);
+      if (mergedType !== currentTypes.get(parameterName)) {
+        currentTypes.set(parameterName, mergedType);
+        changed = true;
+      }
+    }
+    return changed;
+  };
 
   for (let iteration = 0; iteration < 6; iteration += 1) {
     let changed = false;
@@ -3350,11 +3519,33 @@ function collectCallableParameterCppTypes(tree, baseCompileContext = null) {
       if (node.name === 'callExpression') {
         const { memberExprNode, argExprs } = extractCallExpressionMemberAndArgs(node);
         const pathSegments = memberExprNode ? extractPathFromMemberExpression(memberExprNode) : null;
+        const memberChildren = memberExprNode ? (memberExprNode.children || []) : [];
+        const directPropertyIndex = memberChildren.findIndex((child) => child && child.kind === 'terminal' && child.value === '.');
+        const directPropertyNode = directPropertyIndex >= 0 ? memberChildren[directPropertyIndex + 1] : null;
+        const directPropertyName = directPropertyNode ? findFirstIdentifierValue(directPropertyNode) : null;
+        const baseExpressionNode = directPropertyIndex > 0 ? memberChildren[0] : null;
         const callableKey = Array.isArray(pathSegments) && pathSegments.length > 0
           ? (pathSegments.length === 1 ? pathSegments[0] : pathSegments.join('.'))
           : null;
         if (callableKey && callableByKey.has(callableKey)) {
           mergeArgTypesIntoCallable(callableByKey.get(callableKey), argExprs);
+        }
+        if (directPropertyName
+          && ['forEach', 'map', 'filter', 'reduce', 'reduceRight', 'find', 'findIndex'].includes(directPropertyName)
+          && baseExpressionNode
+          && argExprs.length >= 1) {
+          const baseModel = resolveStaticModelFromExpression(baseExpressionNode, node, iterationContext, new Set());
+          const elementExprType = baseModel
+            && baseModel.kind === 'array'
+            && Array.isArray(baseModel.values)
+            && baseModel.values.length > 0
+            ? mergeStaticModelArrayElementExprTypes(baseModel.values)
+            : null;
+          const elementCppType = inferCppParamTypeFromExprType(elementExprType);
+          const hintedCppTypes = [elementCppType || 'double', 'double', 'void*'];
+          if (mergeCallbackParamTypeHints(argExprs[0], hintedCppTypes)) {
+            changed = true;
+          }
         }
         if (Array.isArray(pathSegments) && pathSegments.length >= 2) {
           const instanceType = findBoundClassInstanceTypeAtNode(pathSegments[0], node, iterationContext);
@@ -3953,6 +4144,24 @@ function isStringLikeLoweredReturnExpression(expr) {
   }
 
   return true;
+}
+
+function buildFlattenedWeakMapPropertyWrites(hiddenKey, loweredKeyExpr, objectLiteralNode, compileContext) {
+  if (!hiddenKey || !loweredKeyExpr || !objectLiteralNode) {
+    return [];
+  }
+
+  const flattenedWrites = [];
+  for (const property of extractObjectLiteralProperties(objectLiteralNode)) {
+    const loweredPropertyValue = lowerExpressionValue(property.valueExprNode, compileContext);
+    if (loweredPropertyValue === null) {
+      continue;
+    }
+    flattenedWrites.push(
+      `__Reflect((void*)(${loweredKeyExpr}), ${JSON.stringify(`${hiddenKey}__${property.key}`)}, (long)(${loweredPropertyValue}))`
+    );
+  }
+  return flattenedWrites;
 }
 
 function collectFunctionBodyStatementNodes(functionNode) {
@@ -4756,6 +4965,14 @@ function lowerConsoleConcatPieceAsCString(pieceNode, compileContext) {
     && pieceNode.kind === 'nonterminal'
     ? resolveStaticModelFromExpression(pieceNode, pieceNode, compileContext)
     : null;
+  const staticPieceJsString = staticModelToJsString(staticPieceModel);
+  if (staticPieceJsString !== null) {
+    const loweredPiece = `__maia_console_to_cstr_string((const char*)(${JSON.stringify(staticPieceJsString)}))`;
+    if (compileContext && pieceNode && typeof pieceNode === 'object') {
+      compileContext._consoleConcatPieceCache.set(pieceNode, loweredPiece);
+    }
+    return loweredPiece;
+  }
   const staticPieceExpr = staticPieceModel
     ? lowerStaticModelToRuntimeExpression(staticPieceModel)
     : null;
@@ -4789,6 +5006,9 @@ function lowerConsoleConcatPieceAsCString(pieceNode, compileContext) {
     const baseExpressionNode = directPropertyIndex > 0 ? memberChildren[0] : null;
     if (directPropertyName === 'message') {
       pieceType = 'string';
+    } else if (directPropertyName === 'enumerable'
+      && /__maia_runtime_value_get_property\(/.test(lowered)) {
+      pieceType = 'bool';
     } else if (baseExpressionNode && compileContext && compileContext.objectLiteralPropertyTypesByFunctionNode) {
       const baseIsThis = Boolean(findFirstTerminalByToken(baseExpressionNode, 'TOKEN_this'));
       if (baseIsThis) {
@@ -4804,6 +5024,10 @@ function lowerConsoleConcatPieceAsCString(pieceNode, compileContext) {
     }
   }
   const unwrappedLowered = stripSimpleCasts(lowered);
+  if ((pieceType === 'any' || pieceType === 'object')
+    && /__maia_runtime_value_get_property\(\(void\*\)\((?:__maia_runtime_value_get_property\([^\n]+|[A-Za-z_][A-Za-z0-9_]*)\), \(void\*\)"enumerable"\)/.test(unwrappedLowered)) {
+    pieceType = 'bool';
+  }
   if (pieceType === 'any' && /^"(?:[^"\\]|\\.)*"$/.test(unwrappedLowered)) {
     pieceType = 'string';
   } else if ((pieceType === 'any' || pieceType === 'object') && /^-?\d+(?:\.\d+)?$/.test(unwrappedLowered)) {
@@ -4845,6 +5069,13 @@ function lowerConsoleConcatPieceAsCString(pieceNode, compileContext) {
     return loweredPiece;
   }
   if (pieceType === 'bool') {
+    if (staticPieceModel && staticPieceModel.kind === 'bool') {
+      const loweredPiece = `__maia_console_to_cstr_string((const char*)(${JSON.stringify(staticPieceModel.value ? 'true' : 'false')}))`;
+      if (compileContext && pieceNode && typeof pieceNode === 'object') {
+        compileContext._consoleConcatPieceCache.set(pieceNode, loweredPiece);
+      }
+      return loweredPiece;
+    }
     const safeExpr = hoistConsolePiece('int', `(int)(${lowered})`);
     const loweredPiece = `__maia_console_to_cstr_bool((int)(${safeExpr}))`;
     if (compileContext && pieceNode && typeof pieceNode === 'object') {
@@ -6673,6 +6904,14 @@ function lowerInfixExpressionValue(node, compileContext) {
     }
   }
 
+  if (parts.length === 3 && parts[1] === '/') {
+    const lhsType = operandNodes[0] ? inferExprType(operandNodes[0], compileContext) : 'any';
+    const rhsType = operandNodes[1] ? inferExprType(operandNodes[1], compileContext) : 'any';
+    if ((lhsType === 'number' || lhsType === 'bool') && (rhsType === 'number' || rhsType === 'bool')) {
+      return `((double)(${parts[0]}) / (double)(${parts[2]}))`;
+    }
+  }
+
   if (parts.length === 3 && (parts[1] === '==' || parts[1] === '!=')) {
     const lhsType = operandNodes[0] ? inferExprType(operandNodes[0], compileContext) : 'any';
     const rhsType = operandNodes[1] ? inferExprType(operandNodes[1], compileContext) : 'any';
@@ -6897,6 +7136,12 @@ function lowerExpressionValue(node, compileContext) {
       }
       const loweredBase = lowerExpressionValue(baseExpressionNode, compileContext);
       if (loweredBase !== null) {
+        const flattenedWeakMapReadMatch = loweredBase.match(/^__maia_runtime_value_get_property\(\(void\*\)\((.+)\), \(void\*\)"(__maia_weakmap_[A-Za-z0-9_]+)"\)$/);
+        if (flattenedWeakMapReadMatch) {
+          const receiverExpr = flattenedWeakMapReadMatch[1];
+          const hiddenKey = flattenedWeakMapReadMatch[2];
+          return `__maia_runtime_value_get_property((void*)(${receiverExpr}), (void*)${JSON.stringify(`${hiddenKey}__${directPropertyName}`)})`;
+        }
         if (directPropertyName === 'message') {
           return loweredBase;
         }
@@ -7066,6 +7311,8 @@ function lowerExpressionValue(node, compileContext) {
   return null;
 }
 
+const MAX_INLINE_OBJECT_PROPERTIES = 8;
+
 function collectObjectLiteralArities(tree) {
   const simpleArities = new Set();
   let requiresBuilderHooks = false;
@@ -7076,7 +7323,7 @@ function collectObjectLiteralArities(tree) {
     }
 
     const properties = extractObjectLiteralProperties(node);
-    if (properties.length > 4) {
+    if (properties.length > MAX_INLINE_OBJECT_PROPERTIES) {
       requiresBuilderHooks = true;
     } else {
       simpleArities.add(properties.length);
@@ -7172,10 +7419,18 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
     '  char* k2;',
     '  char* k3;',
     '  char* k4;',
+    '  char* k5;',
+    '  char* k6;',
+    '  char* k7;',
+    '  char* k8;',
     '  long v1;',
     '  long v2;',
     '  long v3;',
     '  long v4;',
+    '  long v5;',
+    '  long v6;',
+    '  long v7;',
+    '  long v8;',
     '};',
     'static void* __maia_runtime_alloc_value(int tag, int a, int b, int c) {',
     '  __maia_runtime_value* v = new __maia_runtime_value();',
@@ -7187,10 +7442,18 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
     '  v->k2 = 0;',
     '  v->k3 = 0;',
     '  v->k4 = 0;',
+    '  v->k5 = 0;',
+    '  v->k6 = 0;',
+    '  v->k7 = 0;',
+    '  v->k8 = 0;',
     '  v->v1 = 0;',
     '  v->v2 = 0;',
     '  v->v3 = 0;',
     '  v->v4 = 0;',
+    '  v->v5 = 0;',
+    '  v->v6 = 0;',
+    '  v->v7 = 0;',
+    '  v->v8 = 0;',
     '  return (void*)v;',
     '}',
     'static int __maia_runtime_value_length(void* value) {',
@@ -7212,6 +7475,10 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
     '  if (v->k2 && strcmp(v->k2, property_key) == 0) { return v->v2; }',
     '  if (v->k3 && strcmp(v->k3, property_key) == 0) { return v->v3; }',
     '  if (v->k4 && strcmp(v->k4, property_key) == 0) { return v->v4; }',
+    '  if (v->k5 && strcmp(v->k5, property_key) == 0) { return v->v5; }',
+    '  if (v->k6 && strcmp(v->k6, property_key) == 0) { return v->v6; }',
+    '  if (v->k7 && strcmp(v->k7, property_key) == 0) { return v->v7; }',
+    '  if (v->k8 && strcmp(v->k8, property_key) == 0) { return v->v8; }',
     '  return 0;',
     '}',
     'static int __maia_runtime_value_set_property(void* value, const char* key, long property_value) {',
@@ -7221,14 +7488,62 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
     '  if (v->k2 && strcmp(v->k2, key) == 0) { v->v2 = property_value; return 0; }',
     '  if (v->k3 && strcmp(v->k3, key) == 0) { v->v3 = property_value; return 0; }',
     '  if (v->k4 && strcmp(v->k4, key) == 0) { v->v4 = property_value; return 0; }',
+    '  if (v->k5 && strcmp(v->k5, key) == 0) { v->v5 = property_value; return 0; }',
+    '  if (v->k6 && strcmp(v->k6, key) == 0) { v->v6 = property_value; return 0; }',
+    '  if (v->k7 && strcmp(v->k7, key) == 0) { v->v7 = property_value; return 0; }',
+    '  if (v->k8 && strcmp(v->k8, key) == 0) { v->v8 = property_value; return 0; }',
     '  if (!v->k1) { v->k1 = (char*)key; v->v1 = property_value; v->a += 1; return 0; }',
     '  if (!v->k2) { v->k2 = (char*)key; v->v2 = property_value; v->a += 1; return 0; }',
     '  if (!v->k3) { v->k3 = (char*)key; v->v3 = property_value; v->a += 1; return 0; }',
     '  if (!v->k4) { v->k4 = (char*)key; v->v4 = property_value; v->a += 1; return 0; }',
+    '  if (!v->k5) { v->k5 = (char*)key; v->v5 = property_value; v->a += 1; return 0; }',
+    '  if (!v->k6) { v->k6 = (char*)key; v->v6 = property_value; v->a += 1; return 0; }',
+    '  if (!v->k7) { v->k7 = (char*)key; v->v7 = property_value; v->a += 1; return 0; }',
+    '  if (!v->k8) { v->k8 = (char*)key; v->v8 = property_value; v->a += 1; return 0; }',
     '  return 0;',
     '}',
     'static int __Reflect(void* target, const char* key, long value) {',
     '  return __maia_runtime_value_set_property(target, key, value);',
+    '}',
+    'static void* __Object__values(void* target) {',
+    '  __maia_runtime_value* src = (__maia_runtime_value*)target;',
+    '  if (!src || src->tag != 1) { return __maia_runtime_alloc_value(2, 0, 0, 0); }',
+    '  return __maia_runtime_alloc_value(2, src->a, 0, 0);',
+    '}',
+    'static void* __Object__entries(void* target) {',
+    '  __maia_runtime_value* src = (__maia_runtime_value*)target;',
+    '  if (!src || src->tag != 1) { return __maia_runtime_alloc_value(2, 0, 0, 0); }',
+    '  return __maia_runtime_alloc_value(2, src->a, 0, 0);',
+    '}',
+    'static void* __maia_runtime_make_descriptor_enumerable(void) {',
+    '  __maia_runtime_value* descriptor = (__maia_runtime_value*)__maia_runtime_alloc_value(1, 1, 0, 0);',
+    '  descriptor->k1 = (char*)"enumerable";',
+    '  descriptor->v1 = 1;',
+    '  return (void*)descriptor;',
+    '}',
+    'static void* __Object__getOwnPropertyDescriptors(void* target) {',
+    '  __maia_runtime_value* src = (__maia_runtime_value*)target;',
+    '  __maia_runtime_value* out = (__maia_runtime_value*)__maia_runtime_alloc_value(1, 0, 0, 0);',
+    '  if (!src || src->tag != 1) { return (void*)out; }',
+    '  if (src->k1) { out->k1 = src->k1; out->v1 = (long)__maia_runtime_make_descriptor_enumerable(); out->a += 1; }',
+    '  if (src->k2) { out->k2 = src->k2; out->v2 = (long)__maia_runtime_make_descriptor_enumerable(); out->a += 1; }',
+    '  if (src->k3) { out->k3 = src->k3; out->v3 = (long)__maia_runtime_make_descriptor_enumerable(); out->a += 1; }',
+    '  if (src->k4) { out->k4 = src->k4; out->v4 = (long)__maia_runtime_make_descriptor_enumerable(); out->a += 1; }',
+    '  if (src->k5) { out->k5 = src->k5; out->v5 = (long)__maia_runtime_make_descriptor_enumerable(); out->a += 1; }',
+    '  if (src->k6) { out->k6 = src->k6; out->v6 = (long)__maia_runtime_make_descriptor_enumerable(); out->a += 1; }',
+    '  if (src->k7) { out->k7 = src->k7; out->v7 = (long)__maia_runtime_make_descriptor_enumerable(); out->a += 1; }',
+    '  if (src->k8) { out->k8 = src->k8; out->v8 = (long)__maia_runtime_make_descriptor_enumerable(); out->a += 1; }',
+    '  return (void*)out;',
+    '}',
+    'static void* __Reflect__ownKeys(void* target) {',
+    '  __maia_runtime_value* src = (__maia_runtime_value*)target;',
+    '  if (!src || src->tag != 1) { return __maia_runtime_alloc_value(2, 0, 0, 0); }',
+    '  return __maia_runtime_alloc_value(2, src->a, 0, 0);',
+    '}',
+    'static void* __Symbol(const char* description) {',
+    '  static long __maia_symbol_counter = 1;',
+    '  (void)description;',
+    '  return (void*)(__maia_symbol_counter++);',
     '}',
     ...(hasLambdaCapturePayload ? [
       'struct __maia_runtime_lambda_env {',
@@ -7456,6 +7771,10 @@ function emitObjectLiteralRuntimeFallbackCpp(tree) {
     lines.push('  else if (b->a == 2) { b->k2 = key; b->v2 = value; }');
     lines.push('  else if (b->a == 3) { b->k3 = key; b->v3 = value; }');
     lines.push('  else if (b->a == 4) { b->k4 = key; b->v4 = value; }');
+    lines.push('  else if (b->a == 5) { b->k5 = key; b->v5 = value; }');
+    lines.push('  else if (b->a == 6) { b->k6 = key; b->v6 = value; }');
+    lines.push('  else if (b->a == 7) { b->k7 = key; b->v7 = value; }');
+    lines.push('  else if (b->a == 8) { b->k8 = key; b->v8 = value; }');
     lines.push('  return builder;');
     lines.push('}');
     lines.push('void* __maia_obj_builder_end(void* builder) {');
@@ -7466,10 +7785,18 @@ function emitObjectLiteralRuntimeFallbackCpp(tree) {
     lines.push('  ((__maia_runtime_value*)obj)->k2 = b->k2;');
     lines.push('  ((__maia_runtime_value*)obj)->k3 = b->k3;');
     lines.push('  ((__maia_runtime_value*)obj)->k4 = b->k4;');
+    lines.push('  ((__maia_runtime_value*)obj)->k5 = b->k5;');
+    lines.push('  ((__maia_runtime_value*)obj)->k6 = b->k6;');
+    lines.push('  ((__maia_runtime_value*)obj)->k7 = b->k7;');
+    lines.push('  ((__maia_runtime_value*)obj)->k8 = b->k8;');
     lines.push('  ((__maia_runtime_value*)obj)->v1 = b->v1;');
     lines.push('  ((__maia_runtime_value*)obj)->v2 = b->v2;');
     lines.push('  ((__maia_runtime_value*)obj)->v3 = b->v3;');
     lines.push('  ((__maia_runtime_value*)obj)->v4 = b->v4;');
+    lines.push('  ((__maia_runtime_value*)obj)->v5 = b->v5;');
+    lines.push('  ((__maia_runtime_value*)obj)->v6 = b->v6;');
+    lines.push('  ((__maia_runtime_value*)obj)->v7 = b->v7;');
+    lines.push('  ((__maia_runtime_value*)obj)->v8 = b->v8;');
     lines.push('  delete b;');
     lines.push('  return obj;');
     lines.push('}');
@@ -7930,18 +8257,7 @@ function lowerCallExpressionValue(node, compileContext) {
           const loweredValueExpr = lowerExpressionValue(argExprs[1], compileContext);
           if (loweredValueExpr !== null) {
             const objectLiteralNode = findFirstNonterminal(argExprs[1], 'objectLiteral');
-            const flattenedWrites = [];
-            if (objectLiteralNode) {
-              for (const property of extractObjectLiteralProperties(objectLiteralNode)) {
-                const loweredPropertyValue = lowerExpressionValue(property.valueExprNode, compileContext);
-                if (loweredPropertyValue === null) {
-                  continue;
-                }
-                flattenedWrites.push(
-                  `__Reflect((void*)(${loweredKeyExpr}), ${JSON.stringify(`${hiddenKey}__${property.key}`)}, (long)(${loweredPropertyValue}))`
-                );
-              }
-            }
+            const flattenedWrites = buildFlattenedWeakMapPropertyWrites(hiddenKey, loweredKeyExpr, objectLiteralNode, compileContext);
             loweredCall = flattenedWrites.length > 0
               ? `(${[`__Reflect((void*)(${loweredKeyExpr}), "${hiddenKey}", (long)(${loweredValueExpr}))`, ...flattenedWrites].join(', ')})`
               : `__Reflect((void*)(${loweredKeyExpr}), "${hiddenKey}", (long)(${loweredValueExpr}))`;
@@ -7963,7 +8279,11 @@ function lowerCallExpressionValue(node, compileContext) {
         } else {
           const loweredValueExpr = lowerExpressionValue(argExprs[1], compileContext);
           if (loweredValueExpr !== null) {
-            loweredCall = `__Reflect((void*)(${loweredKeyExpr}), "${hiddenKey}", (long)(${loweredValueExpr}))`;
+            const objectLiteralNode = findFirstNonterminal(argExprs[1], 'objectLiteral');
+            const flattenedWrites = buildFlattenedWeakMapPropertyWrites(hiddenKey, loweredKeyExpr, objectLiteralNode, compileContext);
+            loweredCall = flattenedWrites.length > 0
+              ? `(${[`__Reflect((void*)(${loweredKeyExpr}), "${hiddenKey}", (long)(${loweredValueExpr}))`, ...flattenedWrites].join(', ')})`
+              : `__Reflect((void*)(${loweredKeyExpr}), "${hiddenKey}", (long)(${loweredValueExpr}))`;
           }
         }
       }
@@ -8088,6 +8408,55 @@ function lowerCallExpressionValue(node, compileContext) {
     const loweredFiltered = lowerStaticModelToRuntimeExpression(filteredModel);
     if (loweredFiltered !== null) {
       loweredCall = loweredFiltered;
+    }
+  }
+
+  if (!loweredCall && directPropertyName === 'forEach' && baseExpressionNode && argExprs.length >= 1) {
+    const baseModel = resolveStaticModelFromExpression(baseExpressionNode, node, compileContext, new Set());
+    const callbackSymbol = lowerExpressionValue(argExprs[0], compileContext);
+    const callbackNode = findCallableNodeFromExpression(argExprs[0]);
+    const callbackParams = extractCallableParameterNames(callbackNode);
+    const loweredBase = lowerExpressionValue(baseExpressionNode, compileContext);
+    if (baseModel
+      && baseModel.kind === 'array'
+      && Array.isArray(baseModel.values)
+      && callbackSymbol
+      && callbackSymbol !== 'nullptr') {
+      const callbackCalls = [];
+      for (let index = 0; index < baseModel.values.length; index += 1) {
+        const valueExpr = lowerStaticModelToExpression(baseModel.values[index]);
+        if (valueExpr === null) {
+          callbackCalls.length = 0;
+          break;
+        }
+        const callArgs = [];
+        if (callbackParams.length >= 1) {
+          callArgs.push(valueExpr);
+        }
+        if (callbackParams.length >= 2) {
+          callArgs.push(String(index));
+        }
+        if (callbackParams.length >= 3) {
+          if (loweredBase === null) {
+            callbackCalls.length = 0;
+            break;
+          }
+          callArgs.push(loweredBase);
+        }
+        while (callArgs.length < callbackParams.length) {
+          callArgs.push('0');
+        }
+        callbackCalls.push(`${callbackSymbol}(${callArgs.join(', ')})`);
+      }
+      if (callbackCalls.length > 0) {
+        if (!Array.isArray(compileContext._preludeStatements)) {
+          compileContext._preludeStatements = [];
+        }
+        for (const callbackCall of callbackCalls) {
+          compileContext._preludeStatements.push(`${callbackCall};`);
+        }
+        loweredCall = '0';
+      }
     }
   }
 
@@ -8248,6 +8617,14 @@ function lowerCallExpressionValue(node, compileContext) {
       }
 
       if (!propertyFollowedByArgs) {
+        const flattenedWeakMapReadMatch = loweredCall.match(/^__maia_runtime_value_get_property\(\(void\*\)\((.+)\), \(void\*\)"(__maia_weakmap_[A-Za-z0-9_]+)"\)$/);
+        if (flattenedWeakMapReadMatch) {
+          const receiverExpr = flattenedWeakMapReadMatch[1];
+          const hiddenKey = flattenedWeakMapReadMatch[2];
+          loweredCall = `__maia_runtime_value_get_property((void*)(${receiverExpr}), (void*)${JSON.stringify(`${hiddenKey}__${propertyName}`)})`;
+          i += 1;
+          continue;
+        }
         loweredCall = `__maia_runtime_value_get_property((void*)(${loweredCall}), (void*)"${propertyName}")`;
         i += 1;
         continue;
@@ -10710,7 +11087,7 @@ function emitConsoleConcatHelpersCpp(tree, compileContext) {
     '}',
     'static const char* __maia_console_to_cstr_number(double value) {',
     '  char* buffer = __maia_console_next_buffer();',
-    '  snprintf(buffer, 256, "%.15g", value);',
+    '  snprintf(buffer, 256, "%.17g", value);',
     '  return buffer;',
     '}',
     'static const char* __maia_console_to_cstr_ptr(const void* value) {',
