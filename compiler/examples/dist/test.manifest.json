@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-06-30T22:01:03.836Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.SQ4YWTuu9Z/test.c",
+  "generatedAt": "2026-07-15T22:32:49.877Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.dE7cmmi9KZ/test.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/dist",
   "appName": "test",
   "artifacts": {
@@ -16,5 +16,5 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 16013
+  "sourceBytes": 16287
 }

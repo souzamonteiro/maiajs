@@ -2370,6 +2370,10 @@ const _buildHostEnv = // Auto-generated host env – do not edit manually
     "__a__getValue": () => { const target = __resolveHost(["a","getValue"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
     "__p__getValue": () => { const target = __resolveHost(["p","getValue"]); if (typeof target.fn !== 'function') return undefined; const result = target.fn.call(target.thisValue); return undefined; },
     "__console__log": (p0) => { const text = String(readCString(p0)); __hostWrite(text + '\n'); return undefined; },
+    "__new__C": () => { const target = __resolveHost(["C"]); if (typeof target.fn !== 'function') return undefined; const result = new target.fn(); return undefined; },
+    "__new__Box": () => { const target = __resolveHost(["Box"]); if (typeof target.fn !== 'function') return undefined; const result = new target.fn(); return undefined; },
+    "__new__DDerived": () => { const target = __resolveHost(["DDerived"]); if (typeof target.fn !== 'function') return undefined; const result = new target.fn(); return undefined; },
+    "__new__P": () => { const target = __resolveHost(["P"]); if (typeof target.fn !== 'function') return undefined; const result = new target.fn(); return undefined; },
   };
 });
 const _linkedLibraries = [];

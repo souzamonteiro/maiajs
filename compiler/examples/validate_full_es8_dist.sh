@@ -4,7 +4,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 SOURCE_JS="$REPO_ROOT/compiler/examples/full_es8_test.js"
-WEBCPP_SH="$REPO_ROOT/maiacpp/bin/webcpp.sh"
+PRINCIPAL_WEBCPP_SH="$(cd "$REPO_ROOT/.." && pwd -P)/maiacpp/bin/webcpp.sh"
+SUBMODULE_WEBCPP_SH="$REPO_ROOT/maiacpp/bin/webcpp.sh"
+WEBCPP_SH="$PRINCIPAL_WEBCPP_SH"
+if [[ ! -x "$WEBCPP_SH" ]]; then
+  WEBCPP_SH="$SUBMODULE_WEBCPP_SH"
+fi
 APP_NAME="full_es8_test"
 
 if [[ ! -f "$SOURCE_JS" ]]; then
@@ -12,7 +17,7 @@ if [[ ! -f "$SOURCE_JS" ]]; then
   exit 1
 fi
 if [[ ! -x "$WEBCPP_SH" ]]; then
-  echo "[validate-full-es8] MaiaCpp webcpp.sh not found or not executable: $WEBCPP_SH" >&2
+  echo "[validate-full-es8] MaiaCpp webcpp.sh not found or not executable. Checked: $PRINCIPAL_WEBCPP_SH and $SUBMODULE_WEBCPP_SH" >&2
   exit 1
 fi
 

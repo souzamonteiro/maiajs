@@ -6,6 +6,10 @@ extern void __b__value(void);
 extern void __a__getValue(void);
 extern void __p__getValue(void);
 extern void __console__log(const char*);
+extern void __new__C(void);
+extern void __new__Box(void);
+extern void __new__DDerived(void);
+extern void __new__P(void);
 
 struct C {
   int value;
@@ -108,16 +112,16 @@ int P_meth_getValue(P* self) {
 
 int add(int a, int b);
 int multiply(int a, int b);
-int execute(int a, int b, int (*fn)(int, int));
-int run_class_tests(void);
-int run_template_tests(void);
-int run_function_pointer_tests(void);
-int run_cast_tests(void);
-int run_new_delete_tests(void);
-int run_cout_stress_tests(void);
-int run_for_cout_test(void);
-int run_main_baseline_sections(void);
-int run_program(void);
+int execute(double a, double b, int (*fn)(int, int));
+double run_class_tests(void);
+double run_template_tests(void);
+double run_function_pointer_tests(void);
+double run_cast_tests(void);
+double run_new_delete_tests(void);
+double run_cout_stress_tests(void);
+double run_for_cout_test(void);
+double run_main_baseline_sections(void);
+double run_program(void);
 
 int add(int a, int b) {
   return (int)(a + b);
@@ -127,83 +131,83 @@ int multiply(int a, int b) {
   return (int)(a * b);
 }
 
-int execute(int a, int b, int (*fn)(int, int)) {
+int execute(double a, double b, int (*fn)(int, int)) {
   return (int)(fn(a, b));
 }
 
-int run_class_tests(void) {
+double run_class_tests(void) {
   C c;
   C_ctor_init__pvi((C*)&c, 42);
-  return (int)(((C_meth_getValue(&c) == 42) ? (1) : (0)));
+  return (double)(((C_meth_getValue(&c) == 42) ? (1) : (0)));
 }
 
-int run_template_tests(void) {
+double run_template_tests(void) {
   Box box;
   Box_ctor_init__pv((Box*)&box);
   Box_meth_setAt(&box, 0, 10);
   Box_meth_setAt(&box, 1, 20);
-  return (int)(((Box_meth_at(&box, 0) + Box_meth_at(&box, 1) == 30) ? (1) : (0)));
+  return (double)(((Box_meth_at(&box, 0) + Box_meth_at(&box, 1) == 30) ? (1) : (0)));
 }
 
-int run_function_pointer_tests(void) {
+double run_function_pointer_tests(void) {
   const double s = execute(7, 3, add);
   const double m = execute(7, 3, multiply);
-  return (int)(((s == 10 && m == 21) ? (1) : (0)));
+  return (double)(((s == 10 && m == 21) ? (1) : (0)));
 }
 
-int run_cast_tests(void) {
+double run_cast_tests(void) {
   DDerived b;
   DDerived_ctor_init__pvi((DDerived*)&b, 15);
-  const double isDerived = (((dynamic_cast<DDerived*>(&b) != 0)) ? (1) : (0));
+  const double isDerived = ((1) ? (1) : (0));
   const int n = (int)(3.2) | (int)(0);
   if (isDerived != 1) {
-    return (int)(0);
+    return (double)(0);
   }
   if (DDerived_meth_value(&b) != 15) {
-    return (int)(0);
+    return (double)(0);
   }
   if (n != 3) {
-    return (int)(0);
+    return (double)(0);
   }
-  return (int)(1);
+  return (double)(1);
 }
 
-int run_new_delete_tests(void) {
+double run_new_delete_tests(void) {
   C a;
   C_ctor_init__pvi((C*)&a, 1);
   if (C_meth_getValue(&a) != 1) {
-    return (int)(0);
+    return (double)(0);
   }
   P p;
   P_ctor_init__pvi((P*)&p, 10);
   const double v = P_meth_getValue(&p);
-  return (int)(((v == 10) ? (1) : (0)));
+  return (double)(((v == 10) ? (1) : (0)));
 }
 
-int run_cout_stress_tests(void) {
+double run_cout_stress_tests(void) {
   double cout_acc = 0;
   double i = 1;
   cout_acc = cout_acc + i;
   if (cout_acc != 1) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("[cout-test] i=1 acc=1 int=42 double=3.25 char=Q");
   i = i + 1;
   cout_acc = cout_acc + i;
   if (cout_acc != 3) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("[cout-test] i=2 acc=3 int=42 double=3.25 char=Q");
   i = i + 1;
   cout_acc = cout_acc + i;
   if (cout_acc != 6) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("[cout-test] i=3 acc=6 int=42 double=3.25 char=Q");
-  return (int)(((cout_acc == 6) ? (1) : (0)));
+  return (double)(((cout_acc == 6) ? (1) : (0)));
 }
 
-int run_for_cout_test(void) {
+double run_for_cout_test(void) {
   double sum = 0;
   const double ratio = 1.5;
   {
@@ -222,13 +226,13 @@ int run_for_cout_test(void) {
         __console__log("[for-cout] i=3 sum=6 ratio=1.5");
         continue;
       }
-      return (int)(0);
+      return (double)(0);
     }
   }
-  return (int)(((sum == 6) ? (1) : (0)));
+  return (double)(((sum == 6) ? (1) : (0)));
 }
 
-int run_main_baseline_sections(void) {
+double run_main_baseline_sections(void) {
   double a = 10;
   const double b = 20;
   double result = 0;
@@ -239,78 +243,78 @@ int run_main_baseline_sections(void) {
   __console__log("--- Arithmetic Operators ---");
   result = a + b;
   if (result != 30) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("add result=30");
   result = b - a;
   if (result != 10) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("b-a=10");
   result = a * 3;
   if (result != 30) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("a*3=30");
   result = b / 2;
   if (result != 10) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("b/2=10");
   result = (int)(b) % (int)(3);
   if (result != 2) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("b%3=2");
   __console__log("--- Assignment Operators ---");
   result = a;
   if (result != 10) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("result=10");
   result = result + b;
   if (result != 30) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("result+=b => 30");
   result = result - 10;
   if (result != 20) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("result-=10 => 20");
   result = result * 2;
   if (result != 40) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("result*=2 => 40");
   result = result / 5;
   if (result != 8) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("result/=5 => 8");
   result = result - result / 4 * 4;
   if (result != 0) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("result%=4 => 0");
   __console__log("--- Relational Operators ---");
   if (((a == b) ? (1) : (0))) {
-    return (int)(0);
+    return (double)(0);
   }
   if (((a != b) ? (1) : (0)) != 1) {
-    return (int)(0);
+    return (double)(0);
   }
   if (((a < b) ? (1) : (0)) != 1) {
-    return (int)(0);
+    return (double)(0);
   }
   if (((a > b) ? (1) : (0))) {
-    return (int)(0);
+    return (double)(0);
   }
   if (((a <= b) ? (1) : (0)) != 1) {
-    return (int)(0);
+    return (double)(0);
   }
   if (((a >= b) ? (1) : (0))) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("a==b => 0");
   __console__log("a!=b => 1");
@@ -320,10 +324,10 @@ int run_main_baseline_sections(void) {
   __console__log("a>=b => 0");
   __console__log("--- Logical Operators ---");
   if (((a && b) ? (1) : (0)) != 1) {
-    return (int)(0);
+    return (double)(0);
   }
   if (((a || 0) ? (1) : (0)) != 1) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("a&&b => 1");
   __console__log("a||0 => 1");
@@ -334,19 +338,19 @@ int run_main_baseline_sections(void) {
   const int shiftLeft = (int)(a) << (int)(2);
   const int shiftRight = (int)(b) >> (int)(1);
   if (bitAnd != 0) {
-    return (int)(0);
+    return (double)(0);
   }
   if (bitOr != 30) {
-    return (int)(0);
+    return (double)(0);
   }
   if (bitXor != 30) {
-    return (int)(0);
+    return (double)(0);
   }
   if (shiftLeft != 40) {
-    return (int)(0);
+    return (double)(0);
   }
   if (shiftRight != 10) {
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("a&b => 0");
   __console__log("a|b => 30");
@@ -390,7 +394,7 @@ int run_main_baseline_sections(void) {
       __console__log("[for] i=7 loop_sum=23");
       continue;
     }
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("loop_sum=23");
   while (down > 0) {
@@ -401,15 +405,15 @@ int run_main_baseline_sections(void) {
     up = up + 1;
   } while (up < 5);
   __console__log("do-while-up=5");
-  return (int)(((loop_sum == 23 && down == 0 && up == 5 && a == 100) ? (1) : (0)));
+  return (double)(((loop_sum == 23 && down == 0 && up == 5 && a == 100) ? (1) : (0)));
 }
 
-int run_program(void) {
+double run_program(void) {
   double failures = 0;
   __console__log("=== MaiaJS Comprehensive Runtime Baseline ===");
   if (!((int)(run_main_baseline_sections()))) {
     __console__log("FAIL main baseline sections");
-    return (int)(1);
+    return (double)(1);
   }
   __console__log("1. class/ctor/const:");
   if (run_class_tests()) {
@@ -469,10 +473,10 @@ int run_program(void) {
   }
   if (failures == 0) {
     __console__log("ALL TESTS PASSED");
-    return (int)(0);
+    return (double)(0);
   }
   __console__log("TESTS FAILED");
-  return (int)(1);
+  return (double)(1);
 }
 
 int main() {
