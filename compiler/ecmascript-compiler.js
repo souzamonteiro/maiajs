@@ -1543,6 +1543,9 @@ function collectVisibleVariableBindingsAtNode(targetNode, compileContext) {
   if (!compileContext || !compileContext.tree || !targetNode) {
     return bindings;
   }
+  if (compileContext._visibleVariableBindingsCache && compileContext._visibleVariableBindingsCache.has(targetNode)) {
+    return compileContext._visibleVariableBindingsCache.get(targetNode);
+  }
 
   function extractRootBindingNameFromExpressionNode(expressionNode) {
     if (!expressionNode || expressionNode.kind !== 'nonterminal') {
@@ -1739,6 +1742,9 @@ function collectVisibleVariableBindingsAtNode(targetNode, compileContext) {
     }
   }
 
+  if (compileContext._visibleVariableBindingsCache) {
+    compileContext._visibleVariableBindingsCache.set(targetNode, bindings);
+  }
   return bindings;
 }
 
@@ -1777,6 +1783,30 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
     return null;
   }
 
+  const canUseCache = compileContext
+    && compileContext._staticModelCache
+    && targetNode
+    && seenBindings
+    && seenBindings.size === 0;
+  if (canUseCache) {
+    const perTargetCache = compileContext._staticModelCache.get(targetNode);
+    if (perTargetCache && perTargetCache.has(expressionNode)) {
+      const cached = perTargetCache.get(expressionNode);
+      return cached === compileContext._staticModelNullSentinel ? null : cached;
+    }
+  }
+  const finish = (model) => {
+    if (canUseCache) {
+      let perTargetCache = compileContext._staticModelCache.get(targetNode);
+      if (!perTargetCache) {
+        perTargetCache = new WeakMap();
+        compileContext._staticModelCache.set(targetNode, perTargetCache);
+      }
+      perTargetCache.set(expressionNode, model === null ? compileContext._staticModelNullSentinel : model);
+    }
+    return model;
+  };
+
   let current = expressionNode;
   while (current && current.kind === 'nonterminal') {
     if (current.name === 'literal'
@@ -1799,52 +1829,52 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
   if (current.name === 'literal') {
     const stringValue = extractStringLiteralValue(current);
     if (stringValue !== null) {
-      return { kind: 'string', value: stringValue };
+      return finish({ kind: 'string', value: stringValue });
     }
     const literalLowered = lowerLiteralValue(current, null);
     if (literalLowered === 'true' || literalLowered === 'false') {
-      return { kind: 'bool', value: literalLowered === 'true' ? 1 : 0 };
+      return finish({ kind: 'bool', value: literalLowered === 'true' ? 1 : 0 });
     }
     if (literalLowered === 'nullptr') {
-      return { kind: 'null', value: null };
+      return finish({ kind: 'null', value: null });
     }
     if (literalLowered !== null && /^-?\d+(\.\d+)?$/.test(literalLowered)) {
-      return { kind: 'number', value: Number(literalLowered) };
+      return finish({ kind: 'number', value: Number(literalLowered) });
     }
   }
 
   if (current.name === 'identifier') {
     const identifierName = findFirstIdentifierValue(current);
     if (!identifierName || seenBindings.has(identifierName)) {
-      return null;
+      return finish(null);
     }
     const visibleBindings = collectVisibleVariableBindingsAtNode(targetNode, compileContext);
     const bindingInfo = visibleBindings.get(identifierName) || null;
     if (!bindingInfo) {
-      return null;
+      return finish(null);
     }
     if (bindingInfo.kind === 'catch-param') {
-      return { kind: 'catch-param', name: identifierName };
+      return finish({ kind: 'catch-param', name: identifierName });
     }
     if (bindingInfo.kind === 'mutated') {
-      return null;
+      return finish(null);
     }
     if (!bindingInfo.expressionNode) {
-      return null;
+      return finish(null);
     }
     seenBindings.add(identifierName);
     const resolved = resolveStaticModelFromExpression(bindingInfo.expressionNode, targetNode, compileContext, seenBindings);
     seenBindings.delete(identifierName);
-    return resolved;
+    return finish(resolved);
   }
 
   if (current.name === 'arrayLiteral') {
     const arrayInfo = extractArrayLiteralElements(current);
     if (!arrayInfo || arrayInfo.hasSpread || arrayInfo.hasElision) {
-      return { kind: 'array', length: arrayInfo && arrayInfo.operations ? arrayInfo.operations.length : 0 };
+      return finish({ kind: 'array', length: arrayInfo && arrayInfo.operations ? arrayInfo.operations.length : 0 });
     }
     const values = (arrayInfo.values || []).map((valueNode) => resolveStaticModelFromExpression(valueNode, targetNode, compileContext, seenBindings));
-    return { kind: 'array', length: values.length, values };
+    return finish({ kind: 'array', length: values.length, values });
   }
 
   if (current.name === 'objectLiteral') {
@@ -1853,7 +1883,7 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
     for (const property of properties) {
       propertyMap.set(property.key, resolveStaticModelFromExpression(property.valueExprNode, targetNode, compileContext, seenBindings));
     }
-    return { kind: 'object', properties: propertyMap };
+    return finish({ kind: 'object', properties: propertyMap });
   }
 
   if (current.name === 'callExpression') {
@@ -1972,7 +2002,7 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
           }
           const nextModel = evaluateStaticExpressionModel(callbackReturnExpression, scopeModels, compileContext);
           if (!nextModel) {
-            return null;
+            return finish(null);
           }
           accModel = nextModel;
         }
@@ -1997,7 +2027,7 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
     }
 
     if (staticCallModel) {
-      return resolveStaticModelFromCallChainSuffix(current, argsNode, staticCallModel);
+      return finish(resolveStaticModelFromCallChainSuffix(current, argsNode, staticCallModel));
     }
   }
 
@@ -2015,10 +2045,10 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
         seenBindings
       );
       if (baseModel && baseModel.kind === 'array' && directPropertyName === 'length') {
-        return { kind: 'number', value: baseModel.length || 0 };
+        return finish({ kind: 'number', value: baseModel.length || 0 });
       }
       if (baseModel && baseModel.kind === 'object') {
-        return baseModel.properties.get(directPropertyName) || null;
+        return finish(baseModel.properties.get(directPropertyName) || null);
       }
     }
 
@@ -2039,11 +2069,11 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
       if (baseModel && baseModel.kind === 'array' && propertyModel && propertyModel.kind === 'number') {
         const index = propertyModel.value;
         if (Number.isInteger(index) && index >= 0 && Array.isArray(baseModel.values) && index < baseModel.values.length) {
-          return baseModel.values[index] || null;
+          return finish(baseModel.values[index] || null);
         }
       }
       if (baseModel && baseModel.kind === 'object' && propertyModel && propertyModel.kind === 'string') {
-        return baseModel.properties.get(propertyModel.value) || null;
+        return finish(baseModel.properties.get(propertyModel.value) || null);
       }
     }
 
@@ -2051,11 +2081,11 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
       (child) => child && child.kind === 'nonterminal'
     ) || null;
     if (passthroughChild) {
-      return resolveStaticModelFromExpression(passthroughChild, targetNode, compileContext, seenBindings);
+      return finish(resolveStaticModelFromExpression(passthroughChild, targetNode, compileContext, seenBindings));
     }
   }
 
-  return null;
+  return finish(null);
 }
 
 function lowerStaticModelToExpression(model) {
@@ -2912,6 +2942,9 @@ function buildCompileContext(tree, hostRegistry) {
       ...topLevelObjectLiteralFunctionExpressionBindings.map((binding) => [binding.functionExpressionNode, binding.symbolName]),
       ...topLevelCallArgumentFunctionExpressionBindings.map((binding) => [binding.functionExpressionNode, binding.symbolName])
     ]),
+    _visibleVariableBindingsCache: new WeakMap(),
+    _staticModelCache: new WeakMap(),
+    _staticModelNullSentinel: Symbol('static-model-null'),
     hasLambdaCapturePayload,
     functionReturnTypes,
     callableParameterTypesByNode
