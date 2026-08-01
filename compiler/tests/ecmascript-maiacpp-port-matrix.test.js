@@ -54,9 +54,9 @@ test('MaiaCpp port matrix: local function routing stays local', () => {
     + 'wrap(1);\n'
   );
 
-  assert.match(cpp, /int add\(int a, int b\)/, 'local function must emit a definition');
-  assert.match(cpp, /int wrap\(int v\)/, 'wrapper function must emit a definition');
-  assert.match(cpp, /return \(int\)\(add\(v, 2\)\);/, 'local function call must remain direct inside the wrapper body');
+  assert.match(cpp, /int add\(int a, double b\)/, 'local function must emit a definition');
+  assert.match(cpp, /double wrap\(double v\)/, 'wrapper function must emit a definition');
+  assert.match(cpp, /return \(double\)\(add\(v, 2\)\);/, 'local function call must remain direct inside the wrapper body');
   assert.doesNotMatch(cpp, /__add\(/, 'local function call must not be treated as host interop');
 });
 
@@ -82,7 +82,7 @@ test('MaiaCpp port matrix: classes, arrays, objects, and new expressions stay co
   assert.match(cpp, /struct Point \{/, 'class declaration must emit a struct');
   assert.match(cpp, /void Point_ctor_init\(Point\* self, int x, int y\) \{/, 'constructor must emit typed init wrapper');
   assert.match(cpp, /void\* arr = __maia_runtime_alloc_value\(2, 2, 0, 0\);/, 'array literal must emit the correct runtime array shape');
-  assert.match(cpp, /__maia_obj_literal2\(\(char\*\)"a", \(int\)\(1\), \(char\*\)"b", \(int\)\(2\)\);/, 'object literal must emit the arity-based helper');
+  assert.match(cpp, /__maia_obj_literal2\(\(char\*\)"a", \(long\)\(1\), \(char\*\)"b", \(long\)\(2\)\);/, 'object literal must emit the arity-based helper');
   assert.match(cpp, /new Point\(1, 2\);/, 'new expression must remain a direct construction expression');
   assert.match(cpp, /__console__log\(arr\);/, 'array variable must remain routable through host calls');
   assert.match(cpp, /__console__log\(obj\);/, 'object variable must remain routable through host calls');

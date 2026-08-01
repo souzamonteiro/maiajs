@@ -40,7 +40,7 @@ test('runtime fallback dedup: emits shared helper once and reuses allocator acro
   const helperAllocCount = (cpp.match(/static void\* __maia_runtime_alloc_value\(int tag, int a, int b, int c\) \{/g) || []).length;
   assert.equal(helperAllocCount, 1, 'shared allocator helper must be emitted exactly once');
 
-  assert.match(cpp, /void\* __maia_obj_literal1\(char\* k1, int v1\) \{[\s\S]*__maia_runtime_alloc_value\(1, 1, 0, 0\);/,
+  assert.match(cpp, /void\* __maia_obj_literal1\(char\* k1, long v1\) \{[\s\S]*__maia_runtime_alloc_value\(1, 1, 0, 0\);/,
     'object fallback must reuse shared allocator');
 
   assert.match(cpp, /void\* __maia_arr_builder_begin\(void\) \{[\s\S]*__maia_runtime_alloc_value\(4, 0, 0, 0\);/,

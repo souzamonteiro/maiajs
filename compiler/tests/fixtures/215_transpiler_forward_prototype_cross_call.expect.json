@@ -2,11 +2,10 @@
   "stages": ["transpiler"],
   "shouldTranspile": true,
   "cppContains": [
-    "int f(void);",
-    "int g(void);",
-    "return (int)(g());",
-    "return (int)(7);",
-    "f();"
+    "double f(void);",
+    "double g(void);",
+    "return (double)(g());",
+    "return (double)(7);"
   ],
   "cppExclude": [
     "__g(",

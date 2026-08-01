@@ -176,14 +176,15 @@ test('C++ lowering emits additive and multiplicative binary expressions', () => 
 test('C++ lowering emits relational and logical expressions in if conditions', () => {
   const cpp = runCompilerCpp('let a = 1;\nlet b = 2;\nif (a < b && b != 0) { console.log(a); }\n');
 
-  assert.match(cpp, /if \(a < b && b != 0\) \{/, 'C++ must lower relational/logical if condition');
+  assert.match(cpp, /double __maia_logical_tmp0 = \(double\)\(1 < 2\);/, 'C++ must materialize the short-circuit lhs for logical lowering');
+  assert.match(cpp, /if \(\(\(\(__maia_logical_tmp0 != 0\)\) \? 2 != 0 : __maia_logical_tmp0\)\) \{/, 'C++ must lower relational/logical if condition');
   assert.match(cpp, /__console__log\(a\);/, 'C++ must lower then-branch host call');
 });
 
 test('C++ lowering emits bitwise and shift expressions', () => {
   const cpp = runCompilerCpp('let a = 1;\nlet b = 2;\nlet y = 0;\ny = a << 1 | b;\nconsole.log(y);\n');
 
-  assert.match(cpp, /y = \(int\)\(\(int\)\(a\) << \(int\)\(1\)\) \| \(int\)\(b\);/, 'C++ must lower shift and bitwise expression chain');
+  assert.match(cpp, /y = \(int\)\(\(int\)\(1\) << \(int\)\(1\)\) \| \(int\)\(2\);/, 'C++ must lower shift and bitwise expression chain');
   assert.match(cpp, /__console__log\(y\);/, 'C++ must preserve host call after bitwise expression');
 });
 
@@ -207,7 +208,7 @@ test('C++ lowering emits return statement in main body', () => {
   const cpp = runCompilerCpp('let x = 7;\nreturn x;\n');
 
   assert.match(cpp, /double x = 7;/, 'C++ must lower declaration before return');
-  assert.match(cpp, /return \(int\)\(x\);/, 'C++ must lower return expression as int for main');
+  assert.match(cpp, /return \(int\)\(7\);/, 'C++ must lower return expression as int for main');
 });
 
 test('C++ lowering emits if/else blocks with host calls', () => {
@@ -223,8 +224,8 @@ test('C++ lowering emits if/else blocks with host calls', () => {
 test('C++ lowering emits top-level function and local call without host prefix', () => {
   const cpp = runCompilerCpp('function f(){ return 1; }\nf();\n');
 
-  assert.match(cpp, /int f\(void\) \{/, 'C++ must emit local function definition');
-  assert.match(cpp, /return \(int\)\(1\);/, 'C++ function body must lower return expression');
+  assert.match(cpp, /double f\(void\) \{/, 'C++ must emit local function definition');
+  assert.match(cpp, /return \(double\)\(1\);/, 'C++ function body must lower return expression');
   assert.match(cpp, /\n\s*f\(\);/, 'main must call local function directly');
   assert.doesNotMatch(cpp, /__f\(/, 'local function call must not be treated as host call');
 });
@@ -273,11 +274,11 @@ test('C++ lowering propagates double return type through local function calls', 
 test('C++ lowering emits forward prototype for cross-function call', () => {
   const cpp = runCompilerCpp('function f(){ return g(); }\nfunction g(){ return 1; }\n');
 
-  assert.match(cpp, /int g\(void\);/, 'C++ must emit prototype for later function declaration');
-  assert.match(cpp, /int f\(void\) \{\n\s*return \(int\)\(g\(\)\);\n\}/, 'C++ must lower local cross-function call in function body');
+  assert.match(cpp, /double g\(void\);/, 'C++ must emit prototype for later function declaration');
+  assert.match(cpp, /double f\(void\) \{\n\s*return \(double\)\(g\(\)\);\n\}/, 'C++ must lower local cross-function call in function body');
 
-  const protoPos = cpp.indexOf('int g(void);');
-  const defPos = cpp.indexOf('int f(void) {');
+  const protoPos = cpp.indexOf('double g(void);');
+  const defPos = cpp.indexOf('double f(void) {');
   assert.ok(protoPos >= 0, 'prototype should be present');
   assert.ok(defPos >= 0, 'function definition should be present');
   assert.ok(protoPos < defPos, 'prototype should appear before first function definition that uses it');
@@ -286,10 +287,10 @@ test('C++ lowering emits forward prototype for cross-function call', () => {
 test('C++ lowering emits function-body if without else and trailing return', () => {
   const cpp = runCompilerCpp('function f(){ if (x) { return 1; } return 2; }\n');
 
-  assert.match(cpp, /int f\(void\);/, 'C++ must emit function prototype');
+  assert.match(cpp, /double f\(void\);/, 'C++ must emit function prototype');
   assert.match(cpp, /if \(x\) \{/, 'C++ must lower function-body if condition');
-  assert.match(cpp, /return \(int\)\(1\);/, 'C++ must lower return inside if branch');
-  assert.match(cpp, /return \(int\)\(2\);/, 'C++ must preserve trailing function-body return');
+  assert.match(cpp, /return \(double\)\(1\);/, 'C++ must lower return inside if branch');
+  assert.match(cpp, /return \(double\)\(2\);/, 'C++ must preserve trailing function-body return');
 });
 
 test('C++ lowering emits additive expression in return', () => {
@@ -302,17 +303,18 @@ test('C++ lowering emits additive expression in return', () => {
 test('C++ lowering emits comparison expression in if condition within function', () => {
   const cpp = runCompilerCpp('function check(a, b){ if (a < b) { return 1; } return 0; }\n');
 
-  assert.match(cpp, /int check\(int a, int b\);/, 'C++ must emit function prototype with params');
+  assert.match(cpp, /double check\(int a, int b\);/, 'C++ must emit function prototype with params');
   assert.match(cpp, /if \(a < b\) \{/, 'C++ must lower relational expression as if condition');
-  assert.match(cpp, /return \(int\)\(1\);/, 'C++ must lower return inside branch');
-  assert.match(cpp, /return \(int\)\(0\);/, 'C++ must lower trailing return');
+  assert.match(cpp, /return \(double\)\(1\);/, 'C++ must lower return inside branch');
+  assert.match(cpp, /return \(double\)\(0\);/, 'C++ must lower trailing return');
 });
 
 test('C++ lowering emits logical AND expression in return', () => {
   const cpp = runCompilerCpp('function both(a, b){ return a && b; }\n');
 
   assert.match(cpp, /int both\(int a, int b\);/, 'C++ must emit function prototype with params');
-  assert.match(cpp, /return \(int\)\(a && b\);/, 'C++ must lower logical AND expression in return');
+  assert.match(cpp, /__maia_logical_tmp/, 'C++ must materialize temporaries for short-circuit logical return');
+  assert.match(cpp, /return \(int\)\(\(\(\(__maia_logical_tmp1 != 0\)\) \? b : __maia_logical_tmp1\)\);/, 'C++ must lower logical AND expression in return');
 });
 
 test('C++ lowering infers return type from inside while body', () => {

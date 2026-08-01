@@ -837,9 +837,20 @@ function collectNewExpressionTargetNames(tree) {
 
 function collectTopLevelConstructorFunctionExpressionBindings(tree) {
   const newTargets = collectNewExpressionTargetNames(tree);
+  const prototypeOwners = new Set(
+    collectTopLevelAssignedFunctionExpressionBindings(tree)
+      .map(({ lhs }) => {
+        const match = String(lhs || '').match(/^([A-Za-z_][A-Za-z0-9_]*)\.prototype\./);
+        return match ? match[1] : null;
+      })
+      .filter(Boolean)
+  );
 
   return collectTopLevelFunctionExpressionBindings(tree)
-    .filter(({ bindingName, functionExpressionNode }) => newTargets.has(bindingName) && nodeContainsThisReference(functionExpressionNode));
+    .filter(({ bindingName, functionExpressionNode }) => (
+      nodeContainsThisReference(functionExpressionNode)
+      && (newTargets.has(bindingName) || prototypeOwners.has(bindingName))
+    ));
 }
 
 function rewriteConstructorThisReferences(line) {
@@ -1780,6 +1791,19 @@ function extractComputedMemberAccessInfo(memberExpressionNode) {
 
 function resolveStaticModelFromExpression(expressionNode, targetNode, compileContext, seenBindings = new Set()) {
   if (!expressionNode || expressionNode.kind !== 'nonterminal') {
+    return null;
+  }
+
+  let containsUpdateOperator = false;
+  walk(expressionNode, (candidate) => {
+    if (containsUpdateOperator || !candidate || candidate.kind !== 'terminal') {
+      return;
+    }
+    if (candidate.token === 'TOKEN__2B__2B_' || candidate.token === 'TOKEN__2D__2D_') {
+      containsUpdateOperator = true;
+    }
+  });
+  if (containsUpdateOperator) {
     return null;
   }
 
@@ -4787,7 +4811,7 @@ function lowerArgumentsNode(argumentsNode, compileContext) {
 function unwrapExpressionNode(node) {
   let current = node;
   while (current && current.kind === 'nonterminal') {
-    if (current.name === 'literal' || current.name === 'additiveExpression') {
+    if (current.name === 'literal' || current.name === 'additiveExpression' || current.name === 'identifier') {
       return current;
     }
     if (current.name === 'primaryExpression') {
@@ -4807,6 +4831,23 @@ function unwrapExpressionNode(node) {
     current = nonterminalChildren[0];
   }
   return current;
+}
+
+function unwrapDirectIdentifierExpression(node) {
+  let current = node;
+  while (current && current.kind === 'nonterminal') {
+    if (current.name === 'identifier') {
+      return current;
+    }
+    const nonterminalChildren = (current.children || []).filter(
+      (child) => child && child.kind === 'nonterminal'
+    );
+    if (nonterminalChildren.length !== 1) {
+      return null;
+    }
+    current = nonterminalChildren[0];
+  }
+  return null;
 }
 
 function extractDirectCallExpressionNode(node) {
@@ -5204,6 +5245,14 @@ function lowerRequiredExpressionValue(expressionNode, compileContext, code, deta
 }
 
 function lowerConsoleLogArgumentExpression(expressionNode, compileContext) {
+  const directIdentifierNode = unwrapDirectIdentifierExpression(expressionNode);
+  if (directIdentifierNode) {
+    const identifierValue = findFirstIdentifierValue(directIdentifierNode);
+    if (identifierValue && identifierValue !== 'arguments') {
+      return identifierValue;
+    }
+  }
+
   const preludeCountBefore = compileContext && Array.isArray(compileContext._preludeStatements)
     ? compileContext._preludeStatements.length
     : 0;
@@ -9111,9 +9160,6 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
     const topLevelArrowFunction = isTopLevelStatement
       ? extractDirectArrowFunctionInitializer(initializerExpr)
       : null;
-    if (topLevelArrowFunction && collectLambdaCaptureNames(topLevelArrowFunction, compileContext).length === 0) {
-      continue;
-    }
 
     const newClassInfo = extractDirectNewClassInfo(initializerExpr, compileContext);
     if (newClassInfo) {
@@ -9154,8 +9200,7 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
     const initValue = loweredInit !== null ? loweredInit : defaultCppValue(inferredFromLoweredInit);
 
     const canEmitConstQualifier = inferredFromLoweredInit !== 'const char*'
-      && inferredFromLoweredInit !== 'void*'
-      && !/\*$/.test(inferredFromLoweredInit);
+      && !/\*$/.test(inferredFromLoweredInit.replace(/^void\*$/, ''));
     const constQualifier = isConst && canEmitConstQualifier ? 'const ' : '';
     lowered.push(`${indent}${constQualifier}${inferredFromLoweredInit} ${variableName} = ${initValue};`);
   }
@@ -11260,7 +11305,7 @@ function emitConsoleConcatHelpersCpp(tree, compileContext) {
     + `  return 0;\n`
     + `}\n`;
 
-  return pruneUnusedGeneratedFunctionsCpp(generatedCpp);
+  return generatedCpp;
 }
 
 function main() {

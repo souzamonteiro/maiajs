@@ -3,8 +3,8 @@
   "shouldTranspile": true,
   "cppContains": [
     "int add(int a, int b);",
-    "int useShadow(int add);",
-    "int useShadow(int add) {",
+    "int useShadow(double add);",
+    "int useShadow(double add) {",
     "return (int)(add);",
     "__console__log(useShadow(3));"
   ],

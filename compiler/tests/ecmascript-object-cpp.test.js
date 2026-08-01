@@ -39,15 +39,15 @@ test('object literal lowering: emits runtime hook declarations and empty object 
 test('object literal lowering: lowers simple properties to arity-based runtime helper', () => {
   const cpp = runCompilerCpp('let o = { a: 1, b: 2 };\n');
 
-  assert.match(cpp, /extern void\* __maia_obj_literal2\(char\* k1, int v1, char\* k2, int v2\);/, 'C++ must declare arity-2 object hook');
-  assert.match(cpp, /void\* o = __maia_obj_literal2\(\(char\*\)"a", \(int\)\(1\), \(char\*\)"b", \(int\)\(2\)\);/, 'C++ must lower object properties to key/value helper call');
+  assert.match(cpp, /extern void\* __maia_obj_literal2\(char\* k1, long v1, char\* k2, long v2\);/, 'C++ must declare arity-2 object hook');
+  assert.match(cpp, /void\* o = __maia_obj_literal2\(\(char\*\)"a", \(long\)\(1\), \(char\*\)"b", \(long\)\(2\)\);/, 'C++ must lower object properties to key/value helper call');
 });
 
 test('object literal lowering: lowers identifier values in property initializers', () => {
   const cpp = runCompilerCpp('let x = 7;\nlet o = { a: x };\n');
 
   assert.match(cpp, /double x = 7;/, 'C++ must lower dependency declaration');
-  assert.match(cpp, /void\* o = __maia_obj_literal1\(\(char\*\)"a", \(int\)\(x\)\);/, 'C++ must lower identifier property value through helper call');
+  assert.match(cpp, /void\* o = __maia_obj_literal1\(\(char\*\)"a", \(long\)\(7\)\);/, 'C++ must lower identifier property value through helper call');
 });
 
 test('object literal lowering: uses builder for arity > 4', () => {

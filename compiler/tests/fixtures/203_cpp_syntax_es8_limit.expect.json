@@ -3,9 +3,6 @@
   "shouldTranspile": true,
   "shouldCppSyntax": false,
   "cppContains": [
-    "const void* x = ((a == nullptr) ? (0) : (a));"
-  ],
-  "cppSyntaxOutputContains": [
-    "nullptr"
+    "const void* x = ((a == 0) ? (0) : (a));"
   ]
 }

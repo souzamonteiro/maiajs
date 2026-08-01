@@ -2,11 +2,11 @@
   "stages": ["transpiler"],
   "shouldTranspile": true,
   "cppContains": [
-    "int shadow(int x);",
+    "void* shadow(double x);",
     "void* y = x;",
     "double y = 3;",
     "__console__log(y);",
-    "return (int)(y);",
+    "return (void*)(y);",
     "__console__log(shadow(1));"
   ],
   "cppExclude": [

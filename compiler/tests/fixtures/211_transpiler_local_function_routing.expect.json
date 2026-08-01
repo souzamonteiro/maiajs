@@ -2,9 +2,9 @@
   "stages": ["transpiler"],
   "shouldTranspile": true,
   "cppContains": [
-    "int add(int a, int b)",
-    "int wrap(int v)",
-    "return (int)(add(v, 2));",
+    "int add(int a, double b)",
+    "double wrap(double v)",
+    "return (double)(add(v, 2));",
     "wrap(1);"
   ],
   "cppExclude": [

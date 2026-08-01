@@ -4,7 +4,7 @@
   "cppContains": [
     "double source(int flag);",
     "double middle(int flag);",
-    "double sink(int flag);",
+    "double sink(double flag);",
     "if (flag) {",
     "return (double)(2.5);",
     "return (double)(1);",

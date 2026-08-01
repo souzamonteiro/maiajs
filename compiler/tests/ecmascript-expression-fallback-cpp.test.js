@@ -33,8 +33,9 @@ test('expression fallback: function-expression assignment no longer emits expres
     + 'Animal.prototype.speak = function() { return this.name; };\n'
   );
 
-  assert.match(cpp, /int __maia_fn_Animal_prototype_speak\(void\)/, 'function-expression assignment should emit a synthesized callable helper');
-  assert.match(cpp, /Animal\.prototype\.speak = __maia_fn_Animal_prototype_speak;/, 'property assignment should point to the synthesized helper instead of nullptr');
+  assert.match(cpp, /const char\* __maia_fn_Animal_prototype_speak\(void\* self\)/, 'function-expression assignment should emit a synthesized callable helper');
+  assert.match(cpp, /void\* __new__Animal\(int name\)/, 'this-aware function-expression binding should lower as constructor helper');
+  assert.doesNotMatch(cpp, /int Animal\(int name\)/, 'constructor-style function-expression binding must not emit invalid legacy free function');
   assert.doesNotMatch(cpp, /\[expression not yet lowered\]/, 'C++ output must not contain expression placeholder markers');
 });
 
@@ -68,10 +69,10 @@ test('top-level function-expression bindings lower to callable local functions',
     + 'console.log(trailingCommas("a", "b", "c"));\n'
   );
 
-  assert.match(cpp, /const char\* expressionFunc\(int param\)/, 'function-expression binding should emit a callable definition');
-  assert.match(cpp, /int trailingCommas\(int a, int b, int c\)/, 'top-level helper binding should emit a callable definition');
-  assert.match(cpp, /void\* __new__Animal\(int name, int species\)/, 'constructor-style binding used by new should emit a constructor helper definition');
-  assert.match(cpp, /const void\* __maia_this = __maia_obj_literal0\(\);\n  __Reflect\(__maia_this, "name", name\);\n  __Reflect\(__maia_this, "species", species\);/, 'constructor helper should seed and populate a pseudo-object instance');
+  assert.match(cpp, /const char\* expressionFunc\(const char\* param\)/, 'function-expression binding should emit a callable definition');
+  assert.match(cpp, /int trailingCommas\(const char\* a, const char\* b, const char\* c\)/, 'top-level helper binding should emit a callable definition');
+  assert.match(cpp, /void\* __new__Animal\(const char\* name, const char\* species\)/, 'constructor-style binding used by new should emit a constructor helper definition');
+  assert.match(cpp, /void\* __maia_this = __maia_obj_literal0\(\);\n  __Reflect\(__maia_this, "name", name\);\n  __Reflect\(__maia_this, "species", species\);/, 'constructor helper should seed and populate a pseudo-object instance');
   assert.match(cpp, /__console__log\(expressionFunc\("World"\)\);/, 'call site should route to the local function symbol');
   assert.match(cpp, /const void\* genericAnimal = __new__Animal\("Generic", "Unknown"\);/, 'new-expression should keep constructor helper lowering');
   assert.doesNotMatch(cpp, /const void\* expressionFunc = nullptr;/, 'top-level function-expression binding must not degrade to nullptr');
@@ -87,10 +88,10 @@ test('inline function expressions in object literals and call arguments lower to
     + 'rangeValues.forEach(function(num) { console.log(num); });\n'
   );
 
-  assert.match(cpp, /const char\* __maia_fn_person_greet\(void\)/, 'object literal method value should emit a synthesized helper');
-  assert.match(cpp, /const void\* person = __maia_obj_literal1\(\(char\*\)"greet", \(int\)\(__maia_fn_person_greet\)\);/, 'object literal should reference the synthesized helper instead of nullptr');
-  assert.match(cpp, /int __maia_fn_arg_rangeValues_forEach_0\(int num\)/, 'inline callback argument should emit a synthesized helper');
-  assert.match(cpp, /__rangeValues__forEach\(__maia_fn_arg_rangeValues_forEach_0\);/, 'call argument should reference the synthesized helper instead of nullptr');
+  assert.match(cpp, /const char\* __maia_fn_person_greet\(void\* self\)/, 'object literal method value should emit a synthesized helper');
+  assert.match(cpp, /const void\* person = __maia_obj_literal1\(\(char\*\)"greet", \(long\)\(__maia_fn_person_greet\)\);/, 'object literal should reference the synthesized helper instead of nullptr');
+  assert.match(cpp, /int __maia_fn_arg_rangeValues_forEach_0\(double num\)/, 'inline callback argument should emit a synthesized helper');
+  assert.match(cpp, /__maia_fn_arg_rangeValues_forEach_0\(1\);/, 'statically lowered forEach should invoke the synthesized helper');
   assert.doesNotMatch(cpp, /"greet", \(int\)\(nullptr\)/, 'object literal function value must not degrade to nullptr');
   assert.doesNotMatch(cpp, /__rangeValues__forEach\(nullptr\)/, 'inline callback must not degrade to nullptr');
 });
@@ -102,7 +103,7 @@ test('JS-runtime method calls on lowered non-path bases (array literal) are safe
     + '});\n'
   );
 
-  assert.match(cpp, /int __maia_fn_arg_call_0\(int v, int i, int arr\)/, 'array-literal callback should still emit a synthesized helper');
+  assert.match(cpp, /double __maia_fn_arg_call_0\(double v, double i, void\* arr\)/, 'array-literal callback should still emit a synthesized helper');
   assert.match(cpp, /const void\* setLike = __maia_runtime_alloc_value\(2, 4, 0, 0\);/, 'pure literal .filter() may resolve statically to a runtime array shape');
   assert.doesNotMatch(cpp, /\.filter\(/, 'JS-only .filter() on literal must not appear in C++ output');
 });
@@ -114,7 +115,7 @@ test('arguments identifier lowers to safe fallback instead of raw JS token', () 
     + '}\n'
   );
 
-  assert.match(cpp, /return \(int\)\(nullptr\);/, 'arguments identifier should lower to a safe fallback value');
+  assert.match(cpp, /return \(int\)\(0\);/, 'arguments identifier should lower to a safe fallback value');
   assert.doesNotMatch(cpp, /\barguments\b/, 'raw JS arguments token must not leak into C++ output');
 });
 
