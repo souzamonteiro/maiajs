@@ -30,8 +30,8 @@ function runCompilerCpp(sourceCode) {
 test('C++ lowering maps strict equality operators to C++-compatible forms', () => {
   const cpp = runCompilerCpp('let a = 1;\nlet eq = a === undefined;\nlet ne = a !== undefined;\n');
 
-  assert.match(cpp, /double eq = 1 == 0;/, 'C++ must map strict equality to == and lower undefined to a zero-value comparison');
-  assert.match(cpp, /double ne = 1 != 0;/, 'C++ must map strict inequality to != and lower undefined to a zero-value comparison');
+  assert.match(cpp, /double eq = a == 0;/, 'C++ must map strict equality to == and lower undefined to a zero-value comparison');
+  assert.match(cpp, /double ne = a != 0;/, 'C++ must map strict inequality to != and lower undefined to a zero-value comparison');
   assert.doesNotMatch(cpp, /===|!==/, 'C++ must not contain JS strict operators');
   assert.doesNotMatch(cpp, /\bundefined\b/, 'C++ must not contain raw undefined identifier');
 });

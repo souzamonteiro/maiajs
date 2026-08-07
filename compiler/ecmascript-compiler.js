@@ -1654,6 +1654,7 @@ function collectVisibleVariableBindingsAtNode(targetNode, compileContext) {
         && (child.name === 'variableStatement' || child.name === 'letDeclaration' || child.name === 'constDeclaration')
     );
     if (declarationNode) {
+      const declarationIsConst = declarationNode.name === 'constDeclaration';
       const variableDeclarationList = (declarationNode.children || []).find(
         (child) => child && child.kind === 'nonterminal' && child.name === 'variableDeclarationList'
       );
@@ -1664,7 +1665,7 @@ function collectVisibleVariableBindingsAtNode(targetNode, compileContext) {
           continue;
         }
         bindings.set(bindingName, {
-          kind: 'initializer',
+          kind: declarationIsConst ? 'initializer' : 'mutable-binding',
           expressionNode: extractVariableDeclarationInitializer(declaration)
         });
       }
@@ -1706,10 +1707,7 @@ function collectVisibleVariableBindingsAtNode(targetNode, compileContext) {
     if (!lhsIdentifier || lhsIdentifier.includes('.')) {
       return;
     }
-    bindings.set(lhsIdentifier, {
-      kind: 'initializer',
-      expressionNode: assignmentChildren[2]
-    });
+    bindings.set(lhsIdentifier, { kind: 'mutated' });
   }
 
   for (const scopeContainer of scopeContainers) {
@@ -1880,7 +1878,7 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
     if (bindingInfo.kind === 'catch-param') {
       return finish({ kind: 'catch-param', name: identifierName });
     }
-    if (bindingInfo.kind === 'mutated') {
+    if (bindingInfo.kind === 'mutated' || bindingInfo.kind === 'mutable-binding' || bindingInfo.kind === 'parameter') {
       return finish(null);
     }
     if (!bindingInfo.expressionNode) {
@@ -10398,6 +10396,7 @@ function emitTopLevelFunctionDefinitions(tree, compileContext) {
     const statementNodes = collectFunctionBodyStatementNodes(functionDeclaration);
     const bodyLines = [];
     for (const statementNode of statementNodes) {
+      resetStatementLoweringState(compileContext);
       bodyLines.push(...lowerStatementNode(statementNode, compileContext, 1, { returnTypeCpp }));
     }
     if (!bodyLines.some((line) => /^\s*return\b/.test(line))) {
@@ -10419,6 +10418,7 @@ function emitTopLevelFunctionDefinitions(tree, compileContext) {
     const statementNodes = collectFunctionBodyStatementNodes(functionExpressionNode);
     const bodyLines = [];
     for (const statementNode of statementNodes) {
+      resetStatementLoweringState(compileContext);
       bodyLines.push(...lowerStatementNode(statementNode, compileContext, 1, { returnTypeCpp }));
     }
     if (!bodyLines.some((line) => /^\s*return\b/.test(line))) {

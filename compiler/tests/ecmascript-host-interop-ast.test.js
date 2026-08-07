@@ -173,18 +173,36 @@ test('C++ lowering emits additive and multiplicative binary expressions', () => 
   assert.match(cpp, /__console__log\(x\);/, 'C++ must preserve host call after arithmetic expression');
 });
 
+test('C++ lowering preserves mutable identifiers inside for-loop arithmetic and conditions', () => {
+  const cpp = runCompilerCpp(
+    'let sum = 0;\n'
+    + 'let i = 0;\n'
+    + 'for (i = 0; i < 4; i = i + 1) {\n'
+    + '  sum = sum + i;\n'
+    + '}\n'
+    + 'return sum === 6 ? 1 : 0;\n'
+  );
+
+  assert.match(cpp, /for \(; i < 4; i = i \+ 1\) \{/, 'for header must preserve mutable identifier references');
+  assert.match(cpp, /sum = sum \+ i;/, 'loop body must preserve mutable arithmetic operands');
+  assert.match(cpp, /return \(int\)\(\(\(sum == 6\) \? \(1\) : \(0\)\)\);/, 'return condition must preserve mutable identifier in comparison');
+  assert.doesNotMatch(cpp, /for \(; 0 < 4; i = 0 \+ 1\)/, 'for header must not collapse mutable bindings into stale literals');
+  assert.doesNotMatch(cpp, /sum = 0 \+ i;/, 'mutable accumulator must not collapse to initializer literal');
+  assert.doesNotMatch(cpp, /return \(int\)\(\(\(0 == 6\) \? \(1\) : \(0\)\)\);/, 'mutable comparison must not collapse to initializer literal');
+});
+
 test('C++ lowering emits relational and logical expressions in if conditions', () => {
   const cpp = runCompilerCpp('let a = 1;\nlet b = 2;\nif (a < b && b != 0) { console.log(a); }\n');
 
-  assert.match(cpp, /double __maia_logical_tmp0 = \(double\)\(1 < 2\);/, 'C++ must materialize the short-circuit lhs for logical lowering');
-  assert.match(cpp, /if \(\(\(\(__maia_logical_tmp0 != 0\)\) \? 2 != 0 : __maia_logical_tmp0\)\) \{/, 'C++ must lower relational/logical if condition');
+  assert.match(cpp, /double __maia_logical_tmp0 = \(double\)\(a < b\);/, 'C++ must materialize the short-circuit lhs for logical lowering');
+  assert.match(cpp, /if \(\(\(\(__maia_logical_tmp0 != 0\)\) \? b != 0 : __maia_logical_tmp0\)\) \{/, 'C++ must lower relational/logical if condition');
   assert.match(cpp, /__console__log\(a\);/, 'C++ must lower then-branch host call');
 });
 
 test('C++ lowering emits bitwise and shift expressions', () => {
   const cpp = runCompilerCpp('let a = 1;\nlet b = 2;\nlet y = 0;\ny = a << 1 | b;\nconsole.log(y);\n');
 
-  assert.match(cpp, /y = \(int\)\(\(int\)\(1\) << \(int\)\(1\)\) \| \(int\)\(2\);/, 'C++ must lower shift and bitwise expression chain');
+  assert.match(cpp, /y = \(int\)\(\(int\)\(a\) << \(int\)\(1\)\) \| \(int\)\(b\);/, 'C++ must lower shift and bitwise expression chain');
   assert.match(cpp, /__console__log\(y\);/, 'C++ must preserve host call after bitwise expression');
 });
 
@@ -208,7 +226,7 @@ test('C++ lowering emits return statement in main body', () => {
   const cpp = runCompilerCpp('let x = 7;\nreturn x;\n');
 
   assert.match(cpp, /double x = 7;/, 'C++ must lower declaration before return');
-  assert.match(cpp, /return \(int\)\(7\);/, 'C++ must lower return expression as int for main');
+  assert.match(cpp, /return \(int\)\(x\);/, 'C++ must lower return expression as int for main');
 });
 
 test('C++ lowering emits if/else blocks with host calls', () => {
@@ -315,6 +333,16 @@ test('C++ lowering emits logical AND expression in return', () => {
   assert.match(cpp, /int both\(int a, int b\);/, 'C++ must emit function prototype with params');
   assert.match(cpp, /__maia_logical_tmp/, 'C++ must materialize temporaries for short-circuit logical return');
   assert.match(cpp, /return \(int\)\(\(\(\(__maia_logical_tmp1 != 0\)\) \? b : __maia_logical_tmp1\)\);/, 'C++ must lower logical AND expression in return');
+});
+
+test('C++ lowering does not leak logical prelude statements across function bodies', () => {
+  const cpp = runCompilerCpp(
+    'function add(a, b){ return a + b; }\n'
+    + 'function check(s, m){ return s === 10 && m === 21; }\n'
+  );
+
+  assert.match(cpp, /int add\(int a, int b\) \{\n  return \(int\)\(a \+ b\);\n\}/, 'first function body must remain free of leaked logical temporaries');
+  assert.match(cpp, /double __maia_logical_tmp\d+ = \(double\)\(s == 10\);/, 'logical temporary must still exist in the function that actually needs it');
 });
 
 test('C++ lowering infers return type from inside while body', () => {

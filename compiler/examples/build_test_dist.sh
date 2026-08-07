@@ -11,12 +11,12 @@ PROJECTS_ROOT="$(cd "$ROOT_DIR/.." && pwd -P)"
 resolve_webcpp() {
 	local local_path="$1"
 	local sibling_path="$2"
-	if [[ -f "$sibling_path" ]]; then
-		echo "$sibling_path"
-		return 0
-	fi
 	if [[ -f "$local_path" ]]; then
 		echo "$local_path"
+		return 0
+	fi
+	if [[ -f "$sibling_path" ]]; then
+		echo "$sibling_path"
 		return 0
 	fi
 	return 1

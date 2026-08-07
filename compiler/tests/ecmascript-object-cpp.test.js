@@ -47,7 +47,7 @@ test('object literal lowering: lowers identifier values in property initializers
   const cpp = runCompilerCpp('let x = 7;\nlet o = { a: x };\n');
 
   assert.match(cpp, /double x = 7;/, 'C++ must lower dependency declaration');
-  assert.match(cpp, /void\* o = __maia_obj_literal1\(\(char\*\)"a", \(long\)\(7\)\);/, 'C++ must lower identifier property value through helper call');
+  assert.match(cpp, /void\* o = __maia_obj_literal1\(\(char\*\)"a", \(long\)\(x\)\);/, 'C++ must lower identifier property value through helper call');
 });
 
 test('object literal lowering: uses builder for arity > 4', () => {

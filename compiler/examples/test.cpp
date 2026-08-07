@@ -112,7 +112,7 @@ int P_meth_getValue(P* self) {
 
 int add(int a, int b);
 int multiply(int a, int b);
-int execute(double a, double b, int (*fn)(int, int));
+double execute(double a, double b, int (*fn)(int, int));
 double run_class_tests(void);
 double run_template_tests(void);
 double run_function_pointer_tests(void);
@@ -131,8 +131,8 @@ int multiply(int a, int b) {
   return (int)(a * b);
 }
 
-int execute(double a, double b, int (*fn)(int, int)) {
-  return (int)(fn(a, b));
+double execute(double a, double b, int (*fn)(int, int)) {
+  return (double)(fn(a, b));
 }
 
 double run_class_tests(void) {
@@ -152,7 +152,8 @@ double run_template_tests(void) {
 double run_function_pointer_tests(void) {
   const double s = execute(7, 3, add);
   const double m = execute(7, 3, multiply);
-  return (double)(((s == 10 && m == 21) ? (1) : (0)));
+  double __maia_logical_tmp1 = (double)(s == 10);
+  return (double)((((((__maia_logical_tmp1 != 0)) ? m == 21 : __maia_logical_tmp1)) ? (1) : (0)));
 }
 
 double run_cast_tests(void) {
@@ -214,15 +215,18 @@ double run_for_cout_test(void) {
     double i = 1;
     for (; i < 4; i = i + 1) {
       sum = sum + i;
-      if (i == 1 && sum == 1) {
+      double __maia_logical_tmp2 = (double)(i == 1);
+      if ((((__maia_logical_tmp2 != 0)) ? sum == 1 : __maia_logical_tmp2)) {
         __console__log("[for-cout] i=1 sum=1 ratio=1.5");
         continue;
       }
-      if (i == 2 && sum == 3) {
+      double __maia_logical_tmp3 = (double)(i == 2);
+      if ((((__maia_logical_tmp3 != 0)) ? sum == 3 : __maia_logical_tmp3)) {
         __console__log("[for-cout] i=2 sum=3 ratio=1.5");
         continue;
       }
-      if (i == 3 && sum == 6) {
+      double __maia_logical_tmp4 = (double)(i == 3);
+      if ((((__maia_logical_tmp4 != 0)) ? sum == 6 : __maia_logical_tmp4)) {
         __console__log("[for-cout] i=3 sum=6 ratio=1.5");
         continue;
       }
@@ -241,12 +245,12 @@ double run_main_baseline_sections(void) {
   double down = 5;
   double up = 0;
   __console__log("--- Arithmetic Operators ---");
-  result = a + b;
+  result = a + 20;
   if (result != 30) {
     return (double)(0);
   }
   __console__log("add result=30");
-  result = b - a;
+  result = 20 - a;
   if (result != 10) {
     return (double)(0);
   }
@@ -256,12 +260,12 @@ double run_main_baseline_sections(void) {
     return (double)(0);
   }
   __console__log("a*3=30");
-  result = b / 2;
+  result = ((double)(20) / (double)(2));
   if (result != 10) {
     return (double)(0);
   }
   __console__log("b/2=10");
-  result = (int)(b) % (int)(3);
+  result = (int)(20) % (int)(3);
   if (result != 2) {
     return (double)(0);
   }
@@ -272,7 +276,7 @@ double run_main_baseline_sections(void) {
     return (double)(0);
   }
   __console__log("result=10");
-  result = result + b;
+  result = result + 20;
   if (result != 30) {
     return (double)(0);
   }
@@ -298,22 +302,22 @@ double run_main_baseline_sections(void) {
   }
   __console__log("result%=4 => 0");
   __console__log("--- Relational Operators ---");
-  if (((a == b) ? (1) : (0))) {
+  if (((a == 20) ? (1) : (0))) {
     return (double)(0);
   }
-  if (((a != b) ? (1) : (0)) != 1) {
+  if (((a != 20) ? (1) : (0)) != 1) {
     return (double)(0);
   }
-  if (((a < b) ? (1) : (0)) != 1) {
+  if (((a < 20) ? (1) : (0)) != 1) {
     return (double)(0);
   }
-  if (((a > b) ? (1) : (0))) {
+  if (((a > 20) ? (1) : (0))) {
     return (double)(0);
   }
-  if (((a <= b) ? (1) : (0)) != 1) {
+  if (((a <= 20) ? (1) : (0)) != 1) {
     return (double)(0);
   }
-  if (((a >= b) ? (1) : (0))) {
+  if (((a >= 20) ? (1) : (0))) {
     return (double)(0);
   }
   __console__log("a==b => 0");
@@ -323,20 +327,22 @@ double run_main_baseline_sections(void) {
   __console__log("a<=b => 1");
   __console__log("a>=b => 0");
   __console__log("--- Logical Operators ---");
-  if (((a && b) ? (1) : (0)) != 1) {
+  void* __maia_logical_tmp5 = (void*)(a);
+  if ((((((__maia_logical_tmp5 != 0)) ? 20 : __maia_logical_tmp5)) ? (1) : (0)) != 1) {
     return (double)(0);
   }
-  if (((a || 0) ? (1) : (0)) != 1) {
+  void* __maia_logical_tmp6 = (void*)(a);
+  if ((((((__maia_logical_tmp6 != 0)) ? __maia_logical_tmp6 : 0)) ? (1) : (0)) != 1) {
     return (double)(0);
   }
   __console__log("a&&b => 1");
   __console__log("a||0 => 1");
   __console__log("--- Bitwise Operators ---");
-  const int bitAnd = (int)(a) & (int)(b);
-  const int bitOr = (int)(a) | (int)(b);
-  const int bitXor = (int)(a) ^ (int)(b);
+  const int bitAnd = (int)(a) & (int)(20);
+  const int bitOr = (int)(a) | (int)(20);
+  const int bitXor = (int)(a) ^ (int)(20);
   const int shiftLeft = (int)(a) << (int)(2);
-  const int shiftRight = (int)(b) >> (int)(1);
+  const int shiftRight = (int)(20) >> (int)(1);
   if (bitAnd != 0) {
     return (double)(0);
   }
@@ -366,31 +372,38 @@ double run_main_baseline_sections(void) {
       continue;
     }
     loop_sum = loop_sum + i;
-    if (i == 0 && loop_sum == 0) {
+    double __maia_logical_tmp7 = (double)(i == 0);
+    if ((((__maia_logical_tmp7 != 0)) ? loop_sum == 0 : __maia_logical_tmp7)) {
       __console__log("[for] i=0 loop_sum=0");
       continue;
     }
-    if (i == 1 && loop_sum == 1) {
+    double __maia_logical_tmp8 = (double)(i == 1);
+    if ((((__maia_logical_tmp8 != 0)) ? loop_sum == 1 : __maia_logical_tmp8)) {
       __console__log("[for] i=1 loop_sum=1");
       continue;
     }
-    if (i == 2 && loop_sum == 3) {
+    double __maia_logical_tmp9 = (double)(i == 2);
+    if ((((__maia_logical_tmp9 != 0)) ? loop_sum == 3 : __maia_logical_tmp9)) {
       __console__log("[for] i=2 loop_sum=3");
       continue;
     }
-    if (i == 3 && loop_sum == 6) {
+    double __maia_logical_tmp10 = (double)(i == 3);
+    if ((((__maia_logical_tmp10 != 0)) ? loop_sum == 6 : __maia_logical_tmp10)) {
       __console__log("[for] i=3 loop_sum=6");
       continue;
     }
-    if (i == 4 && loop_sum == 10) {
+    double __maia_logical_tmp11 = (double)(i == 4);
+    if ((((__maia_logical_tmp11 != 0)) ? loop_sum == 10 : __maia_logical_tmp11)) {
       __console__log("[for] i=4 loop_sum=10");
       continue;
     }
-    if (i == 6 && loop_sum == 16) {
+    double __maia_logical_tmp12 = (double)(i == 6);
+    if ((((__maia_logical_tmp12 != 0)) ? loop_sum == 16 : __maia_logical_tmp12)) {
       __console__log("[for] i=6 loop_sum=16");
       continue;
     }
-    if (i == 7 && loop_sum == 23) {
+    double __maia_logical_tmp13 = (double)(i == 7);
+    if ((((__maia_logical_tmp13 != 0)) ? loop_sum == 23 : __maia_logical_tmp13)) {
       __console__log("[for] i=7 loop_sum=23");
       continue;
     }
