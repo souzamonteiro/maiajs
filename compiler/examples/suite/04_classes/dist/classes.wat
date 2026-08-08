@@ -7,9 +7,11 @@
   (import "env" "__exc_pop" (func $imp___exc_pop))
   (import "env" "__exc_active" (func $imp___exc_active (result i32)))
   (import "env" "__exc_type" (func $imp___exc_type (result i32)))
+  (import "env" "__exc_data" (func $imp___exc_data (result i32)))
   (import "env" "__exc_throw" (func $imp___exc_throw (param i32 i32)))
   (import "env" "__exc_clear" (func $imp___exc_clear))
   (import "env" "__exc_matches" (func $imp___exc_matches (param i32 i32) (result i32)))
+  (import "env" "__malloc" (func $imp___malloc (param i32) (result i32)))
   (import "env" "__free" (func $imp___free (param i32)))
   (import "env" "printf" (func $imp_printf (param f64 f64 f64 f64 f64 f64 f64 f64) (result i32)))
 
@@ -31,7 +33,7 @@
   (data (i32.const 100) "PASS length_sq\0a\00")
   (data (i32.const 116) "ALL PASS\0a\00")
 
-  (elem (table $fn_table) (i32.const 0) func $Vec2_init__dd $Vec2_init__pv $Vec2_destroy $Vec2_operator_assign__N9constVec2 $Vec2_dot__pv $Vec2_lengthSq $main)
+  (elem (table $fn_table) (i32.const 0) func $Vec2_init__dd $Vec2_init__pv $Vec2_destroy $Vec2_operator_assign__pv $Vec2_dot__pv $Vec2_lengthSq $main)
 
   ;; function Vec2_init__dd
   (func $Vec2_init__dd (param $self i32) (param $x_ f64) (param $y_ f64)
@@ -211,9 +213,10 @@
     drop
   )
 
-  ;; function Vec2_operator_assign__N9constVec2
-  (func $Vec2_operator_assign__N9constVec2 (param $self i32) (param $o i32) (result i32)
+  ;; function Vec2_operator_assign__pv
+  (func $Vec2_operator_assign__pv (param $self i32) (param $o i32) (result i32)
     (local $__frame i32)
+    (local $__tmp_f64 f64)
     (local $__parent_frame i32)
     global.get $__frame_ptr
     local.set $__parent_frame
@@ -222,7 +225,7 @@
     local.get $__frame
     global.set $__frame_ptr
     global.get $__stack_ptr
-    i32.const 24
+    i32.const 32
     i32.add
     global.set $__stack_ptr
     local.get $__frame
@@ -241,16 +244,55 @@
     i32.load
     drop
     local.get $__frame
+    i32.const 0
+    i32.add
+    i32.load
+    i32.const 0
+    i32.add
+    local.get $__frame
     i32.const 16
     i32.add
     i32.load
-    drop
     i32.const 0
+    i32.add
+    f64.load
+    local.set $__tmp_f64
+    local.get $__tmp_f64
+    f64.store
+    local.get $__tmp_f64
+    drop
+    local.get $__frame
+    i32.const 0
+    i32.add
+    i32.load
+    i32.const 8
+    i32.add
+    local.get $__frame
+    i32.const 16
+    i32.add
+    i32.load
+    i32.const 8
+    i32.add
+    f64.load
+    local.set $__tmp_f64
+    local.get $__tmp_f64
+    f64.store
+    local.get $__tmp_f64
+    drop
+    local.get $__frame
+    i32.const 0
+    i32.add
+    i32.load
     local.get $__parent_frame
     global.set $__frame_ptr
     local.get $__frame
     global.set $__stack_ptr
     return
+    local.get $__frame
+    i32.const 16
+    i32.add
+    i32.load
+    drop
     i32.const 0
     local.get $__parent_frame
     global.set $__frame_ptr
@@ -691,7 +733,7 @@
   (export "Vec2_init__dd" (func $Vec2_init__dd))
   (export "Vec2_init__pv" (func $Vec2_init__pv))
   (export "Vec2_destroy" (func $Vec2_destroy))
-  (export "Vec2_operator_assign__N9constVec2" (func $Vec2_operator_assign__N9constVec2))
+  (export "Vec2_operator_assign__pv" (func $Vec2_operator_assign__pv))
   (export "Vec2_dot__pv" (func $Vec2_dot__pv))
   (export "Vec2_lengthSq" (func $Vec2_lengthSq))
   (export "main" (func $main))

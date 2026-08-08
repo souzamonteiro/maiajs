@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-30T22:00:19.991Z",
+  "generatedAt": "2026-08-08T00:24:11.324Z",
   "input": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/02_control_flow/control_flow.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/02_control_flow/dist",
   "appName": "control_flow",
@@ -16,5 +16,5 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 3113
+  "sourceBytes": 3173
 }

@@ -7,15 +7,17 @@
   (import "env" "__exc_pop" (func $imp___exc_pop))
   (import "env" "__exc_active" (func $imp___exc_active (result i32)))
   (import "env" "__exc_type" (func $imp___exc_type (result i32)))
+  (import "env" "__exc_data" (func $imp___exc_data (result i32)))
   (import "env" "__exc_throw" (func $imp___exc_throw (param i32 i32)))
   (import "env" "__exc_clear" (func $imp___exc_clear))
   (import "env" "__exc_matches" (func $imp___exc_matches (param i32 i32) (result i32)))
+  (import "env" "__malloc" (func $imp___malloc (param i32) (result i32)))
   (import "env" "__free" (func $imp___free (param i32)))
   (import "env" "printf" (func $imp_printf (param f64 f64 f64 f64 f64 f64 f64 f64) (result i32)))
 
   (memory $mem 1)
 
-  (table $fn_table 3 funcref)
+  (table $fn_table 2 funcref)
 
   ;; global __frame_ptr
   (global $__frame_ptr (mut i32) (i32.const 0))
@@ -27,7 +29,7 @@
   (data (i32.const 36) "PASS tmax_int_l\0a\00")
   (data (i32.const 56) "ALL PASS\0a\00")
 
-  (elem (table $fn_table) (i32.const 0) func $tmax__N1TN1T $main $tmax__N6constTN6constT)
+  (elem (table $fn_table) (i32.const 0) func $tmax__N1TN1T $main)
 
   ;; function tmax__N1TN1T
   (func $tmax__N1TN1T (param $a i32) (param $b i32) (result i32)
@@ -105,26 +107,8 @@
     return
   )
 
-  ;; function tmax__N6constTN6constT
-  (func $tmax__N6constTN6constT (param $a i32) (param $b i32) (result i32)
-    local.get $a
-    local.get $b
-    i32.gt_s
-    i32.eqz
-    i32.eqz
-    if (result i32)
-      local.get $a
-    else
-      local.get $b
-    end
-    return
-    i32.const 0
-    return
-  )
-
   (export "tmax__N1TN1T" (func $tmax__N1TN1T))
   (export "main" (func $main))
-  (export "tmax__N6constTN6constT" (func $tmax__N6constTN6constT))
   (export "memory" (memory $mem))
   (export "__frame_ptr" (global $__frame_ptr))
   (export "__stack_ptr" (global $__stack_ptr))

@@ -13,6 +13,7 @@ extern void   __exc_clear(void);
 extern int    __exc_matches(int thrown_type, int catch_type);
 extern void*  __malloc(unsigned long size);
 extern void   __free(void* ptr);
+extern int    sprintf(char* dest, const char* format, ...);
 
 typedef int (*IntOp)(int);
 
@@ -28,8 +29,6 @@ int double_val__i(int x);
 int negate__i(int x);
 int apply__N5IntOpi(IntOp f, int x);
 int main(void);
-int swap_ref__ii(int a, int b);
-int sum_cref__N8constintN8constint(int x, int y);
 
 int factorial__i(int n) {
   if (n <= 1) {
@@ -162,22 +161,8 @@ int main(void) {
   return 0;
 }
 
-int swap_ref__ii(int a, int b) {
-  {
-  int tmp=a;
-  a=b;
-  b=tmp;
-  }
-  return (int)0;
-}
-
-int sum_cref__N8constintN8constint(int x, int y) {
-  return x+y;
-}
-
-/* Lowering diagnostics: 5 event(s) (structured-cstyle-body=5) */
+/* Lowering diagnostics: 4 event(s) (structured-cstyle-body=4) */
 /* - factorial: structured-cstyle-body (2 stmt(s)) */
 /* - fib: structured-cstyle-body (2 stmt(s)) */
 /* - swap_ref: structured-cstyle-body (3 stmt(s)) */
 /* - clamp: structured-cstyle-body (3 stmt(s)) */
-/* - swap_ref: structured-cstyle-body (raw-body 6 line(s)) */

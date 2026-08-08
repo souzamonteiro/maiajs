@@ -13,11 +13,11 @@ extern void   __exc_clear(void);
 extern int    __exc_matches(int thrown_type, int catch_type);
 extern void*  __malloc(unsigned long size);
 extern void   __free(void* ptr);
+extern int    sprintf(char* dest, const char* format, ...);
 
 /* Global functions */
 int tmax__N1TN1T(int a, int b);
 int main(void);
-int tmax__N6constTN6constT(int a, int b);
 
 int tmax__N1TN1T(int a, int b) {
   return a > b ? a : b;
@@ -32,8 +32,4 @@ int main(void) {
   }
   printf("ALL PASS\n");
   return 0;
-}
-
-int tmax__N6constTN6constT(int a, int b) {
-  return a>b?a:b;
 }

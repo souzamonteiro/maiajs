@@ -13,6 +13,7 @@ extern void   __exc_clear(void);
 extern int    __exc_matches(int thrown_type, int catch_type);
 extern void*  __malloc(unsigned long size);
 extern void   __free(void* ptr);
+extern int    sprintf(char* dest, const char* format, ...);
 
 #define EXC_Vec2 1
 
@@ -24,7 +25,7 @@ typedef struct Vec2 {
 void Vec2_init__dd(Vec2* self, double x_, double y_);
 void Vec2_init__pv(Vec2* self, Vec2* o);
 void Vec2_destroy(Vec2* self);
-void* Vec2_operator_assign__N9constVec2(Vec2* self, void* o);
+Vec2* Vec2_operator_assign__pv(Vec2* self, Vec2* o);
 double Vec2_dot__pv(Vec2* self, Vec2* o);
 int Vec2_lengthSq(Vec2* self);
 
@@ -47,10 +48,12 @@ void Vec2_destroy(Vec2* self) {
   (void)self;
 }
 
-void* Vec2_operator_assign__N9constVec2(Vec2* self, void* o) {
+Vec2* Vec2_operator_assign__pv(Vec2* self, Vec2* o) {
   (void)self;
+  self->x = o->x;
+  self->y = o->y;
+  return (Vec2*)self;
   (void)o;
-  return (void*)0;
 }
 
 double Vec2_dot__pv(Vec2* self, Vec2* o) {

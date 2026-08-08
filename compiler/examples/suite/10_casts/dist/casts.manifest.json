@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-30T22:00:27.264Z",
+  "generatedAt": "2026-08-08T00:24:21.248Z",
   "input": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/10_casts/casts.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/10_casts/dist",
   "appName": "casts",
@@ -16,5 +16,5 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 2112
+  "sourceBytes": 2172
 }

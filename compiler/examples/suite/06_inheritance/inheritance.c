@@ -13,6 +13,7 @@ extern void   __exc_clear(void);
 extern int    __exc_matches(int thrown_type, int catch_type);
 extern void*  __malloc(unsigned long size);
 extern void   __free(void* ptr);
+extern int    sprintf(char* dest, const char* format, ...);
 
 #define EXC_Shape 1
 #define EXC_Rectangle 2

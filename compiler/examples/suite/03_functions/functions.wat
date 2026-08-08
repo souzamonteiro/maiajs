@@ -7,9 +7,11 @@
   (import "env" "__exc_pop" (func $imp___exc_pop))
   (import "env" "__exc_active" (func $imp___exc_active (result i32)))
   (import "env" "__exc_type" (func $imp___exc_type (result i32)))
+  (import "env" "__exc_data" (func $imp___exc_data (result i32)))
   (import "env" "__exc_throw" (func $imp___exc_throw (param i32 i32)))
   (import "env" "__exc_clear" (func $imp___exc_clear))
   (import "env" "__exc_matches" (func $imp___exc_matches (param i32 i32) (result i32)))
+  (import "env" "__malloc" (func $imp___malloc (param i32) (result i32)))
   (import "env" "__free" (func $imp___free (param i32)))
   (import "env" "printf" (func $imp_printf (param f64 f64 f64 f64 f64 f64 f64 f64) (result i32)))
 
@@ -17,7 +19,7 @@
 
   (memory $mem 1)
 
-  (table $fn_table 13 funcref)
+  (table $fn_table 11 funcref)
 
   ;; global __frame_ptr
   (global $__frame_ptr (mut i32) (i32.const 0))
@@ -49,7 +51,7 @@
   (data (i32.const 368) "PASS fptr_arr_2\0a\00")
   (data (i32.const 388) "ALL PASS\0a\00")
 
-  (elem (table $fn_table) (i32.const 0) func $factorial__i $fib__i $square__i $square__d $swap_ref__pvpv $sum_cref__ii $clamp__iii $double_val__i $negate__i $apply__N5IntOpi $main $swap_ref__ii $sum_cref__N8constintN8constint)
+  (elem (table $fn_table) (i32.const 0) func $factorial__i $fib__i $square__i $square__d $swap_ref__pvpv $sum_cref__ii $clamp__iii $double_val__i $negate__i $apply__N5IntOpi $main)
 
   ;; function factorial__i
   (func $factorial__i (param $n i32) (result i32)
@@ -852,33 +854,6 @@
     return
   )
 
-  ;; function swap_ref__ii
-  (func $swap_ref__ii (param $a i32) (param $b i32) (result i32)
-    (local $tmp i32)
-    local.get $a
-    local.set $tmp
-    local.get $b
-    local.tee $a
-    drop
-    local.get $tmp
-    local.tee $b
-    drop
-    i32.const 0
-    return
-    i32.const 0
-    return
-  )
-
-  ;; function sum_cref__N8constintN8constint
-  (func $sum_cref__N8constintN8constint (param $x i32) (param $y i32) (result i32)
-    local.get $x
-    local.get $y
-    i32.add
-    return
-    i32.const 0
-    return
-  )
-
   (export "factorial__i" (func $factorial__i))
   (export "fib__i" (func $fib__i))
   (export "square__i" (func $square__i))
@@ -890,8 +865,6 @@
   (export "negate__i" (func $negate__i))
   (export "apply__N5IntOpi" (func $apply__N5IntOpi))
   (export "main" (func $main))
-  (export "swap_ref__ii" (func $swap_ref__ii))
-  (export "sum_cref__N8constintN8constint" (func $sum_cref__N8constintN8constint))
   (export "memory" (memory $mem))
   (export "__frame_ptr" (global $__frame_ptr))
   (export "__stack_ptr" (global $__stack_ptr))
