@@ -353,6 +353,16 @@ function extractFunctionDeclarationFromStatement(statementNode) {
   ) || null;
 }
 
+function extractAsyncFunctionDeclarationFromStatement(statementNode) {
+  if (!statementNode || statementNode.kind !== 'nonterminal' || statementNode.name !== 'statement') {
+    return null;
+  }
+
+  return (statementNode.children || []).find(
+    (child) => child && child.kind === 'nonterminal' && child.name === 'asyncFunctionDeclaration'
+  ) || null;
+}
+
 function collectTopLevelFunctionDeclarations(tree) {
   return extractTopLevelStatementNodes(tree)
     .map(extractFunctionDeclarationFromStatement)
@@ -10337,7 +10347,9 @@ function lowerProgramToCppStatements(tree, compileContext, options = {}) {
   for (const stmtNode of extractTopLevelStatementNodes(tree)) {
     if (!stmtNode) { continue; }
 
-    if (!includeFunctionDeclarations && extractFunctionDeclarationFromStatement(stmtNode)) {
+    if (!includeFunctionDeclarations
+      && (extractFunctionDeclarationFromStatement(stmtNode)
+        || extractAsyncFunctionDeclarationFromStatement(stmtNode))) {
       continue;
     }
 
