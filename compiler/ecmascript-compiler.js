@@ -3740,6 +3740,7 @@ const EXPR_PASSTHROUGH_NODES = new Set([
   'relationalExpression', 'shiftExpression', 'additiveExpression',
   'multiplicativeExpression', 'exponentiationExpression', 'unaryExpression',
   'postfixExpression', 'leftHandSideExpression', 'newExpression', 'memberExpression',
+  'identifierReference',
   // NoIn variants (for use in for-loops and for-in expressions)
   'expressionNoIn', 'assignmentExpressionNoIn', 'conditionalExpressionNoIn',
   'logicalORExpressionNoIn', 'logicalANDExpressionNoIn', 'bitwiseORExpressionNoIn',
@@ -3930,7 +3931,7 @@ function inferExprType(node, compileContext = null) {
       return 'number';
     }
   }
-  if (node.name === 'exponentiationExpression') {
+  if (node.name === 'exponentiationExpression' || node.name === 'exponentiationExpressionNoIn') {
     const childTypes = (node.children || [])
       .filter((child) => child && child.kind === 'nonterminal')
       .map((child) => inferExprType(child, compileContext));
@@ -4372,19 +4373,24 @@ function inferReturnExpressionCppType(expressionNode, returnTypeMap = new Map(),
     return 'int';
   }
 
+  const analysisCompileContext = analysisContext && analysisContext.tree
+    ? {
+      tree: analysisContext.tree,
+      strictLowering: false,
+      loweringWarnings: [],
+      loweringWarningKeys: new Set(),
+      functionReturnTypes: returnTypeMap,
+      objectLiteralPropertyTypesByFunctionNode: analysisContext.objectLiteralPropertyTypesByFunctionNode || null,
+      _visibleVariableBindingsCache: analysisContext._visibleVariableBindingsCache || null,
+      _staticModelCache: analysisContext._staticModelCache || null,
+      _staticModelNullSentinel: analysisContext._staticModelNullSentinel || null
+    }
+    : null;
+
   let loweredExprForTypeHint = null;
-  if (analysisContext && analysisContext.tree) {
+  if (analysisCompileContext) {
     try {
-      loweredExprForTypeHint = lowerExpressionValue(expressionNode, {
-        tree: analysisContext.tree,
-        strictLowering: false,
-        loweringWarnings: [],
-        loweringWarningKeys: new Set(),
-        functionReturnTypes: returnTypeMap,
-        objectLiteralPropertyTypesByFunctionNode: analysisContext.objectLiteralPropertyTypesByFunctionNode
-          ? analysisContext.objectLiteralPropertyTypesByFunctionNode
-          : null
-      });
+      loweredExprForTypeHint = lowerExpressionValue(expressionNode, analysisCompileContext);
     } catch (_) {
       loweredExprForTypeHint = null;
     }
@@ -4401,22 +4407,13 @@ function inferReturnExpressionCppType(expressionNode, returnTypeMap = new Map(),
     .filter((child) => child && child.kind === 'terminal')
     .map((child) => String(child.value || '').trim())
     .filter((token) => token === '||' || token === '&&');
-  if (logicalOperatorTokens.length > 0 && analysisContext && analysisContext.tree) {
+  if (logicalOperatorTokens.length > 0 && analysisCompileContext) {
     const logicalOperands = ((nestedLogicalNode && nestedLogicalNode.children) || []).filter(
       (child) => child && child.kind === 'nonterminal'
     );
     const loweredOperands = logicalOperands.map((operandNode) => {
       try {
-        return lowerExpressionValue(operandNode, {
-          tree: analysisContext.tree,
-          strictLowering: false,
-          loweringWarnings: [],
-          loweringWarningKeys: new Set(),
-          functionReturnTypes: returnTypeMap,
-          objectLiteralPropertyTypesByFunctionNode: analysisContext.objectLiteralPropertyTypesByFunctionNode
-            ? analysisContext.objectLiteralPropertyTypesByFunctionNode
-            : null
-        });
+        return lowerExpressionValue(operandNode, analysisCompileContext);
       } catch (_) {
         return null;
       }
@@ -4426,13 +4423,19 @@ function inferReturnExpressionCppType(expressionNode, returnTypeMap = new Map(),
     }
   }
 
-  const inferredExprType = inferExprType(expressionNode, {
-    tree: analysisContext && analysisContext.tree ? analysisContext.tree : null,
-    functionReturnTypes: returnTypeMap,
-    objectLiteralPropertyTypesByFunctionNode: analysisContext && analysisContext.objectLiteralPropertyTypesByFunctionNode
-      ? analysisContext.objectLiteralPropertyTypesByFunctionNode
-      : null
-  });
+  const directIdentifierNode = unwrapDirectIdentifierExpression(expressionNode);
+  const directIdentifierName = directIdentifierNode ? findFirstIdentifierValue(directIdentifierNode) : null;
+  if (directIdentifierName && localBindingCppTypes.has(directIdentifierName)) {
+    return localBindingCppTypes.get(directIdentifierName);
+  }
+
+  const inferredExprType = inferExprType(expressionNode, analysisCompileContext || {
+      tree: analysisContext && analysisContext.tree ? analysisContext.tree : null,
+      functionReturnTypes: returnTypeMap,
+      objectLiteralPropertyTypesByFunctionNode: analysisContext && analysisContext.objectLiteralPropertyTypesByFunctionNode
+        ? analysisContext.objectLiteralPropertyTypesByFunctionNode
+        : null
+    });
   if (inferredExprType === 'string') {
     return 'const char*';
   }
@@ -4573,14 +4576,14 @@ function inferFunctionReturnCppType(functionDeclarationNode, returnTypeMap = new
   }
 
   const returnCppTypes = returnExprNodes.map((expr) => inferReturnExpressionCppType(
-    expr,
-    returnTypeMap,
-    localBindingCppTypes,
-    {
-      ...(analysisContext || {}),
-      currentFunctionNode: functionDeclarationNode
-    }
-  ));
+      expr,
+      returnTypeMap,
+      localBindingCppTypes,
+      {
+        ...(analysisContext || {}),
+        currentFunctionNode: functionDeclarationNode
+      }
+    ));
   return mergeReturnCppTypes(returnCppTypes);
 }
 
@@ -4593,7 +4596,10 @@ function inferTopLevelFunctionReturnTypes(tree) {
   const callArgumentFunctionExpressionBindings = collectTopLevelCallArgumentFunctionExpressionBindings(tree);
   const analysisContext = {
     tree,
-    objectLiteralPropertyTypesByFunctionNode: collectTopLevelObjectLiteralPropertyTypeInfo(tree)
+    objectLiteralPropertyTypesByFunctionNode: collectTopLevelObjectLiteralPropertyTypeInfo(tree),
+    _visibleVariableBindingsCache: new WeakMap(),
+    _staticModelCache: new WeakMap(),
+    _staticModelNullSentinel: Symbol('analysis-static-model-null')
   };
   const returnTypes = new Map();
 
@@ -4858,6 +4864,18 @@ function unwrapDirectIdentifierExpression(node) {
   return null;
 }
 
+function isDirectNullishExpression(node) {
+  if (!node || node.kind !== 'nonterminal') {
+    return false;
+  }
+  const directIdentifier = unwrapDirectIdentifierExpression(node);
+  const directIdentifierName = directIdentifier ? findFirstIdentifierValue(directIdentifier) : null;
+  if (directIdentifierName === 'undefined' || directIdentifierName === 'null') {
+    return true;
+  }
+  return Boolean(findFirstTerminalByToken(node, 'TOKEN_null'));
+}
+
 function extractDirectCallExpressionNode(node) {
   let current = node;
   while (current && current.kind === 'nonterminal') {
@@ -4937,11 +4955,18 @@ function extractStringLiteralValue(node) {
   }
 
   const normalized = normalizeJsStringLiteralForCpp(terminal.value);
-  if (!normalized || normalized.length < 2) {
+  if (!normalized) {
     return '';
   }
 
-  return normalized.slice(1, -1);
+  try {
+    return JSON.parse(normalized);
+  } catch (_) {
+    if (normalized.length < 2) {
+      return '';
+    }
+    return normalized.slice(1, -1);
+  }
 }
 
 function collectAdditiveStringPieces(node, out) {
@@ -5039,7 +5064,7 @@ function lowerConsoleConcatPieceAsCString(pieceNode, compileContext) {
 
   const literalText = extractStringLiteralValue(pieceNode);
   if (literalText !== null) {
-    return `"${literalText}"`;
+    return staticStringLiteralCpp(literalText);
   }
 
   const staticPieceModel = compileContext
@@ -7006,12 +7031,25 @@ function lowerInfixExpressionValue(node, compileContext) {
     const lhsType = operandNodes[0] ? inferExprType(operandNodes[0], compileContext) : 'any';
     const rhsType = operandNodes[1] ? inferExprType(operandNodes[1], compileContext) : 'any';
     const strictOperator = operatorTokens.find((token) => token === '===' || token === '!==') || null;
+    const lhsIsNullish = operandNodes[0] ? isDirectNullishExpression(operandNodes[0]) : false;
+    const rhsIsNullish = operandNodes[1] ? isDirectNullishExpression(operandNodes[1]) : false;
     const lhsIdentifier = operandNodes[0] ? findFirstIdentifierValue(operandNodes[0]) : null;
     const rhsIdentifier = operandNodes[1] ? findFirstIdentifierValue(operandNodes[1]) : null;
     const lhsIsSymbolBinding = lhsIdentifier && isBoundVariableInitializedWithCallPathAtNode(lhsIdentifier, operandNodes[0], 'Symbol', compileContext);
     const rhsIsSymbolBinding = rhsIdentifier && isBoundVariableInitializedWithCallPathAtNode(rhsIdentifier, operandNodes[1], 'Symbol', compileContext);
     if (strictOperator && lhsIsSymbolBinding && rhsIsSymbolBinding && lhsIdentifier !== rhsIdentifier) {
       return strictOperator === '!==' ? '1' : '0';
+    }
+    if (lhsIsNullish || rhsIsNullish) {
+      const otherNode = lhsIsNullish ? operandNodes[1] : operandNodes[0];
+      const otherType = lhsIsNullish ? rhsType : lhsType;
+      if (otherType === 'number' || otherType === 'bool') {
+        return parts[1] === '!=' ? '1' : '0';
+      }
+      const otherExpr = otherNode ? lowerExpressionValue(otherNode, compileContext) : null;
+      if (otherExpr !== null) {
+        return `((${otherExpr}) ${parts[1]} 0)`;
+      }
     }
     if (strictOperator && lhsType !== 'any' && rhsType !== 'any' && lhsType !== rhsType) {
       return strictOperator === '!==' ? '1' : '0';
