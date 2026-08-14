@@ -2344,7 +2344,7 @@ function findCallableNodeFromExpression(expressionNode) {
     || findFirstNonterminal(expressionNode, 'functionDeclaration');
 }
 
-function evaluateStaticPromiseThenChainModel(callExpressionNode, scopeModels, compileContext) {
+function analyzeStaticPromiseThenChain(callExpressionNode, scopeModels, compileContext) {
   if (!callExpressionNode || callExpressionNode.kind !== 'nonterminal' || callExpressionNode.name !== 'callExpression') {
     return null;
   }
@@ -2356,11 +2356,14 @@ function evaluateStaticPromiseThenChainModel(callExpressionNode, scopeModels, co
 
   const pathSegments = extractPathFromMemberExpression(memberExprNode, null);
   let currentValueModel = null;
+  let scheduleKind = null;
 
   if (Array.isArray(pathSegments) && pathSegments.length === 2 && pathSegments[0] === 'Promise' && pathSegments[1] === 'resolve' && argExprs.length >= 1) {
     currentValueModel = evaluateStaticExpressionModel(argExprs[0], scopeModels, compileContext);
+    scheduleKind = 'microtask';
   } else if (Array.isArray(pathSegments) && pathSegments.length === 1 && pathSegments[0] === 'delay' && argExprs.length >= 2) {
     currentValueModel = evaluateStaticExpressionModel(argExprs[1], scopeModels, compileContext);
+    scheduleKind = 'timer';
   } else {
     return null;
   }
@@ -2422,16 +2425,29 @@ function evaluateStaticPromiseThenChainModel(callExpressionNode, scopeModels, co
     i += 2;
   }
 
-  return sawThen ? currentValueModel : null;
+  if (!sawThen) {
+    return null;
+  }
+
+  return {
+    scheduleKind,
+    resultModel: currentValueModel
+  };
 }
 
 function tryLowerStaticPromiseThenChain(callExpressionNode, compileContext) {
-  const resultModel = evaluateStaticPromiseThenChainModel(callExpressionNode, new Map(), compileContext);
-  if (!resultModel) {
+  const analysis = analyzeStaticPromiseThenChain(callExpressionNode, new Map(), compileContext);
+  if (!analysis) {
     return null;
   }
+  const { resultModel, scheduleKind } = analysis;
   if (resultModel.kind === 'console-log') {
-    return `__console__log(${staticStringLiteralCpp(resultModel.value)})`;
+    enqueueDeferredPromiseStatement(
+      compileContext,
+      scheduleKind,
+      `__console__log(${staticStringLiteralCpp(resultModel.value)});`
+    );
+    return '0';
   }
   return lowerStaticModelToRuntimeExpression(resultModel);
 }
@@ -2496,9 +2512,9 @@ function evaluateStaticExpressionModel(expressionNode, scopeModels, compileConte
     }
   }
   if (current.name === 'callExpression') {
-    const promiseChainModel = evaluateStaticPromiseThenChainModel(current, scopeModels, compileContext);
-    if (promiseChainModel) {
-      return promiseChainModel;
+    const promiseChainAnalysis = analyzeStaticPromiseThenChain(current, scopeModels, compileContext);
+    if (promiseChainAnalysis) {
+      return promiseChainAnalysis.resultModel;
     }
     const { memberExprNode, argExprs } = extractCallExpressionMemberAndArgs(current);
     const segments = memberExprNode ? extractPathFromMemberExpression(memberExprNode, null) : null;
@@ -5824,6 +5840,41 @@ function takePreludeStatements(compileContext, indent = '  ') {
   }
   const statements = compileContext._preludeStatements.splice(0);
   return statements.map((statement) => `${indent}${statement}`);
+}
+
+function beginDeferredPromiseQueueScope(compileContext) {
+  if (!compileContext) {
+    return;
+  }
+  compileContext._deferredPromiseMicrotasks = [];
+  compileContext._deferredPromiseTimers = [];
+}
+
+function enqueueDeferredPromiseStatement(compileContext, scheduleKind, statement) {
+  if (!compileContext || !statement) {
+    return;
+  }
+  if (!Array.isArray(compileContext._deferredPromiseMicrotasks) || !Array.isArray(compileContext._deferredPromiseTimers)) {
+    beginDeferredPromiseQueueScope(compileContext);
+  }
+  if (scheduleKind === 'timer') {
+    compileContext._deferredPromiseTimers.push(statement);
+    return;
+  }
+  compileContext._deferredPromiseMicrotasks.push(statement);
+}
+
+function takeDeferredPromiseStatements(compileContext, indent = '  ') {
+  if (!compileContext) {
+    return [];
+  }
+  const microtasks = Array.isArray(compileContext._deferredPromiseMicrotasks)
+    ? compileContext._deferredPromiseMicrotasks.splice(0)
+    : [];
+  const timers = Array.isArray(compileContext._deferredPromiseTimers)
+    ? compileContext._deferredPromiseTimers.splice(0)
+    : [];
+  return microtasks.concat(timers).map((statement) => `${indent}${statement}`);
 }
 
 function resetStatementLoweringState(compileContext) {
@@ -10382,6 +10433,7 @@ function lowerProgramToCppStatements(tree, compileContext, options = {}) {
   const includeFunctionDeclarations = options.includeFunctionDeclarations !== false;
   const includeClassDeclarations = options.includeClassDeclarations !== false;
   const lines = [];
+  beginDeferredPromiseQueueScope(compileContext);
   for (const stmtNode of extractTopLevelStatementNodes(tree)) {
     if (!stmtNode) { continue; }
 
@@ -10398,6 +10450,7 @@ function lowerProgramToCppStatements(tree, compileContext, options = {}) {
     resetStatementLoweringState(compileContext);
     lines.push(...lowerStatementNode(stmtNode, compileContext, 1));
   }
+  lines.push(...takeDeferredPromiseStatements(compileContext, '  '));
   return lines;
 }
 
@@ -10445,10 +10498,12 @@ function emitTopLevelFunctionDefinitions(tree, compileContext) {
     const cppParams = buildCppParamsFromFunctionNode(functionDeclaration, functionName, compileContext);
     const statementNodes = collectFunctionBodyStatementNodes(functionDeclaration);
     const bodyLines = [];
+    beginDeferredPromiseQueueScope(compileContext);
     for (const statementNode of statementNodes) {
       resetStatementLoweringState(compileContext);
       bodyLines.push(...lowerStatementNode(statementNode, compileContext, 1, { returnTypeCpp }));
     }
+    bodyLines.push(...takeDeferredPromiseStatements(compileContext, '  '));
     if (!bodyLines.some((line) => /^\s*return\b/.test(line))) {
       bodyLines.push(`  return ${defaultCppValue(returnTypeCpp)};`);
     }
@@ -10467,10 +10522,12 @@ function emitTopLevelFunctionDefinitions(tree, compileContext) {
     const cppParams = buildCppParamsFromFunctionNode(functionExpressionNode, bindingName, compileContext);
     const statementNodes = collectFunctionBodyStatementNodes(functionExpressionNode);
     const bodyLines = [];
+    beginDeferredPromiseQueueScope(compileContext);
     for (const statementNode of statementNodes) {
       resetStatementLoweringState(compileContext);
       bodyLines.push(...lowerStatementNode(statementNode, compileContext, 1, { returnTypeCpp }));
     }
+    bodyLines.push(...takeDeferredPromiseStatements(compileContext, '  '));
     if (!bodyLines.some((line) => /^\s*return\b/.test(line))) {
       bodyLines.push(`  return ${defaultCppValue(returnTypeCpp)};`);
     }
@@ -10486,6 +10543,7 @@ function emitTopLevelFunctionDefinitions(tree, compileContext) {
     const cppParams = buildCppParamsFromFunctionNode(arrowFunctionNode, bindingName, compileContext);
     const statementNodes = collectFunctionBodyStatementNodes(arrowFunctionNode);
     const bodyLines = [];
+    beginDeferredPromiseQueueScope(compileContext);
 
     if (statementNodes.length > 0) {
       for (const statementNode of statementNodes) {
@@ -10502,6 +10560,7 @@ function emitTopLevelFunctionDefinitions(tree, compileContext) {
         }
       }
     }
+    bodyLines.push(...takeDeferredPromiseStatements(compileContext, '  '));
 
     if (!bodyLines.some((line) => /^\s*return\b/.test(line))) {
       bodyLines.push(`  return ${defaultCppValue(returnTypeCpp)};`);
@@ -10524,10 +10583,12 @@ function emitTopLevelFunctionDefinitions(tree, compileContext) {
     const statementNodes = collectFunctionBodyStatementNodes(functionExpressionNode);
 
     const bodyLines = [];
+    beginDeferredPromiseQueueScope(compileContext);
     for (const statementNode of statementNodes) {
       resetStatementLoweringState(compileContext);
       bodyLines.push(...lowerStatementNode(statementNode, compileContext, 1, { returnTypeCpp }));
     }
+    bodyLines.push(...takeDeferredPromiseStatements(compileContext, '  '));
 
     if (!bodyLines.some((line) => /^\s*return\b/.test(line))) {
       bodyLines.push(`  return ${defaultCppValue(returnTypeCpp)};`);
@@ -10546,11 +10607,13 @@ function emitTopLevelFunctionDefinitions(tree, compileContext) {
     const cppParams = buildCppParamsFromFunctionNode(functionExpressionNode, symbolName, compileContext);
     const statementNodes = collectFunctionBodyStatementNodes(functionExpressionNode);
     const bodyLines = [];
+    beginDeferredPromiseQueueScope(compileContext);
 
     for (const statementNode of statementNodes) {
       resetStatementLoweringState(compileContext);
       bodyLines.push(...lowerStatementNode(statementNode, compileContext, 1, { returnTypeCpp }));
     }
+    bodyLines.push(...takeDeferredPromiseStatements(compileContext, '  '));
 
     if (!bodyLines.some((line) => /^\s*return\b/.test(line))) {
       bodyLines.push(`  return ${defaultCppValue(returnTypeCpp)};`);
@@ -10569,11 +10632,13 @@ function emitTopLevelFunctionDefinitions(tree, compileContext) {
     const cppParams = buildCppParamsFromFunctionNode(functionExpressionNode, symbolName, compileContext);
     const statementNodes = collectFunctionBodyStatementNodes(functionExpressionNode);
     const bodyLines = [];
+    beginDeferredPromiseQueueScope(compileContext);
 
     for (const statementNode of statementNodes) {
       resetStatementLoweringState(compileContext);
       bodyLines.push(...lowerStatementNode(statementNode, compileContext, 1, { returnTypeCpp }));
     }
+    bodyLines.push(...takeDeferredPromiseStatements(compileContext, '  '));
 
     if (!bodyLines.some((line) => /^\s*return\b/.test(line))) {
       bodyLines.push(`  return ${defaultCppValue(returnTypeCpp)};`);
@@ -10592,6 +10657,7 @@ function emitTopLevelFunctionDefinitions(tree, compileContext) {
     const statementNodes = collectFunctionBodyStatementNodes(functionExpressionNode);
     const bodyLines = ['  void* __maia_this = __maia_obj_literal0();'];
     const callBodyLines = [];
+    beginDeferredPromiseQueueScope(compileContext);
 
     for (const statementNode of statementNodes) {
       resetStatementLoweringState(compileContext);
@@ -10601,6 +10667,9 @@ function emitTopLevelFunctionDefinitions(tree, compileContext) {
       bodyLines.push(...loweredLines);
       callBodyLines.push(...loweredLines);
     }
+    const deferredPromiseLines = takeDeferredPromiseStatements(compileContext, '  ');
+    bodyLines.push(...deferredPromiseLines);
+    callBodyLines.push(...deferredPromiseLines);
 
     bodyLines.push('  return (void*)__maia_this;');
 
@@ -10891,9 +10960,11 @@ function emitTopLevelClassDefinitions(tree, compileContext) {
       const methodStatements = collectFunctionBodyStatementNodes(methodDefinition);
       const methodBodyLines = [];
       const methodReturnType = isConstructor ? 'void' : 'int';
+      beginDeferredPromiseQueueScope(compileContext);
       for (const stmtNode of methodStatements) {
         methodBodyLines.push(...lowerStatementNode(stmtNode, compileContext, 2, { returnTypeCpp: methodReturnType }));
       }
+      methodBodyLines.push(...takeDeferredPromiseStatements(compileContext, '    '));
 
       // Infer simple instance fields referenced as this->field in method bodies.
       // We intentionally skip method-call forms like this->run(...).
