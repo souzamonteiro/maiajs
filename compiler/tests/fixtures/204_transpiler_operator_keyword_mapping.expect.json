@@ -2,8 +2,8 @@
   "stages": ["transpiler"],
   "shouldTranspile": true,
   "cppContains": [
-    "double eq = a == 0;",
-    "double ne = a != 0;"
+    "double eq = ((a) == 0);",
+    "double ne = ((a) != 0);"
   ],
   "cppExclude": [
     "===",

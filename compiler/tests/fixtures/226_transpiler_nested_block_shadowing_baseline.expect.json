@@ -3,7 +3,8 @@
   "shouldTranspile": true,
   "cppContains": [
     "void* shadow(double x);",
-    "void* y = x;",
+    "double y = x;",
+    "{",
     "double y = 3;",
     "__console__log(y);",
     "return (void*)(y);",

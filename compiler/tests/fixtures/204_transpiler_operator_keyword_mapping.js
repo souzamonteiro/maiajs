@@ -1,3 +1,4 @@
-let a = 1;
-let eq = a === undefined;
-let ne = a !== undefined;
+function probe(a) {
+  let eq = a === undefined;
+  let ne = a !== undefined;
+}

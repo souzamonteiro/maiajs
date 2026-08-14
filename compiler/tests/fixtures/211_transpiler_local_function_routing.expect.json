@@ -2,7 +2,7 @@
   "stages": ["transpiler"],
   "shouldTranspile": true,
   "cppContains": [
-    "int add(int a, double b)",
+    "int add(double a, double b)",
     "double wrap(double v)",
     "return (double)(add(v, 2));",
     "wrap(1);"

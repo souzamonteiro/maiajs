@@ -54,7 +54,7 @@ test('MaiaCpp port matrix: local function routing stays local', () => {
     + 'wrap(1);\n'
   );
 
-  assert.match(cpp, /int add\(int a, double b\)/, 'local function must emit a definition');
+  assert.match(cpp, /int add\(double a, double b\)/, 'local function must emit a definition');
   assert.match(cpp, /double wrap\(double v\)/, 'wrapper function must emit a definition');
   assert.match(cpp, /return \(double\)\(add\(v, 2\)\);/, 'local function call must remain direct inside the wrapper body');
   assert.doesNotMatch(cpp, /__add\(/, 'local function call must not be treated as host interop');

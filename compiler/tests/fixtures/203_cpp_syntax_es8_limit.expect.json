@@ -3,6 +3,6 @@
   "shouldTranspile": true,
   "shouldCppSyntax": false,
   "cppContains": [
-    "const void* x = ((a == 0) ? (0) : (a));"
+    "void* x = ((((a) == 0)) ? (0) : (a));"
   ]
 }

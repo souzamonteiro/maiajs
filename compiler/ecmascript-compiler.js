@@ -9503,13 +9503,15 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       nestedStatements = collected;
     }
 
+    lines.push(`${indent}{`);
     for (const nested of nestedStatements) {
-      lines.push(...lowerStatementNode(nested, compileContext, indentLevel, options));
+      lines.push(...lowerStatementNode(nested, compileContext, indentLevel + 1, options));
     }
 
-    if (lines.length === 0) {
-      lines.push(`${indent}// [empty block]`);
+    if (nestedStatements.length === 0) {
+      lines.push(`${indentation(indentLevel + 1)}// [empty block]`);
     }
+    lines.push(`${indent}}`);
 
     return lines;
   }
