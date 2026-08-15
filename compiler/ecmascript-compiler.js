@@ -188,6 +188,13 @@ function findFirstIdentifierValue(node) {
     }
     if (candidate.token === 'Identifier' || candidate.token === 'IdentifierName') {
       found = String(candidate.value || '').trim();
+      return;
+    }
+    const tokenValue = String(candidate.value || '').trim();
+    if (tokenValue
+      && /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(tokenValue)
+      && /^TOKEN_[A-Za-z_$][A-Za-z0-9_$]*$/.test(String(candidate.token || ''))) {
+      found = tokenValue;
     }
   });
 
@@ -1846,6 +1853,7 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
       || current.name === 'arrayLiteral'
       || current.name === 'objectLiteral'
       || current.name === 'callExpression'
+      || current.name === 'unaryExpression'
       || current.name === 'memberExpression') {
       break;
     }
@@ -1873,6 +1881,46 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
     if (literalLowered !== null && /^-?\d+(\.\d+)?$/.test(literalLowered)) {
       return finish({ kind: 'number', value: Number(literalLowered) });
     }
+  }
+
+  if (current.name === 'unaryExpression') {
+    const children = current.children || [];
+    const operatorToken = children.find(
+      (child) => child
+        && child.kind === 'terminal'
+        && ['TOKEN__21_', 'TOKEN__2D_', 'TOKEN__2B_', 'TOKEN__7E_'].includes(child.token)
+    ) || null;
+    const operandNode = children.find((child) => child && child.kind === 'nonterminal') || null;
+    if (!operatorToken || !operandNode) {
+      return finish(null);
+    }
+    const operandModel = resolveStaticModelFromExpression(operandNode, targetNode, compileContext, seenBindings);
+    if (!operandModel) {
+      return finish(null);
+    }
+    if (operatorToken.token === 'TOKEN__2B_') {
+      return finish(operandModel);
+    }
+    if (operatorToken.token === 'TOKEN__2D_' && operandModel.kind === 'number') {
+      return finish({ kind: 'number', value: -Number(operandModel.value) });
+    }
+    if (operatorToken.token === 'TOKEN__7E_' && operandModel.kind === 'number') {
+      return finish({ kind: 'number', value: ~Math.trunc(Number(operandModel.value)) });
+    }
+    if (operatorToken.token === 'TOKEN__21_') {
+      let truthy = true;
+      if (operandModel.kind === 'number' || operandModel.kind === 'bool') {
+        truthy = Number(operandModel.value) !== 0;
+      } else if (operandModel.kind === 'string') {
+        truthy = !!operandModel.value;
+      } else if (operandModel.kind === 'null') {
+        truthy = false;
+      } else {
+        return finish(null);
+      }
+      return finish({ kind: 'bool', value: truthy ? 0 : 1 });
+    }
+    return finish(null);
   }
 
   if (current.name === 'identifier') {
@@ -2069,6 +2117,17 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
     const directPropertyNode = directPropertyIndex >= 0 ? memberChildren[directPropertyIndex + 1] : null;
     const directPropertyName = directPropertyNode ? findFirstIdentifierValue(directPropertyNode) : null;
     const baseExpressionNode = directPropertyIndex > 0 ? memberChildren[0] : null;
+    if (directPropertyIndex < 0) {
+      const nonterminalChildren = memberChildren.filter((child) => child && child.kind === 'nonterminal');
+      if (nonterminalChildren.length === 1) {
+        return finish(resolveStaticModelFromExpression(
+          nonterminalChildren[0],
+          targetNode,
+          compileContext,
+          seenBindings
+        ));
+      }
+    }
     if (baseExpressionNode && directPropertyName) {
       const baseModel = resolveStaticModelFromExpression(
         baseExpressionNode,
@@ -2962,6 +3021,7 @@ function buildCompileContext(tree, hostRegistry) {
     functionReturnTypes
   };
   const callableParameterTypesByNode = collectCallableParameterCppTypes(tree, baseCompileContext);
+  refineFunctionReturnTypesWithParameterInfo(tree, functionReturnTypes, callableParameterTypesByNode);
 
   const compileContext = {
     tree,
@@ -3582,8 +3642,8 @@ function collectCallableParameterCppTypes(tree, baseCompileContext = null) {
         if (!parameterName || !argExpr) {
           continue;
         }
-        const inferredExprType = inferExprType(argExpr, iterationContext);
-        const inferredCppType = inferCppParamTypeFromExprType(inferredExprType);
+        const inferredCppType = inferPreciseCppTypeFromExpression(argExpr, iterationContext)
+          || inferCppParamTypeFromExprType(inferExprType(argExpr, iterationContext));
         const mergedType = mergeInferredCppParamTypes(currentTypes.get(parameterName), inferredCppType);
         if (mergedType !== currentTypes.get(parameterName)) {
           currentTypes.set(parameterName, mergedType);
@@ -4097,6 +4157,112 @@ function inferExprType(node, compileContext = null) {
   return 'any';
 }
 
+function inferPreciseCppTypeFromExpression(expressionNode, compileContext = null, localBindingCppTypes = new Map()) {
+  if (!expressionNode || expressionNode.kind !== 'nonterminal') {
+    return null;
+  }
+
+  const staticModel = compileContext
+    ? resolveStaticModelFromExpression(expressionNode, expressionNode, compileContext)
+    : null;
+  if (staticModel) {
+    if (staticModel.kind === 'string') { return 'const char*'; }
+    if (staticModel.kind === 'bool') { return 'int'; }
+    if (staticModel.kind === 'null' || staticModel.kind === 'object' || staticModel.kind === 'array' || staticModel.kind === 'catch-param') {
+      return 'void*';
+    }
+    if (staticModel.kind === 'number') {
+      return Number.isInteger(Number(staticModel.value)) ? 'int' : 'double';
+    }
+  }
+
+  if (hasNonterminal(expressionNode, 'stringLiteral')) {
+    return 'const char*';
+  }
+  if (hasNonterminal(expressionNode, 'nullLiteral')) {
+    return 'void*';
+  }
+  if (hasNonterminal(expressionNode, 'booleanLiteral')) {
+    return 'int';
+  }
+  if (hasNonterminal(expressionNode, 'numericLiteral')) {
+    const decimalToken = findFirstTerminalByToken(expressionNode, 'DecimalLiteral');
+    return decimalToken && /[.eE]/.test(String(decimalToken.value || '')) ? 'double' : 'int';
+  }
+
+  const directIdentifierNode = unwrapDirectIdentifierExpression(expressionNode);
+  const directIdentifierName = directIdentifierNode ? findFirstIdentifierValue(directIdentifierNode) : null;
+  if (directIdentifierName && localBindingCppTypes.has(directIdentifierName)) {
+    return localBindingCppTypes.get(directIdentifierName);
+  }
+  if (directIdentifierName && compileContext && compileContext.tree && compileContext.callableParameterTypesByNode) {
+    const path = findNodePath(compileContext.tree, directIdentifierNode);
+    for (let i = path.length - 2; i >= 0; i -= 1) {
+      const ancestor = path[i];
+      if (!ancestor || ancestor.kind !== 'nonterminal') {
+        continue;
+      }
+      if (ancestor.name !== 'functionDeclaration'
+        && ancestor.name !== 'functionExpression'
+        && ancestor.name !== 'arrowFunction'
+        && ancestor.name !== 'asyncArrowFunction') {
+        continue;
+      }
+      const paramTypes = compileContext.callableParameterTypesByNode.get(ancestor);
+      const cppType = paramTypes ? paramTypes.get(directIdentifierName) : null;
+      if (cppType) {
+        return cppType;
+      }
+      break;
+    }
+  }
+
+  const callExpressionNode = expressionNode.name === 'callExpression'
+    ? expressionNode
+    : findFirstNonterminal(expressionNode, 'callExpression');
+  if (callExpressionNode) {
+    const memberExpressionNode = extractOutermostCallMemberExpression(callExpressionNode);
+    const pathSegments = memberExpressionNode ? extractPathFromMemberExpression(memberExpressionNode, null) : null;
+    if (Array.isArray(pathSegments) && pathSegments.length === 1 && compileContext && compileContext.functionReturnTypes) {
+      const returnType = compileContext.functionReturnTypes.get(pathSegments[0]);
+      if (returnType) {
+        return returnType;
+      }
+    }
+    if (Array.isArray(pathSegments) && pathSegments.join('.') === 'Array.prototype.slice.call') {
+      return 'void*';
+    }
+  }
+
+  const nonterminalChildren = (expressionNode.children || []).filter((child) => child && child.kind === 'nonterminal');
+  if (nonterminalChildren.length > 0) {
+    const childTypes = nonterminalChildren
+      .map((child) => inferPreciseCppTypeFromExpression(child, compileContext, localBindingCppTypes))
+      .filter(Boolean);
+    if (childTypes.includes('const char*')) {
+      return 'const char*';
+    }
+    if (childTypes.includes('void*')) {
+      return 'void*';
+    }
+    if (childTypes.includes('double')) {
+      return 'double';
+    }
+    if (childTypes.length > 0 && childTypes.every((type) => type === 'int')) {
+      return 'int';
+    }
+  }
+
+  const inferredExprType = inferExprType(expressionNode, compileContext);
+  if (inferredExprType === 'string') { return 'const char*'; }
+  if (inferredExprType === 'bool') { return 'int'; }
+  if (inferredExprType === 'number') { return 'double'; }
+  if (inferredExprType === 'object' || inferredExprType === 'array' || inferredExprType === 'function' || inferredExprType === 'null') {
+    return 'void*';
+  }
+  return null;
+}
+
 function cppArgType(jsType) {
   const typeMap = { string: 'const char*', number: 'double', bool: 'int', null: 'void*', object: 'void*', array: 'void*', function: 'void*' };
   return typeMap[jsType] || 'void*';
@@ -4397,6 +4563,7 @@ function inferReturnExpressionCppType(expressionNode, returnTypeMap = new Map(),
       loweringWarningKeys: new Set(),
       functionReturnTypes: returnTypeMap,
       objectLiteralPropertyTypesByFunctionNode: analysisContext.objectLiteralPropertyTypesByFunctionNode || null,
+      callableParameterTypesByNode: analysisContext.callableParameterTypesByNode || null,
       _visibleVariableBindingsCache: analysisContext._visibleVariableBindingsCache || null,
       _staticModelCache: analysisContext._staticModelCache || null,
       _staticModelNullSentinel: analysisContext._staticModelNullSentinel || null
@@ -4443,6 +4610,24 @@ function inferReturnExpressionCppType(expressionNode, returnTypeMap = new Map(),
   const directIdentifierName = directIdentifierNode ? findFirstIdentifierValue(directIdentifierNode) : null;
   if (directIdentifierName && localBindingCppTypes.has(directIdentifierName)) {
     return localBindingCppTypes.get(directIdentifierName);
+  }
+
+  const preciseCppType = inferPreciseCppTypeFromExpression(
+    expressionNode,
+    analysisCompileContext || {
+      tree: analysisContext && analysisContext.tree ? analysisContext.tree : null,
+      functionReturnTypes: returnTypeMap,
+      objectLiteralPropertyTypesByFunctionNode: analysisContext && analysisContext.objectLiteralPropertyTypesByFunctionNode
+        ? analysisContext.objectLiteralPropertyTypesByFunctionNode
+        : null,
+      callableParameterTypesByNode: analysisContext && analysisContext.callableParameterTypesByNode
+        ? analysisContext.callableParameterTypesByNode
+        : null
+    },
+    localBindingCppTypes
+  );
+  if (preciseCppType) {
+    return preciseCppType;
   }
 
   const inferredExprType = inferExprType(expressionNode, analysisCompileContext || {
@@ -4645,6 +4830,90 @@ function inferTopLevelFunctionReturnTypes(tree) {
   for (const { symbolName } of callArgumentFunctionExpressionBindings) {
     returnTypes.set(symbolName, 'int');
   }
+
+  for (let i = 0; i < declarations.length + functionExpressionBindings.length + arrowFunctionBindings.length + assignedFunctionExpressionBindings.length + objectLiteralFunctionExpressionBindings.length + callArgumentFunctionExpressionBindings.length + 1; i += 1) {
+    let changed = false;
+
+    for (const functionDeclaration of declarations) {
+      const functionName = extractFunctionDeclarationName(functionDeclaration);
+      if (!functionName) {
+        continue;
+      }
+
+      const inferredType = inferFunctionReturnCppType(functionDeclaration, returnTypes, analysisContext);
+      if (returnTypes.get(functionName) !== inferredType) {
+        returnTypes.set(functionName, inferredType);
+        changed = true;
+      }
+    }
+
+    for (const { bindingName, functionExpressionNode } of functionExpressionBindings) {
+      const inferredType = inferFunctionReturnCppType(functionExpressionNode, returnTypes, analysisContext);
+      if (returnTypes.get(bindingName) !== inferredType) {
+        returnTypes.set(bindingName, inferredType);
+        changed = true;
+      }
+    }
+
+    for (const { bindingName, arrowFunctionNode } of arrowFunctionBindings) {
+      const inferredType = inferFunctionReturnCppType(arrowFunctionNode, returnTypes, analysisContext);
+      if (returnTypes.get(bindingName) !== inferredType) {
+        returnTypes.set(bindingName, inferredType);
+        changed = true;
+      }
+    }
+
+    for (const { symbolName, functionExpressionNode } of assignedFunctionExpressionBindings) {
+      const inferredType = inferFunctionReturnCppType(functionExpressionNode, returnTypes, analysisContext);
+      if (returnTypes.get(symbolName) !== inferredType) {
+        returnTypes.set(symbolName, inferredType);
+        changed = true;
+      }
+    }
+
+    for (const { symbolName, functionExpressionNode } of objectLiteralFunctionExpressionBindings) {
+      const inferredType = inferFunctionReturnCppType(functionExpressionNode, returnTypes, analysisContext);
+      if (returnTypes.get(symbolName) !== inferredType) {
+        returnTypes.set(symbolName, inferredType);
+        changed = true;
+      }
+    }
+
+    for (const { symbolName, functionExpressionNode } of callArgumentFunctionExpressionBindings) {
+      const inferredType = inferFunctionReturnCppType(functionExpressionNode, returnTypes, analysisContext);
+      if (returnTypes.get(symbolName) !== inferredType) {
+        returnTypes.set(symbolName, inferredType);
+        changed = true;
+      }
+    }
+
+    if (!changed) {
+      break;
+    }
+  }
+
+  return returnTypes;
+}
+
+function refineFunctionReturnTypesWithParameterInfo(tree, returnTypes, callableParameterTypesByNode) {
+  if (!tree || !returnTypes || !callableParameterTypesByNode) {
+    return returnTypes;
+  }
+
+  const declarations = collectTopLevelFunctionDeclarations(tree);
+  const functionExpressionBindings = collectTopLevelFunctionExpressionBindings(tree);
+  const arrowFunctionBindings = collectTopLevelArrowFunctionBindings(tree);
+  const assignedFunctionExpressionBindings = collectTopLevelAssignedFunctionExpressionBindings(tree);
+  const objectLiteralFunctionExpressionBindings = collectTopLevelObjectLiteralFunctionExpressionBindings(tree);
+  const callArgumentFunctionExpressionBindings = collectTopLevelCallArgumentFunctionExpressionBindings(tree);
+  const analysisContext = {
+    tree,
+    objectLiteralPropertyTypesByFunctionNode: collectTopLevelObjectLiteralPropertyTypeInfo(tree),
+    callableParameterTypesByNode,
+    _visibleVariableBindingsCache: new WeakMap(),
+    _staticModelCache: new WeakMap(),
+    _staticModelNullSentinel: Symbol('analysis-static-model-null')
+  };
 
   for (let i = 0; i < declarations.length + functionExpressionBindings.length + arrowFunctionBindings.length + assignedFunctionExpressionBindings.length + objectLiteralFunctionExpressionBindings.length + callArgumentFunctionExpressionBindings.length + 1; i += 1) {
     let changed = false;
@@ -6399,7 +6668,9 @@ function lowerIdentifierFromLeftHandSideExpression(node, compileContext = null) 
 }
 
 function lowerAssignmentExpressionValue(node, compileContext) {
-  if (!node || node.kind !== 'nonterminal' || node.name !== 'assignmentExpression') {
+  if (!node
+    || node.kind !== 'nonterminal'
+    || (node.name !== 'assignmentExpression' && node.name !== 'assignmentExpressionNoIn')) {
     reportUnsupportedLowering(
       compileContext,
       'assignment-expression-unlowerable',
@@ -6429,6 +6700,12 @@ function lowerAssignmentExpressionValue(node, compileContext) {
     : null;
   if (!rhsChild) {
     rhsChild = findFirstNonterminal(node, 'assignmentExpression');
+  }
+  if (!rhsChild && children[2] && children[2].kind === 'nonterminal' && children[2].name === 'assignmentExpressionNoIn') {
+    rhsChild = children[2];
+  }
+  if (!rhsChild) {
+    rhsChild = findFirstNonterminal(node, 'assignmentExpressionNoIn');
   }
 
   if (lhsChild && opChild && rhsChild) {
@@ -7218,7 +7495,7 @@ function lowerExpressionValue(node, compileContext) {
     return 'nullptr';
   }
   if (node.name === 'identifier') { return lowerIdentifierValue(findFirstIdentifierValue(node), compileContext); }
-  if (node.name === 'assignmentExpression') { return lowerAssignmentExpressionValue(node, compileContext); }
+  if (node.name === 'assignmentExpression' || node.name === 'assignmentExpressionNoIn') { return lowerAssignmentExpressionValue(node, compileContext); }
   if (node.name === 'conditionalExpression' || node.name === 'conditionalExpressionNoIn') { return lowerConditionalExpressionValue(node, compileContext); }
   if (node.name === 'unaryExpression') { return lowerUnaryExpressionValue(node, compileContext); }
   if (node.name === 'postfixExpression') { return lowerPostfixExpressionValue(node, compileContext); }
@@ -8582,6 +8859,23 @@ function lowerCallExpressionValue(node, compileContext) {
     }
   }
 
+  if (!loweredCall && (directPropertyName === 'padStart' || directPropertyName === 'padEnd') && baseExpressionNode && argExprs.length >= 1) {
+    const baseLiteral = extractStringLiteralValue(baseExpressionNode);
+    const widthLiteralNode = findFirstNonterminal(argExprs[0], 'literal');
+    const fillLiteralNode = argExprs.length >= 2 ? findFirstNonterminal(argExprs[1], 'literal') : null;
+    const widthLiteral = widthLiteralNode ? lowerLiteralValue(widthLiteralNode, null) : null;
+    const fillLiteral = fillLiteralNode ? extractStringLiteralValue(fillLiteralNode) : null;
+    if (baseLiteral !== null && widthLiteral !== null && /^-?\d+$/.test(String(widthLiteral))) {
+      const width = Math.max(0, Math.trunc(Number(widthLiteral)));
+      const fillText = fillLiteral !== null ? fillLiteral : ' ';
+      loweredCall = JSON.stringify(
+        directPropertyName === 'padStart'
+          ? baseLiteral.padStart(width, fillText)
+          : baseLiteral.padEnd(width, fillText)
+      );
+    }
+  }
+
   if (!loweredCall && directPropertyName === 'filter') {
     const filteredModel = tryResolveStaticFilterResultModel(node, baseExpressionNode, argExprs, node, compileContext, new Set());
     const loweredFiltered = lowerStaticModelToRuntimeExpression(filteredModel);
@@ -9859,7 +10153,7 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
               }
 
               initCode = varParts.join(', ');
-            } else if (child.kind === 'nonterminal' && child.name === 'expression') {
+            } else if (child.kind === 'nonterminal' && (child.name === 'expression' || child.name === 'expressionNoIn')) {
               const loweredExpr = lowerExpressionValue(child, compileContext);
               if (loweredExpr !== null) {
                 initCode += loweredExpr;

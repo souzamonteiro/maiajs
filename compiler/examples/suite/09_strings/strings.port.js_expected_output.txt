@@ -1,0 +1,6 @@
+PASS literal_eq
+PASS concat
+PASS pad_start
+PASS pad_end
+PASS repeat
+ALL PASS
