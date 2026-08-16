@@ -86,6 +86,17 @@ function loadJsonIfExists(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
+function resolveSuiteExpectedFile(jsFile) {
+  const dir = path.dirname(jsFile);
+  const baseName = path.basename(jsFile);
+  const portExpected = path.join(dir, `${baseName}_expected_output.txt`);
+  const sharedExpected = path.join(dir, 'expected_output.txt');
+  if (fs.existsSync(portExpected)) {
+    return portExpected;
+  }
+  return sharedExpected;
+}
+
 function collectTranspileCorpus(repoRoot) {
   const examplesRoot = path.join(repoRoot, 'compiler', 'examples');
   const fixturesRoot = path.join(repoRoot, 'compiler', 'tests', 'fixtures');
@@ -187,7 +198,7 @@ function main() {
 
   const suiteJsFiles = walkFiles(
     suiteRoot,
-    (p) => p.endsWith('.js') && !p.includes('/dist/')
+    (p) => p.endsWith('.js') && !p.includes('/dist/') && !p.includes('/dist_js/')
   ).sort();
 
   const courseJsFiles = walkFiles(
@@ -242,8 +253,7 @@ function main() {
     }
 
     for (const jsFile of suiteJsFiles) {
-    const dir = path.dirname(jsFile);
-    const expectedFile = path.join(dir, 'expected_output.txt');
+    const expectedFile = resolveSuiteExpectedFile(jsFile);
     const inputFile = jsFile.replace(/\.js$/, '.input.txt');
     const input = fs.existsSync(inputFile) ? fs.readFileSync(inputFile, 'utf8') : '';
 
@@ -255,7 +265,7 @@ function main() {
       failures.push({
         type: 'suite-missing-expected',
         file: rel(repoRoot, jsFile),
-        message: 'expected_output.txt not found'
+        message: 'expected output file not found'
       });
       continue;
     }
@@ -277,7 +287,7 @@ function main() {
       failures.push({
         type: 'suite-output-mismatch',
         file: rel(repoRoot, jsFile),
-        message: 'stdout differs from expected_output.txt after normalization'
+        message: `stdout differs from ${path.basename(expectedFile)} after normalization`
       });
       continue;
     }
