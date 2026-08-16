@@ -1,0 +1,7 @@
+PASS arr_access
+PASS arr_sum
+PASS ptr_arith
+PASS mat_2d
+PASS fill_sq
+PASS ptr_deref
+ALL PASS

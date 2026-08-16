@@ -140,23 +140,20 @@ build_js_port() {
         return
     fi
 
-    local root_dist="$MAIAJS_ROOT/dist"
-    local root_wasm="$root_dist/$stem.wasm"
-    local root_js_wrapper="$root_dist/$stem.js"
-    local root_runner_js="$root_dist/node-runner.js"
-    local root_runner_sh="$root_dist/node-runner.sh"
-    local root_manifest="$root_dist/manifest.json"
+    local legacy_dist="$SCRIPT_DIR/dist"
+    local artifact_dir="$dist_dir"
+    local legacy_wasm="$legacy_dist/$stem.wasm"
 
-    if [[ -f "$root_wasm" ]]; then
+    if [[ ! -f "$artifact_dir/$stem.wasm" && -f "$legacy_wasm" ]]; then
         mkdir -p "$dist_dir"
-        cp -f "$root_wasm" "$dist_dir/$stem.wasm"
-        [[ -f "$root_js_wrapper" ]] && cp -f "$root_js_wrapper" "$dist_dir/$stem.js"
-        [[ -f "$root_runner_js" ]] && cp -f "$root_runner_js" "$dist_dir/node-runner.js"
-        [[ -f "$root_runner_sh" ]] && cp -f "$root_runner_sh" "$dist_dir/node-runner.sh"
-        [[ -f "$root_manifest" ]] && cp -f "$root_manifest" "$dist_dir/manifest.json"
+        cp -f "$legacy_wasm" "$dist_dir/$stem.wasm"
+        [[ -f "$legacy_dist/$stem.js" ]] && cp -f "$legacy_dist/$stem.js" "$dist_dir/$stem.js"
+        [[ -f "$legacy_dist/node-runner.js" ]] && cp -f "$legacy_dist/node-runner.js" "$dist_dir/node-runner.js"
+        [[ -f "$legacy_dist/node-runner.sh" ]] && cp -f "$legacy_dist/node-runner.sh" "$dist_dir/node-runner.sh"
+        [[ -f "$legacy_dist/manifest.json" ]] && cp -f "$legacy_dist/manifest.json" "$dist_dir/manifest.json"
 
         local lib
-        for lib in "$root_dist"/*.wasm "$root_dist"/*.js; do
+        for lib in "$legacy_dist"/*.wasm "$legacy_dist"/*.js; do
             [[ -f "$lib" ]] || continue
             cp -f "$lib" "$dist_dir/$(basename "$lib")"
         done

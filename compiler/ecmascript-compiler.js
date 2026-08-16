@@ -1784,13 +1784,29 @@ function extractComputedMemberAccessInfo(memberExpressionNode) {
   }
 
   const children = memberExpressionNode.children || [];
-  const openIndex = children.findIndex((child) => child && child.kind === 'terminal' && child.token === 'TOKEN__5B_');
+  let openIndex = -1;
+  for (let i = children.length - 1; i >= 0; i -= 1) {
+    const child = children[i];
+    if (child && child.kind === 'terminal' && child.token === 'TOKEN__5B_') {
+      openIndex = i;
+      break;
+    }
+  }
   const closeIndex = children.findIndex((child, index) => index > openIndex && child && child.kind === 'terminal' && child.token === 'TOKEN__5D_');
   if (openIndex <= 0 || closeIndex <= openIndex + 1) {
     return null;
   }
 
-  const baseExpressionNode = children[0] || null;
+  let baseExpressionNode = null;
+  if (openIndex === 1) {
+    baseExpressionNode = children[0] || null;
+  } else if (openIndex > 1) {
+    baseExpressionNode = {
+      kind: 'nonterminal',
+      name: 'memberExpression',
+      children: children.slice(0, openIndex)
+    };
+  }
   const propertyExpressionNode = children.slice(openIndex + 1, closeIndex).find(
     (child) => child && child.kind === 'nonterminal'
   ) || null;
@@ -1802,6 +1818,54 @@ function extractComputedMemberAccessInfo(memberExpressionNode) {
     baseExpressionNode,
     propertyExpressionNode
   };
+}
+
+function lowerComputedMemberAccessValue(computedInfo, compileContext) {
+  if (!computedInfo) {
+    return null;
+  }
+
+  const loweredBase = lowerExpressionValue(computedInfo.baseExpressionNode, compileContext);
+  const loweredProperty = lowerExpressionValue(computedInfo.propertyExpressionNode, compileContext);
+  if (loweredBase === null || loweredProperty === null) {
+    return null;
+  }
+  let normalizedBase = loweredBase;
+
+  if (compileContext
+    && /__maia_runtime_value_(?:get_index|get_property)\(/.test(loweredBase)) {
+    if (!Array.isArray(compileContext._preludeStatements)) {
+      compileContext._preludeStatements = [];
+    }
+    if (compileContext._memberValueTempCount === undefined) {
+      compileContext._memberValueTempCount = 0;
+    }
+    const tempName = `__maia_member_value_tmp${compileContext._memberValueTempCount++}`;
+    compileContext._preludeStatements.push(`long ${tempName} = (long)(${loweredBase});`);
+    normalizedBase = tempName;
+  }
+
+  const baseModel = compileContext
+    ? resolveStaticModelFromExpression(computedInfo.baseExpressionNode, computedInfo.baseExpressionNode, compileContext)
+    : null;
+  const propertyModel = compileContext
+    ? resolveStaticModelFromExpression(computedInfo.propertyExpressionNode, computedInfo.propertyExpressionNode, compileContext)
+    : null;
+
+  if (propertyModel && propertyModel.kind === 'string') {
+    return `__maia_runtime_value_get_property((void*)(${normalizedBase}), (void*)${JSON.stringify(propertyModel.value)})`;
+  }
+
+  if (baseModel && baseModel.kind === 'object') {
+    reportUnsupportedLowering(
+      compileContext,
+      'computed-member-object-unlowerable',
+      'dynamic object computed property access requires a static string key'
+    );
+    return '0';
+  }
+
+  return `__maia_runtime_value_get_index((void*)(${normalizedBase}), (int)(${loweredProperty}))`;
 }
 
 function resolveStaticModelFromExpression(expressionNode, targetNode, compileContext, seenBindings = new Set()) {
@@ -6021,6 +6085,36 @@ function lowerAdvancedArrayLiteralValue(arrayInfo, compileContext) {
     return null;
   }
 
+  const lowerArrayStorageValue = (exprNode) => {
+    const loweredValue = exprNode
+      ? lowerRequiredExpressionValue(
+        exprNode,
+        compileContext,
+        'array-element-unlowerable',
+        'array element expression'
+      )
+      : '0';
+
+    if (!compileContext) {
+      return `(long)(${loweredValue})`;
+    }
+
+    if (!Array.isArray(compileContext._preludeStatements)) {
+      compileContext._preludeStatements = [];
+    }
+    if (compileContext._arrayValueTempCount === undefined) {
+      compileContext._arrayValueTempCount = 0;
+    }
+
+    if (/__maia_(?:arr_literal|arr_builder_end|obj_literal|obj_builder_end)/.test(loweredValue)) {
+      const tempName = `__maia_arr_value_tmp${compileContext._arrayValueTempCount++}`;
+      compileContext._preludeStatements.push(`void* ${tempName} = (void*)(${loweredValue});`);
+      return `(long)(${tempName})`;
+    }
+
+    return `(long)(${loweredValue})`;
+  };
+
   if (compileContext) {
     if (!Array.isArray(compileContext._preludeStatements)) {
       compileContext._preludeStatements = [];
@@ -6053,15 +6147,8 @@ function lowerAdvancedArrayLiteralValue(arrayInfo, compileContext) {
         continue;
       }
 
-      const loweredValue = operation.valueExprNode
-        ? lowerRequiredExpressionValue(
-          operation.valueExprNode,
-          compileContext,
-          'array-element-unlowerable',
-          'array element expression'
-          )
-        : '0';
-      compileContext._preludeStatements.push(`void* ${nextTempName} = __maia_arr_builder_push_value(${currentTempName}, (int)(${loweredValue}));`);
+      const loweredValue = lowerArrayStorageValue(operation.valueExprNode);
+      compileContext._preludeStatements.push(`void* ${nextTempName} = __maia_arr_builder_push_value(${currentTempName}, ${loweredValue});`);
       currentTempName = nextTempName;
     }
 
@@ -6089,15 +6176,8 @@ function lowerAdvancedArrayLiteralValue(arrayInfo, compileContext) {
       continue;
     }
 
-    const loweredValue = operation.valueExprNode
-      ? lowerRequiredExpressionValue(
-        operation.valueExprNode,
-        compileContext,
-        'array-element-unlowerable',
-        'array element expression'
-      )
-      : '0';
-    chain = `__maia_arr_builder_push_value(${chain}, (int)(${loweredValue}))`;
+    const loweredValue = lowerArrayStorageValue(operation.valueExprNode);
+    chain = `__maia_arr_builder_push_value(${chain}, ${loweredValue})`;
   }
 
   return `__maia_arr_builder_end(${chain})`;
@@ -6185,21 +6265,44 @@ function lowerArrayLiteralValue(arrayLiteralNode, compileContext) {
   }
 
   const elements = arrayInfo.values;
+  const hasNestedAggregateElement = elements.some((element) => Boolean(
+    findFirstNonterminal(element, 'arrayLiteral') || findFirstNonterminal(element, 'objectLiteral')
+  ));
+
+  const lowerArrayStorageValue = (exprNode) => {
+    const lowered = lowerRequiredExpressionValue(
+      exprNode,
+      compileContext,
+      'array-element-unlowerable',
+      'array literal element expression'
+    );
+
+    if (!compileContext) {
+      return `(long)(${lowered})`;
+    }
+
+    if (!Array.isArray(compileContext._preludeStatements)) {
+      compileContext._preludeStatements = [];
+    }
+    if (compileContext._arrayValueTempCount === undefined) {
+      compileContext._arrayValueTempCount = 0;
+    }
+
+    if (/__maia_(?:arr_literal|arr_builder_end|obj_literal|obj_builder_end)/.test(lowered)) {
+      const tempName = `__maia_arr_value_tmp${compileContext._arrayValueTempCount++}`;
+      compileContext._preludeStatements.push(`void* ${tempName} = (void*)(${lowered});`);
+      return `(long)(${tempName})`;
+    }
+
+    return `(long)(${lowered})`;
+  };
 
   if (!arrayInfo.hasSpread && !arrayInfo.hasElision && elements.length === 0) {
     return '__maia_arr_literal0()';
   }
 
-  if (!arrayInfo.hasSpread && !arrayInfo.hasElision && elements.length <= 4) {
-    const args = elements.map((element) => {
-      const lowered = lowerRequiredExpressionValue(
-        element,
-        compileContext,
-        'array-element-unlowerable',
-        'array literal element expression'
-      );
-      return `(int)(${lowered})`;
-    });
+  if (!arrayInfo.hasSpread && !arrayInfo.hasElision && !hasNestedAggregateElement && elements.length <= 4) {
+    const args = elements.map((element) => lowerArrayStorageValue(element));
 
     return `__maia_arr_literal${elements.length}(${args.join(', ')})`;
   }
@@ -6710,6 +6813,8 @@ function lowerAssignmentExpressionValue(node, compileContext) {
 
   if (lhsChild && opChild && rhsChild) {
     const fallbackLhs = lowerIdentifierFromLeftHandSideExpression(lhsChild, null);
+    const lhsMemberExprNode = findFirstNonterminal(lhsChild, 'memberExpression');
+    const lhsComputedInfo = lhsMemberExprNode ? extractComputedMemberAccessInfo(lhsMemberExprNode) : null;
 
     let operatorToken = (opChild.children || []).find((child) => child && child.kind === 'terminal') || null;
     if (!operatorToken) {
@@ -6731,6 +6836,22 @@ function lowerAssignmentExpressionValue(node, compileContext) {
       return null;
     }
     const operatorValue = String(operatorToken.value || '').trim();
+
+    if (lhsComputedInfo && operatorValue === '=') {
+      const loweredBase = lowerExpressionValue(lhsComputedInfo.baseExpressionNode, compileContext);
+      const loweredProperty = lowerExpressionValue(lhsComputedInfo.propertyExpressionNode, compileContext);
+      const rhsValue = lowerExpressionValue(rhsChild, compileContext);
+      const propertyModel = compileContext
+        ? resolveStaticModelFromExpression(lhsComputedInfo.propertyExpressionNode, lhsComputedInfo.propertyExpressionNode, compileContext)
+        : null;
+      if (loweredBase !== null && loweredProperty !== null && rhsValue !== null) {
+        const normalizedRhs = rhsValue === 'null' ? 'nullptr' : rhsValue;
+        if (propertyModel && propertyModel.kind === 'string') {
+          return `(__maia_runtime_value_set_property((void*)(${loweredBase}), ${JSON.stringify(propertyModel.value)}, (long)(${normalizedRhs})), ${normalizedRhs})`;
+        }
+        return `(__maia_runtime_value_set_index((void*)(${loweredBase}), (int)(${loweredProperty}), (long)(${normalizedRhs})), ${normalizedRhs})`;
+      }
+    }
 
     if (operatorValue === '=' && fallbackLhs) {
       const assignedCallableSymbol = compileContext
@@ -7515,6 +7636,10 @@ function lowerExpressionValue(node, compileContext) {
       if (staticResolved !== null) {
         return staticResolved;
       }
+      const loweredComputed = lowerComputedMemberAccessValue(computedInfo, compileContext);
+      if (loweredComputed !== null) {
+        return loweredComputed;
+      }
     }
 
     const memberChildren = (node.children || []);
@@ -7866,6 +7991,7 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
 
   return [
     'extern "C" int strcmp(const char* a, const char* b);',
+    'extern "C" void free(void* ptr);',
     'struct __maia_runtime_value {',
     '  int tag;',
     '  int a;',
@@ -7887,6 +8013,8 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
     '  long v6;',
     '  long v7;',
     '  long v8;',
+    '  long* items;',
+    '  int capacity;',
     '};',
     'static void* __maia_runtime_alloc_value(int tag, int a, int b, int c) {',
     '  __maia_runtime_value* v = new __maia_runtime_value();',
@@ -7910,12 +8038,50 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
     '  v->v6 = 0;',
     '  v->v7 = 0;',
     '  v->v8 = 0;',
+    '  v->items = 0;',
+    '  v->capacity = 0;',
+    '  if ((tag == 2 || tag == 4) && a > 0) {',
+    '    v->items = new long[a];',
+    '    v->capacity = a;',
+    '    for (int i = 0; i < a; i++) { v->items[i] = 0; }',
+    '  }',
     '  return (void*)v;',
+    '}',
+    'static int __maia_runtime_ensure_array_capacity(__maia_runtime_value* v, int needed) {',
+    '  int next_capacity = 0;',
+    '  long* next_items = 0;',
+    '  if (!v || needed <= 0) { return 0; }',
+    '  if (v->capacity >= needed) { return 0; }',
+    '  next_capacity = v->capacity > 0 ? v->capacity : 4;',
+    '  while (next_capacity < needed) { next_capacity *= 2; }',
+    '  next_items = new long[next_capacity];',
+    '  for (int i = 0; i < next_capacity; i++) { next_items[i] = 0; }',
+    '  if (v->items && v->capacity > 0) {',
+    '    for (int i = 0; i < v->capacity; i++) { next_items[i] = v->items[i]; }',
+    '    free((void*)v->items);',
+    '  }',
+    '  v->items = next_items;',
+    '  v->capacity = next_capacity;',
+    '  return 0;',
     '}',
     'static int __maia_runtime_value_length(void* value) {',
     '  __maia_runtime_value* v = (__maia_runtime_value*)value;',
     '  if (!v) { return 0; }',
     '  if (v->tag == 1 || v->tag == 2) { return v->a; }',
+    '  return 0;',
+    '}',
+    'static long __maia_runtime_value_get_index(void* value, int index) {',
+    '  __maia_runtime_value* v = (__maia_runtime_value*)value;',
+    '  if (!v || (v->tag != 2 && v->tag != 4) || index < 0 || index >= v->a || !v->items) { return 0; }',
+    '  return v->items[index];',
+    '}',
+    'static int __maia_runtime_value_set_index(void* value, int index, long element_value) {',
+    '  __maia_runtime_value* v = (__maia_runtime_value*)value;',
+    '  if (!v || (v->tag != 2 && v->tag != 4) || index < 0) { return 0; }',
+    '  __maia_runtime_ensure_array_capacity(v, index + 1);',
+    '  if (!v->items) { return 0; }',
+    '  v->items[index] = element_value;',
+    '  if (index >= v->a) { v->a = index + 1; }',
     '  return 0;',
     '}',
     'static void* __maia_runtime_arguments_slice(int argc, int start) {',
@@ -8304,7 +8470,7 @@ function emitArrayLiteralRuntimeDeclsCpp(tree) {
 
       const params = [];
       for (let i = 1; i <= arity; i += 1) {
-        params.push(`int v${i}`);
+        params.push(`long v${i}`);
       }
       decls.push(`extern void* __maia_arr_literal${arity}(${params.join(', ')});`);
     }
@@ -8312,10 +8478,15 @@ function emitArrayLiteralRuntimeDeclsCpp(tree) {
 
   if (stats.requiresBuilderHooks) {
     decls.push('extern void* __maia_arr_builder_begin(void);');
-    decls.push('extern void* __maia_arr_builder_push_value(void* builder, int value);');
+    decls.push('extern void* __maia_arr_builder_push_value(void* builder, long value);');
     decls.push('extern void* __maia_arr_builder_push_hole(void* builder);');
     decls.push('extern void* __maia_arr_builder_spread(void* builder, void* source_array);');
     decls.push('extern void* __maia_arr_builder_end(void* builder);');
+  }
+
+  if (stats.simpleArities.size > 0 || stats.requiresBuilderHooks) {
+    decls.push('extern long __maia_runtime_value_get_index(void* value, int index);');
+    decls.push('extern int __maia_runtime_value_set_index(void* value, int index, long element_value);');
   }
 
   return decls.join('\n');
@@ -8340,10 +8511,14 @@ function emitArrayLiteralRuntimeFallbackCpp(tree) {
     for (let arity = 1; arity <= maxArity; arity += 1) {
       const params = [];
       for (let i = 1; i <= arity; i += 1) {
-        params.push(`int v${i}`);
+        params.push(`long v${i}`);
       }
       lines.push(`void* __maia_arr_literal${arity}(${params.join(', ')}) {`);
-      lines.push(`  return __maia_runtime_alloc_value(2, ${arity}, 0, 0);`);
+      lines.push(`  __maia_runtime_value* arr = (__maia_runtime_value*)__maia_runtime_alloc_value(2, ${arity}, 0, 0);`);
+      for (let i = 1; i <= arity; i += 1) {
+        lines.push(`  __maia_runtime_value_set_index((void*)arr, ${i - 1}, (long)(v${i}));`);
+      }
+      lines.push('  return (void*)arr;');
       lines.push('}');
     }
   }
@@ -8352,34 +8527,42 @@ function emitArrayLiteralRuntimeFallbackCpp(tree) {
     lines.push('void* __maia_arr_builder_begin(void) {');
     lines.push('  return __maia_runtime_alloc_value(4, 0, 0, 0);');
     lines.push('}');
-    lines.push('void* __maia_arr_builder_push_value(void* builder, int value) {');
-    lines.push('  (void)value;');
+    lines.push('void* __maia_arr_builder_push_value(void* builder, long value) {');
     lines.push('  __maia_runtime_value* b = (__maia_runtime_value*)builder;');
     lines.push('  if (!b) { return builder; }');
-    lines.push('  b->a += 1;');
+    lines.push('  __maia_runtime_value_set_index(builder, b->a, (long)(value));');
     lines.push('  return builder;');
     lines.push('}');
     lines.push('void* __maia_arr_builder_push_hole(void* builder) {');
     lines.push('  __maia_runtime_value* b = (__maia_runtime_value*)builder;');
     lines.push('  if (!b) { return builder; }');
-    lines.push('  b->a += 1;');
+    lines.push('  __maia_runtime_value_set_index(builder, b->a, 0);');
     lines.push('  b->b += 1;');
     lines.push('  return builder;');
     lines.push('}');
     lines.push('void* __maia_arr_builder_spread(void* builder, void* source_array) {');
     lines.push('  __maia_runtime_value* b = (__maia_runtime_value*)builder;');
+    lines.push('  __maia_runtime_value* src = (__maia_runtime_value*)source_array;');
     lines.push('  if (!b) { return builder; }');
     lines.push('  b->c += 1;');
-    lines.push('  __maia_runtime_value* src = (__maia_runtime_value*)source_array;');
-    lines.push('  if (src && src->tag == 2) { b->a += src->a; }');
+    lines.push('  if (src && src->tag == 2) {');
+    lines.push('    for (int i = 0; i < src->a; i++) {');
+    lines.push('      __maia_runtime_value_set_index(builder, b->a, __maia_runtime_value_get_index(source_array, i));');
+    lines.push('    }');
+    lines.push('  }');
     lines.push('  return builder;');
     lines.push('}');
     lines.push('void* __maia_arr_builder_end(void* builder) {');
     lines.push('  __maia_runtime_value* b = (__maia_runtime_value*)builder;');
+    lines.push('  __maia_runtime_value* arr = 0;');
     lines.push('  if (!b) { return __maia_arr_literal0(); }');
-    lines.push('  void* arr = __maia_runtime_alloc_value(2, b->a, b->b, b->c);');
+    lines.push('  arr = (__maia_runtime_value*)__maia_runtime_alloc_value(2, b->a, b->b, b->c);');
+    lines.push('  for (int i = 0; i < b->a; i++) {');
+    lines.push('    __maia_runtime_value_set_index((void*)arr, i, __maia_runtime_value_get_index(builder, i));');
+    lines.push('  }');
+    lines.push('  if (b->items) { free((void*)b->items); }');
     lines.push('  delete b;');
-    lines.push('  return arr;');
+    lines.push('  return (void*)arr;');
     lines.push('}');
   }
 

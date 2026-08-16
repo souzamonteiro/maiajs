@@ -320,7 +320,25 @@ fi
 [[ -n "$WEBCPP_SH" ]] || err "could not find MaiaCpp webcpp.sh"
 
 echo "[webjs] invoking MaiaCpp pipeline: $WEBCPP_SH"
-"$WEBCPP_SH" "$CPP_OUT" "${FORWARD_ARGS[@]+"${FORWARD_ARGS[@]}"}"
+webcpp_args=("$CPP_OUT")
+if [[ $HAS_DIST -eq 1 ]]; then
+  has_webcpp_out_dir=0
+  idx=0
+  while [[ $idx -lt ${#FORWARD_ARGS[@]} ]]; do
+    if [[ "${FORWARD_ARGS[$idx]}" == "--out-dir" ]]; then
+      has_webcpp_out_dir=1
+      break
+    fi
+    idx=$((idx + 1))
+  done
+  if [[ $has_webcpp_out_dir -eq 0 ]]; then
+    webcpp_args+=(--out-dir "$OUT_DIR")
+  fi
+fi
+if [[ ${#FORWARD_ARGS[@]} -gt 0 ]]; then
+  webcpp_args+=("${FORWARD_ARGS[@]}")
+fi
+"$WEBCPP_SH" "${webcpp_args[@]}"
 
 # If distribution was requested, copy WAT runtime libs to the dist folder
 if [[ $HAS_DIST -eq 1 ]]; then
