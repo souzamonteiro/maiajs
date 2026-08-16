@@ -1,0 +1,3 @@
+PASS tmax_int_r
+PASS tmax_int_l
+ALL PASS

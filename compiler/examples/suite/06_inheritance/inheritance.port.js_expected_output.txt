@@ -1,0 +1,2 @@
+PASS rect_area
+ALL PASS

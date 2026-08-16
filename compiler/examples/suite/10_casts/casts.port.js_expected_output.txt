@@ -1,0 +1,7 @@
+PASS sc_double_to_int
+PASS cstyle_trunc
+PASS sc_int_to_char
+PASS sc_upcast
+PASS sc_downcast
+PASS cc_write
+ALL PASS

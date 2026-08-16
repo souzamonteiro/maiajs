@@ -1,0 +1,7 @@
+PASS new_not_null
+PASS new_id
+PASS arr_not_null
+PASS int_arr
+PASS double_not_null
+PASS double_val
+ALL PASS
