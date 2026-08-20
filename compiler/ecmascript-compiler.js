@@ -135,6 +135,21 @@ function walk(node, visit) {
   }
 }
 
+function flattenNodeText(node, maxLen = 160) {
+  const parts = [];
+  walk(node, (candidate) => {
+    if (!candidate || candidate.kind !== 'terminal' || candidate.value == null) {
+      return;
+    }
+    parts.push(String(candidate.value));
+  });
+  const text = parts.join('').replace(/\s+/g, ' ').trim();
+  if (text.length <= maxLen) {
+    return text;
+  }
+  return `${text.slice(0, maxLen - 3)}...`;
+}
+
 const TREE_NAV_CACHE = new WeakMap();
 
 function getTreeNavigationIndex(root) {
@@ -779,6 +794,7 @@ function collectTopLevelPrototypeHeritageMap(tree) {
 
 function collectTopLevelCallArgumentFunctionExpressionBindings(tree) {
   const bindings = [];
+  const promiseChainMethods = new Set(['then', 'catch', 'finally']);
 
   for (const statementNode of extractTopLevelStatementNodes(tree)) {
     walk(statementNode, (node) => {
@@ -794,6 +810,10 @@ function collectTopLevelCallArgumentFunctionExpressionBindings(tree) {
       }
 
       const pathSegments = extractPathFromMemberExpression(memberExprNode) || [];
+      const terminalMethodName = pathSegments.length > 0 ? pathSegments[pathSegments.length - 1] : '';
+      if (promiseChainMethods.has(terminalMethodName)) {
+        return;
+      }
       const targetName = pathSegments.length > 0 ? pathSegments.join('_') : 'call';
       const argListNode = (argsNode.children || []).find(
         (child) => child && child.kind === 'nonterminal' && child.name === 'argumentList'
@@ -1995,7 +2015,19 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
     const visibleBindings = collectVisibleVariableBindingsAtNode(targetNode, compileContext);
     const bindingInfo = visibleBindings.get(identifierName) || null;
     if (!bindingInfo) {
-      return finish(null);
+      const initializerExpr = findBoundVariableInitializerExpressionAtNode(identifierName, targetNode, compileContext);
+      if (!initializerExpr || initializerExpr === current) {
+        return finish(null);
+      }
+      seenBindings.add(identifierName);
+      const resolvedInitializer = resolveStaticModelFromExpression(
+        initializerExpr,
+        targetNode,
+        compileContext,
+        seenBindings
+      );
+      seenBindings.delete(identifierName);
+      return finish(resolvedInitializer);
     }
     if (bindingInfo.kind === 'catch-param') {
       return finish({ kind: 'catch-param', name: identifierName });
@@ -2467,6 +2499,116 @@ function findCallableNodeFromExpression(expressionNode) {
     || findFirstNonterminal(expressionNode, 'functionDeclaration');
 }
 
+function resolveFlatStaticPrimitiveModel(expressionNode) {
+  const flattenedText = flattenNodeText(expressionNode);
+  if ((flattenedText.startsWith('\'') && flattenedText.endsWith('\''))
+    || (flattenedText.startsWith('"') && flattenedText.endsWith('"'))) {
+    const normalized = normalizeJsStringLiteralForCpp(flattenedText);
+    if (!normalized) {
+      return { kind: 'string', value: '' };
+    }
+    try {
+      return { kind: 'string', value: JSON.parse(normalized) };
+    } catch (_) {
+      return { kind: 'string', value: normalized.slice(1, -1) };
+    }
+  }
+  if (/^-?\d+(\.\d+)?$/.test(flattenedText)) {
+    return { kind: 'number', value: Number(flattenedText) };
+  }
+  if (flattenedText === 'true' || flattenedText === 'false') {
+    return { kind: 'bool', value: flattenedText === 'true' ? 1 : 0 };
+  }
+  if (flattenedText === 'null') {
+    return { kind: 'null', value: null };
+  }
+  return null;
+}
+
+function resolveStaticPromiseSeedModel(expressionNode, targetNode, scopeModels, compileContext) {
+  const flatPrimitiveModel = resolveFlatStaticPrimitiveModel(expressionNode);
+  if (flatPrimitiveModel) {
+    return flatPrimitiveModel;
+  }
+
+  const directStringValue = extractStringLiteralValue(expressionNode);
+  if (directStringValue !== null) {
+    return { kind: 'string', value: directStringValue };
+  }
+
+  const directModel = resolveStaticModelFromExpression(expressionNode, targetNode, compileContext);
+  if (directModel) {
+    return directModel;
+  }
+
+  let current = expressionNode;
+  while (current && current.kind === 'nonterminal') {
+    if (current.name === 'literal'
+      || current.name === 'identifier'
+      || current.name === 'callExpression'
+      || current.name === 'memberExpression'
+      || current.name === 'equalityExpression'
+      || current.name === 'multiplicativeExpression'
+      || current.name === 'additiveExpression') {
+      break;
+    }
+    if (current.name === 'primaryExpression') {
+      const literalChild = (current.children || []).find(
+        (child) => child && child.kind === 'nonterminal' && child.name === 'literal'
+      );
+      if (literalChild) {
+        current = literalChild;
+        break;
+      }
+    }
+    const nonterminalChildren = (current.children || []).filter(
+      (child) => child && child.kind === 'nonterminal'
+    );
+    if (nonterminalChildren.length !== 1) {
+      break;
+    }
+    current = nonterminalChildren[0];
+  }
+
+  if (!current || current.kind !== 'nonterminal') {
+    return null;
+  }
+
+  if (current.name === 'literal') {
+    const numericLiteralNode = (current.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'numericLiteral'
+    );
+    if (numericLiteralNode) {
+      const terminal = (numericLiteralNode.children || []).find((child) => child && child.kind === 'terminal');
+      if (terminal) {
+        const numericValue = Number(terminal.value);
+        if (Number.isFinite(numericValue)) {
+          return { kind: 'number', value: numericValue };
+        }
+      }
+    }
+
+    const booleanLiteralNode = (current.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'booleanLiteral'
+    );
+    if (booleanLiteralNode) {
+      const terminal = (booleanLiteralNode.children || []).find((child) => child && child.kind === 'terminal');
+      if (terminal) {
+        return { kind: 'bool', value: terminal.value === 'true' ? 1 : 0 };
+      }
+    }
+  }
+
+  if (current.name === 'identifier') {
+    const name = findFirstIdentifierValue(current);
+    if (name && scopeModels && scopeModels.has(name)) {
+      return scopeModels.get(name);
+    }
+  }
+
+  return evaluateStaticExpressionModel(current, scopeModels, compileContext);
+}
+
 function analyzeStaticPromiseThenChain(callExpressionNode, scopeModels, compileContext) {
   if (!callExpressionNode || callExpressionNode.kind !== 'nonterminal' || callExpressionNode.name !== 'callExpression') {
     return null;
@@ -2480,12 +2622,15 @@ function analyzeStaticPromiseThenChain(callExpressionNode, scopeModels, compileC
   const pathSegments = extractPathFromMemberExpression(memberExprNode, null);
   let currentValueModel = null;
   let scheduleKind = null;
+  const initialValueArgNode = Array.isArray(pathSegments) && pathSegments.length === 2 && pathSegments[0] === 'Promise' && pathSegments[1] === 'resolve'
+    ? (argExprs[0] || null)
+    : (argExprs[1] || null);
 
   if (Array.isArray(pathSegments) && pathSegments.length === 2 && pathSegments[0] === 'Promise' && pathSegments[1] === 'resolve' && argExprs.length >= 1) {
-    currentValueModel = evaluateStaticExpressionModel(argExprs[0], scopeModels, compileContext);
+    currentValueModel = resolveStaticPromiseSeedModel(initialValueArgNode, callExpressionNode, scopeModels, compileContext);
     scheduleKind = 'microtask';
   } else if (Array.isArray(pathSegments) && pathSegments.length === 1 && pathSegments[0] === 'delay' && argExprs.length >= 2) {
-    currentValueModel = evaluateStaticExpressionModel(argExprs[1], scopeModels, compileContext);
+    currentValueModel = resolveStaticPromiseSeedModel(initialValueArgNode, callExpressionNode, scopeModels, compileContext);
     scheduleKind = 'timer';
   } else {
     return null;
@@ -2578,6 +2723,11 @@ function tryLowerStaticPromiseThenChain(callExpressionNode, compileContext) {
 function evaluateStaticExpressionModel(expressionNode, scopeModels, compileContext) {
   if (!expressionNode || expressionNode.kind !== 'nonterminal') {
     return null;
+  }
+
+  const flatPrimitiveModel = resolveFlatStaticPrimitiveModel(expressionNode);
+  if (flatPrimitiveModel) {
+    return flatPrimitiveModel;
   }
 
   const directStaticModel = resolveStaticModelFromExpression(expressionNode, expressionNode, compileContext);
@@ -2740,7 +2890,7 @@ function tryResolveStaticFilterResultModel(callExpressionNode, baseExpressionNod
     return parts.join('').replace(/\s+/g, '');
   })();
 
-  if (callbackText.includes('indexOf') && callbackText.includes('===i')) {
+  if (callbackText.includes('indexOf') && /={2,3}i\b/.test(callbackText)) {
     const filteredValues = [];
     const seenValueKeys = new Set();
     for (const valueModel of baseModel.values) {
@@ -3915,6 +4065,28 @@ const JS_RUNTIME_METHODS = new Set([
   // EventEmitter / Observable
   'on', 'off', 'emit', 'subscribe', 'unsubscribe'
 ]);
+
+const HOST_METHODS_WITH_RECEIVER_ARG = new Set([
+  'padStart', 'padEnd',
+  'map', 'filter', 'reduce', 'reduceRight', 'includes',
+  'indexOf', 'lastIndexOf', 'find', 'findIndex', 'forEach'
+]);
+
+function hostCallNeedsReceiverArg(hostSymbol, directPropertyName, baseExpressionNode) {
+  if (!hostSymbol || !directPropertyName || !baseExpressionNode) {
+    return false;
+  }
+  if (!HOST_METHODS_WITH_RECEIVER_ARG.has(directPropertyName)) {
+    return false;
+  }
+  if (/^__str__/.test(hostSymbol)) {
+    return true;
+  }
+  if (/^__.*__(map|filter|reduce|reduceRight|includes|indexOf|lastIndexOf|find|findIndex|forEach)$/.test(hostSymbol)) {
+    return true;
+  }
+  return false;
+}
 
 const INFIX_EXPRESSION_NODES = new Set([
   'logicalORExpression',
@@ -5242,9 +5414,54 @@ function extractDirectCallExpressionNode(node) {
   return null;
 }
 
+function callExpressionContainsDirectPromiseThen(callExpressionNode) {
+  if (!callExpressionNode || callExpressionNode.kind !== 'nonterminal' || callExpressionNode.name !== 'callExpression') {
+    return false;
+  }
+  const children = callExpressionNode.children || [];
+  for (let i = 0; i < children.length - 2; i += 1) {
+    const dotNode = children[i];
+    const propertyNode = children[i + 1];
+    const argsNode = children[i + 2];
+    if (!dotNode || dotNode.kind !== 'terminal' || dotNode.value !== '.') {
+      continue;
+    }
+    if (!propertyNode || propertyNode.kind !== 'nonterminal' || propertyNode.name !== 'propertyIdentifierName') {
+      continue;
+    }
+    if (findFirstIdentifierValue(propertyNode) !== 'then') {
+      continue;
+    }
+    if (argsNode && argsNode.kind === 'nonterminal' && argsNode.name === 'arguments') {
+      return true;
+    }
+  }
+  return false;
+}
+
+function findFirstPromiseThenCallExpression(node) {
+  let found = null;
+  walk(node, (candidate) => {
+    if (found || !candidate || candidate.kind !== 'nonterminal' || candidate.name !== 'callExpression') {
+      return;
+    }
+    if (callExpressionContainsDirectPromiseThen(candidate)) {
+      found = candidate;
+    }
+  });
+  return found;
+}
+
 function isDroppedDirectJsRuntimeMethodCallExpression(node, compileContext) {
   const callExpressionNode = extractDirectCallExpressionNode(node);
   if (!callExpressionNode) {
+    return false;
+  }
+
+  const staticallyLowered = lowerStaticModelToRuntimeExpression(
+    resolveStaticModelFromExpression(callExpressionNode, callExpressionNode, compileContext)
+  );
+  if (staticallyLowered !== null || tryLowerStaticPromiseThenChain(callExpressionNode, compileContext) !== null) {
     return false;
   }
 
@@ -7595,6 +7812,22 @@ function lowerExpressionValue(node, compileContext) {
       return staticResolved;
     }
   }
+  if (compileContext) {
+    const promiseThenCallNode = findFirstPromiseThenCallExpression(node);
+    if (promiseThenCallNode) {
+      const loweredStaticPromiseThenChain = tryLowerStaticPromiseThenChain(promiseThenCallNode, compileContext);
+      if (loweredStaticPromiseThenChain !== null) {
+        return loweredStaticPromiseThenChain;
+      }
+    }
+    const directCallExpressionNode = extractDirectCallExpressionNode(node);
+    if (directCallExpressionNode) {
+      const loweredStaticPromiseThenChain = tryLowerStaticPromiseThenChain(directCallExpressionNode, compileContext);
+      if (loweredStaticPromiseThenChain !== null) {
+        return loweredStaticPromiseThenChain;
+      }
+    }
+  }
   if (node.name === 'arrowFunction') { return lowerArrowFunctionValue(node, false, compileContext); }
   if (node.name === 'asyncArrowFunction') { return lowerArrowFunctionValue(node, true, compileContext); }
   if (node.name === 'functionExpression') {
@@ -8929,6 +9162,28 @@ function lowerCallExpressionValue(node, compileContext) {
     }
   }
 
+  if (!loweredCall && pathLabel === 'Reflect.set' && argExprs.length >= 3) {
+    const targetExprType = inferExprType(argExprs[0], compileContext);
+    if (targetExprType === 'object' || targetExprType === 'array') {
+      const loweredTarget = lowerExpressionValue(argExprs[0], compileContext);
+      const loweredKey = lowerExpressionValue(argExprs[1], compileContext);
+      const loweredValue = lowerExpressionValue(argExprs[2], compileContext);
+      if (loweredTarget !== null && loweredKey !== null && loweredValue !== null) {
+        loweredCall = `__Reflect((void*)(${loweredTarget}), ${loweredKey}, (long)(${loweredValue}))`;
+      }
+    }
+  }
+
+  if (!loweredCall && pathLabel === 'Reflect.ownKeys' && argExprs.length >= 1) {
+    const targetExprType = inferExprType(argExprs[0], compileContext);
+    if (targetExprType === 'object' || targetExprType === 'array') {
+      const loweredTarget = lowerExpressionValue(argExprs[0], compileContext);
+      if (loweredTarget !== null) {
+        loweredCall = `__Reflect__ownKeys(${loweredTarget})`;
+      }
+    }
+  }
+
   if (!loweredCall && pathSegments && pathSegments.length === 2 && pathSegments[1] === 'call') {
     const ctorName = pathSegments[0];
     const isCtorBinding = compileContext
@@ -9202,7 +9457,23 @@ function lowerCallExpressionValue(node, compileContext) {
       loweredCall = `${hostSymbol}(${safeArg})`;
       return loweredCall;
     }
-    loweredCall = `${hostSymbol}(${args})`;
+    if (hostCallNeedsReceiverArg(hostSymbol, directPropertyName, baseExpressionNode)) {
+      const loweredBase = lowerExpressionValue(baseExpressionNode, compileContext);
+      if (loweredBase === null) {
+        reportUnsupportedLowering(
+          compileContext,
+          'method-call-base-unlowerable',
+          `host receiver base expression could not be lowered for '${directPropertyName}'`
+        );
+        if (compileContext && compileContext.strictLowering) {
+          err(`unsupported lowering: host receiver base '${directPropertyName}'`);
+        }
+        return null;
+      }
+      loweredCall = `${hostSymbol}(${[loweredBase, args].filter((piece) => piece && piece.trim()).join(', ')})`;
+    } else {
+      loweredCall = `${hostSymbol}(${args})`;
+    }
   }
 
   // Preserve call chains after the first invocation, e.g. a().b().c().
@@ -9323,6 +9594,18 @@ function lowerCallExpressionValue(node, compileContext) {
 
 function collectHostSignatures(tree, compileContext) {
   const signatures = new Map();
+  const reflectiveObjectHosts = new Set([
+    '__Object__values',
+    '__Object__entries',
+    '__Object__getOwnPropertyDescriptors',
+    '__Reflect__ownKeys'
+  ]);
+  const reflectiveHostArgTypes = new Map([
+    ['__Reflect__set', ['object', 'string', 'object']],
+    ['__Reflect__deleteProperty', ['object', 'string']],
+    ['__Object__defineProperty', ['object', 'string', 'object']],
+    ['__Object__assign', ['object', 'object']]
+  ]);
   const mergeHostSignatureArgTypes = (currentTypes, nextTypes) => {
     const merged = [];
     const maxLength = Math.max(currentTypes.length, nextTypes.length);
@@ -9383,14 +9666,26 @@ function collectHostSignatures(tree, compileContext) {
 
     const host = compileContext.hostRegistry.resolvePath(pathSegments);
     if (!host) { return; }
+    const memberChildren = memberExprNode ? (memberExprNode.children || []) : [];
+    const directPropertyIndex = memberChildren.findIndex((child) => child && child.kind === 'terminal' && child.value === '.');
+    const directPropertyNode = directPropertyIndex >= 0 ? memberChildren[directPropertyIndex + 1] : null;
+    const directPropertyName = directPropertyNode ? findFirstIdentifierValue(directPropertyNode) : null;
+    const baseExpressionNode = directPropertyIndex > 0 ? memberChildren[0] : null;
     let argListNode = (argsNode.children || []).find((c) => c && c.kind === 'nonterminal' && c.name === 'argumentList') || null;
     if (!argListNode) {
       argListNode = findFirstNonterminal(argsNode, 'argumentList');
     }
     const argExprs = argListNode ? collectArgumentExpressions(argListNode) : [];
-    const nextArgTypes = host === '__console__log'
+    const inferredArgTypes = host === '__console__log'
       ? (argExprs.length > 0 ? ['string'] : [])
+      : reflectiveHostArgTypes.has(host)
+        ? reflectiveHostArgTypes.get(host).slice(0, argExprs.length)
+      : reflectiveObjectHosts.has(host)
+        ? argExprs.map(() => 'object')
       : argExprs.map((argExpr) => inferExprType(argExpr, compileContext));
+    const nextArgTypes = hostCallNeedsReceiverArg(host, directPropertyName, baseExpressionNode)
+      ? [inferExprType(baseExpressionNode, compileContext), ...inferredArgTypes]
+      : inferredArgTypes;
     if (host === '__console__log') {
       signatures.set(host, nextArgTypes);
       return;
@@ -10014,7 +10309,10 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       }
       return [`${indent}// [expression statement missing expression]`];
     }
-    const lowered = lowerExpressionValue(exprNode, compileContext);
+    const promiseThenCallNode = findFirstPromiseThenCallExpression(exprNode);
+    const lowered = promiseThenCallNode
+      ? (tryLowerStaticPromiseThenChain(promiseThenCallNode, compileContext) ?? lowerExpressionValue(exprNode, compileContext))
+      : lowerExpressionValue(exprNode, compileContext);
     if (lowered === null) {
       reportUnsupportedLowering(
         compileContext,
@@ -10913,7 +11211,9 @@ function lowerProgramToCppStatements(tree, compileContext, options = {}) {
   const includeClassDeclarations = options.includeClassDeclarations !== false;
   const lines = [];
   beginDeferredPromiseQueueScope(compileContext);
-  for (const stmtNode of extractTopLevelStatementNodes(tree)) {
+  const topLevelStatements = extractTopLevelStatementNodes(tree);
+  for (let stmtIndex = 0; stmtIndex < topLevelStatements.length; stmtIndex += 1) {
+    const stmtNode = topLevelStatements[stmtIndex];
     if (!stmtNode) { continue; }
 
     if (!includeFunctionDeclarations
@@ -10927,7 +11227,9 @@ function lowerProgramToCppStatements(tree, compileContext, options = {}) {
     }
 
     resetStatementLoweringState(compileContext);
+    profileLog(`TOPLEVEL START #${stmtIndex + 1}: ${flattenNodeText(stmtNode, 120)}`);
     lines.push(...lowerStatementNode(stmtNode, compileContext, 1));
+    profileLog(`TOPLEVEL END   #${stmtIndex + 1}: ${flattenNodeText(stmtNode, 120)}`);
   }
   lines.push(...takeDeferredPromiseStatements(compileContext, '  '));
   return lines;
@@ -11819,6 +12121,12 @@ function emitConsoleConcatHelpersCpp(tree, compileContext) {
     }
     if (/__reduce(?:Right)?$/.test(fn)) {
       return 'double';
+    }
+    if (/__(map|filter|find)$/.test(fn)) {
+      return 'void*';
+    }
+    if (/__(indexOf|lastIndexOf|findIndex)$/.test(fn)) {
+      return 'int';
     }
     if (/__includes$/.test(fn)) {
       return 'int';

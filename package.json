@@ -1,6 +1,6 @@
 {
   "name": "maiajscompiler",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MaiaJS (WebJS): ES8 JavaScript to WebAssembly compiler via C++ transpilation.",
   "author": "The MaiaScript Team (https://www.maiascript.com)",
   "license": "Apache-2.0",
