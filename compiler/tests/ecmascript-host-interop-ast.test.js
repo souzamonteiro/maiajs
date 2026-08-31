@@ -183,7 +183,7 @@ test('C++ lowering preserves mutable identifiers inside for-loop arithmetic and 
     + 'return sum === 6 ? 1 : 0;\n'
   );
 
-  assert.match(cpp, /for \(; i < 4; i = i \+ 1\) \{/, 'for header must preserve mutable identifier references');
+  assert.match(cpp, /for \(i = 0; i < 4; i = i \+ 1\) \{/, 'for header must preserve mutable identifier references');
   assert.match(cpp, /sum = sum \+ i;/, 'loop body must preserve mutable arithmetic operands');
   assert.match(cpp, /return \(int\)\(\(\(sum == 6\) \? \(1\) : \(0\)\)\);/, 'return condition must preserve mutable identifier in comparison');
   assert.doesNotMatch(cpp, /for \(; 0 < 4; i = 0 \+ 1\)/, 'for header must not collapse mutable bindings into stale literals');
@@ -242,8 +242,8 @@ test('C++ lowering emits if/else blocks with host calls', () => {
 test('C++ lowering emits top-level function and local call without host prefix', () => {
   const cpp = runCompilerCpp('function f(){ return 1; }\nf();\n');
 
-  assert.match(cpp, /double f\(void\) \{/, 'C++ must emit local function definition');
-  assert.match(cpp, /return \(double\)\(1\);/, 'C++ function body must lower return expression');
+  assert.match(cpp, /int f\(void\) \{/, 'C++ must emit local function definition');
+  assert.match(cpp, /return \(int\)\(1\);/, 'C++ function body must lower return expression');
   assert.match(cpp, /\n\s*f\(\);/, 'main must call local function directly');
   assert.doesNotMatch(cpp, /__f\(/, 'local function call must not be treated as host call');
 });
@@ -292,11 +292,11 @@ test('C++ lowering propagates double return type through local function calls', 
 test('C++ lowering emits forward prototype for cross-function call', () => {
   const cpp = runCompilerCpp('function f(){ return g(); }\nfunction g(){ return 1; }\n');
 
-  assert.match(cpp, /double g\(void\);/, 'C++ must emit prototype for later function declaration');
-  assert.match(cpp, /double f\(void\) \{\n\s*return \(double\)\(g\(\)\);\n\}/, 'C++ must lower local cross-function call in function body');
+  assert.match(cpp, /int g\(void\);/, 'C++ must emit prototype for later function declaration');
+  assert.match(cpp, /int f\(void\) \{\n\s*return \(int\)\(g\(\)\);\n\}/, 'C++ must lower local cross-function call in function body');
 
-  const protoPos = cpp.indexOf('double g(void);');
-  const defPos = cpp.indexOf('double f(void) {');
+  const protoPos = cpp.indexOf('int g(void);');
+  const defPos = cpp.indexOf('int f(void) {');
   assert.ok(protoPos >= 0, 'prototype should be present');
   assert.ok(defPos >= 0, 'function definition should be present');
   assert.ok(protoPos < defPos, 'prototype should appear before first function definition that uses it');
@@ -305,10 +305,10 @@ test('C++ lowering emits forward prototype for cross-function call', () => {
 test('C++ lowering emits function-body if without else and trailing return', () => {
   const cpp = runCompilerCpp('function f(){ if (x) { return 1; } return 2; }\n');
 
-  assert.match(cpp, /double f\(void\);/, 'C++ must emit function prototype');
+  assert.match(cpp, /int f\(void\);/, 'C++ must emit function prototype');
   assert.match(cpp, /if \(x\) \{/, 'C++ must lower function-body if condition');
-  assert.match(cpp, /return \(double\)\(1\);/, 'C++ must lower return inside if branch');
-  assert.match(cpp, /return \(double\)\(2\);/, 'C++ must preserve trailing function-body return');
+  assert.match(cpp, /return \(int\)\(1\);/, 'C++ must lower return inside if branch');
+  assert.match(cpp, /return \(int\)\(2\);/, 'C++ must preserve trailing function-body return');
 });
 
 test('C++ lowering emits additive expression in return', () => {
@@ -321,10 +321,10 @@ test('C++ lowering emits additive expression in return', () => {
 test('C++ lowering emits comparison expression in if condition within function', () => {
   const cpp = runCompilerCpp('function check(a, b){ if (a < b) { return 1; } return 0; }\n');
 
-  assert.match(cpp, /double check\(int a, int b\);/, 'C++ must emit function prototype with params');
+  assert.match(cpp, /int check\(int a, int b\);/, 'C++ must emit function prototype with params');
   assert.match(cpp, /if \(a < b\) \{/, 'C++ must lower relational expression as if condition');
-  assert.match(cpp, /return \(double\)\(1\);/, 'C++ must lower return inside branch');
-  assert.match(cpp, /return \(double\)\(0\);/, 'C++ must lower trailing return');
+  assert.match(cpp, /return \(int\)\(1\);/, 'C++ must lower return inside branch');
+  assert.match(cpp, /return \(int\)\(0\);/, 'C++ must lower trailing return');
 });
 
 test('C++ lowering emits logical AND expression in return', () => {

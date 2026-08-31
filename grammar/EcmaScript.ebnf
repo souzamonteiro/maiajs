@@ -53,6 +53,9 @@ initializer ::= '=' assignmentExpression
 
 assignmentExpression ::= arrowFunction
            | asyncArrowFunction
+           | functionExpression
+           | generatorExpression
+           | asyncFunctionExpression
            | yieldExpression
            | leftHandSideExpression assignmentOperator assignmentExpression
            | conditionalExpression
@@ -73,7 +76,7 @@ coverCallExpressionAndAsyncArrowHead ::= memberExpression arguments
 asyncConciseBody ::= assignmentExpression
            | '{' asyncFunctionBody '}'
 
-arrowFunctionParameters ::= identifier
+arrowFunctionParameters ::= identifierReference
            | '(' formalParameterList? ')'
 
 arrowFunctionBody ::= assignmentExpression
@@ -139,7 +142,7 @@ memberExpression ::= ( primaryExpression
                      | templateLiteral )*
 
 primaryExpression ::= 'this'
-           | identifier
+           | identifierReference
            | literal
            | arrayLiteral
            | objectLiteral
@@ -184,17 +187,28 @@ propertyAssignment ::= propertyName ':' assignmentExpression
 propertyName ::= literalPropertyName
            | computedPropertyName
 
-literalPropertyName ::= identifier
+literalPropertyName ::= propertyIdentifierName
            | stringLiteral
            | numericLiteral
 
 computedPropertyName ::= '[' assignmentExpression ']'
 
 identifierReference ::= identifier
+           | contextualIdentifier
 
 coverInitializedName ::= identifierReference initializer
 
 bindingIdentifier ::= identifier
+           | contextualIdentifier
+
+contextualIdentifier ::= 'as'
+           | 'async'
+           | 'from'
+           | 'get'
+           | 'of'
+           | 'set'
+           | 'static'
+           | 'target'
 
 bindingPattern ::= objectBindingPattern
            | arrayBindingPattern
@@ -236,6 +250,7 @@ asyncFunctionExpression ::= 'async' 'function' identifier? '(' formalParameterLi
 classExpression ::= 'class' identifier? classTail
 
 formalParameterList ::= formalsList ',' functionRestParameter
+           | formalsList ','
            | functionRestParameter
            | formalsList
 

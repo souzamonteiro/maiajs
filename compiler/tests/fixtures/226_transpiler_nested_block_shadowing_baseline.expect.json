@@ -2,7 +2,7 @@
   "stages": ["transpiler"],
   "shouldTranspile": true,
   "cppContains": [
-    "void* shadow(double x);",
+    "void* shadow(int x);",
     "double y = x;",
     "{",
     "double y = 3;",

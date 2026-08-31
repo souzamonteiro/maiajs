@@ -2,10 +2,10 @@
   "stages": ["transpiler"],
   "shouldTranspile": true,
   "cppContains": [
-    "double fact(double n);",
+    "int fact(int n);",
     "if (n <= 1) {",
-    "return (double)(1);",
-    "return (double)(n * fact(n - 1));"
+    "return (int)(1);",
+    "return (int)(n * fact(n - 1));"
   ],
   "cppExclude": [
     "__fact(",

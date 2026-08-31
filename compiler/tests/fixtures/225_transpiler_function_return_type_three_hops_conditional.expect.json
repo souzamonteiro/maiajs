@@ -2,9 +2,9 @@
   "stages": ["transpiler"],
   "shouldTranspile": true,
   "cppContains": [
-    "double source(double flag);",
-    "double middle(double flag);",
-    "double sink(double flag);",
+    "double source(int flag);",
+    "double middle(int flag);",
+    "double sink(int flag);",
     "if (flag) {",
     "return (double)(2.5);",
     "return (double)(1);",

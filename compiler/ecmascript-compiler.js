@@ -1688,13 +1688,17 @@ function collectVisibleVariableBindingsAtNode(targetNode, compileContext) {
     const declarationNode = (statementNode.children || []).find(
       (child) => child
         && child.kind === 'nonterminal'
-        && (child.name === 'variableStatement' || child.name === 'letDeclaration' || child.name === 'constDeclaration')
-    );
+        && (child.name === 'variableStatement' || child.name === 'letDeclaration' || child.name === 'constDeclaration' || child.name === 'lexicalDeclaration')
+    ) || findFirstNonterminal(statementNode, 'variableStatement')
+      || findFirstNonterminal(statementNode, 'letDeclaration')
+      || findFirstNonterminal(statementNode, 'constDeclaration')
+      || findFirstNonterminal(statementNode, 'lexicalDeclaration');
     if (declarationNode) {
-      const declarationIsConst = declarationNode.name === 'constDeclaration';
+      const declarationIsConst = declarationNode.name === 'constDeclaration'
+        || Boolean(findFirstTerminalByToken(declarationNode, 'TOKEN_const'));
       const variableDeclarationList = (declarationNode.children || []).find(
         (child) => child && child.kind === 'nonterminal' && child.name === 'variableDeclarationList'
-      );
+      ) || findFirstNonterminal(declarationNode, 'variableDeclarationList');
       const declarations = extractVariableDeclarations(variableDeclarationList);
       for (const declaration of declarations) {
         const bindingName = extractVariableDeclarationName(declaration);
@@ -1930,6 +1934,25 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
     return model;
   };
 
+  const flatPrimitiveModel = resolveFlatStaticPrimitiveModel(expressionNode);
+  if (flatPrimitiveModel) {
+    return finish(flatPrimitiveModel);
+  }
+
+  const flattenedExpression = flattenNodeText(expressionNode);
+  if (flattenedExpression.startsWith('[') && flattenedExpression.endsWith(']')) {
+    const directArrayLiteral = findFirstNonterminal(expressionNode, 'arrayLiteral');
+    if (directArrayLiteral) {
+      const arrayInfo = extractArrayLiteralElements(directArrayLiteral);
+      if (!arrayInfo.hasSpread && !arrayInfo.hasElision) {
+        const values = (arrayInfo.values || []).map(
+          (valueNode) => resolveStaticModelFromExpression(valueNode, targetNode, compileContext, seenBindings)
+        );
+        return finish({ kind: 'array', length: values.length, values });
+      }
+    }
+  }
+
   let current = expressionNode;
   while (current && current.kind === 'nonterminal') {
     if (current.name === 'literal'
@@ -2111,6 +2134,13 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
       }
     }
 
+    if (!staticCallModel && directPropertyName === 'map') {
+      const mappedModel = tryResolveStaticMapResultModel(baseExpressionNode, argExprs, targetNode, compileContext, seenBindings);
+      if (mappedModel) {
+        staticCallModel = mappedModel;
+      }
+    }
+
     if (!staticCallModel && (directPropertyName === 'padStart' || directPropertyName === 'padEnd') && baseExpressionNode && argExprs.length >= 1) {
       const baseModel = resolveStaticModelFromExpression(baseExpressionNode, targetNode, compileContext, seenBindings);
       const widthModel = resolveStaticModelFromExpression(argExprs[0], targetNode, compileContext, seenBindings);
@@ -2183,22 +2213,6 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
           accModel = nextModel;
         }
         staticCallModel = accModel;
-      }
-    }
-
-    if (!staticCallModel && Array.isArray(pathSegments) && pathSegments.length >= 2) {
-      const methodName = pathSegments[pathSegments.length - 1];
-      const baseName = pathSegments[0];
-      const baseModel = resolveStaticModelFromExpression(
-        { kind: 'nonterminal', name: 'identifier', children: [{ kind: 'terminal', token: 'Identifier', value: baseName }] },
-        targetNode,
-        compileContext,
-        seenBindings
-      );
-      if (baseModel && baseModel.kind === 'array') {
-        if (methodName === 'map') {
-          staticCallModel = { kind: 'array', length: baseModel.length };
-        }
       }
     }
 
@@ -2501,8 +2515,7 @@ function findCallableNodeFromExpression(expressionNode) {
 
 function resolveFlatStaticPrimitiveModel(expressionNode) {
   const flattenedText = flattenNodeText(expressionNode);
-  if ((flattenedText.startsWith('\'') && flattenedText.endsWith('\''))
-    || (flattenedText.startsWith('"') && flattenedText.endsWith('"'))) {
+  if (/^(?:'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*")$/.test(flattenedText)) {
     const normalized = normalizeJsStringLiteralForCpp(flattenedText);
     if (!normalized) {
       return { kind: 'string', value: '' };
@@ -2939,6 +2952,43 @@ function tryResolveStaticFilterResultModel(callExpressionNode, baseExpressionNod
   return { kind: 'array', length: filteredValues.length, values: filteredValues };
 }
 
+function tryResolveStaticMapResultModel(baseExpressionNode, argExprs, targetNode, compileContext, seenBindings) {
+  if (!baseExpressionNode || !Array.isArray(argExprs) || argExprs.length < 1) {
+    return null;
+  }
+  const baseModel = resolveStaticModelFromExpression(baseExpressionNode, targetNode, compileContext, seenBindings);
+  if (!baseModel || baseModel.kind !== 'array' || !Array.isArray(baseModel.values)) {
+    return null;
+  }
+
+  const callbackNode = findCallableNodeFromExpression(argExprs[0]);
+  const callbackReturnExpression = extractCallableReturnExpressionNode(callbackNode);
+  if (!callbackNode || !callbackReturnExpression) {
+    return null;
+  }
+
+  const callbackParams = extractCallableParameterNames(callbackNode);
+  const mappedValues = [];
+  for (let index = 0; index < baseModel.values.length; index += 1) {
+    const scopeModels = new Map();
+    if (callbackParams[0]) {
+      scopeModels.set(callbackParams[0], baseModel.values[index]);
+    }
+    if (callbackParams[1]) {
+      scopeModels.set(callbackParams[1], { kind: 'number', value: index });
+    }
+    if (callbackParams[2]) {
+      scopeModels.set(callbackParams[2], baseModel);
+    }
+    const valueModel = evaluateStaticExpressionModel(callbackReturnExpression, scopeModels, compileContext);
+    if (!valueModel) {
+      return null;
+    }
+    mappedValues.push(valueModel);
+  }
+  return { kind: 'array', length: mappedValues.length, values: mappedValues };
+}
+
 function lowerOpaqueMemberAccessChain(baseExpression, segments) {
   if (!baseExpression || !Array.isArray(segments) || segments.length < 2) {
     return null;
@@ -2999,6 +3049,28 @@ function resolveStaticMemberAccessExpression(segments, targetNode, compileContex
   }
 
   return lowerStaticModelToExpression(model);
+}
+
+function inferConstObjectLiteralPropertyTypeAtNode(bindingName, propertyName, targetNode, compileContext) {
+  if (!bindingName || !propertyName || !targetNode || !compileContext) {
+    return null;
+  }
+
+  const visibleBindings = collectVisibleVariableBindingsAtNode(targetNode, compileContext);
+  const bindingInfo = visibleBindings.get(bindingName) || null;
+  if (!bindingInfo || bindingInfo.kind !== 'initializer' || !bindingInfo.expressionNode) {
+    return null;
+  }
+
+  const objectLiteralNode = findFirstNonterminal(bindingInfo.expressionNode, 'objectLiteral');
+  if (!objectLiteralNode) {
+    return null;
+  }
+
+  const property = extractObjectLiteralProperties(objectLiteralNode).find(
+    (candidate) => candidate.key === propertyName
+  );
+  return property ? inferExprType(property.valueExprNode, compileContext) : null;
 }
 
 function findNodePath(root, target) {
@@ -3111,9 +3183,30 @@ function findBoundVariableInitializerExpressionAtNode(name, node, compileContext
     return null;
   }
 
+  if (!compileContext._boundVariableInitializerCache) {
+    compileContext._boundVariableInitializerCache = new WeakMap();
+  }
+  if (!compileContext._boundVariableInitializerNullSentinel) {
+    compileContext._boundVariableInitializerNullSentinel = Symbol('bound-variable-initializer-null');
+  }
+  const nullSentinel = compileContext._boundVariableInitializerNullSentinel;
+  let cachedInitializers = compileContext._boundVariableInitializerCache.get(node);
+  if (cachedInitializers && cachedInitializers.has(name)) {
+    const cached = cachedInitializers.get(name);
+    return cached === nullSentinel ? null : cached;
+  }
+  const finish = (initializerExpr) => {
+    if (!cachedInitializers) {
+      cachedInitializers = new Map();
+      compileContext._boundVariableInitializerCache.set(node, cachedInitializers);
+    }
+    cachedInitializers.set(name, initializerExpr || nullSentinel);
+    return initializerExpr;
+  };
+
   const path = findNodePath(compileContext.tree, node);
   if (path.length === 0) {
-    return null;
+    return finish(null);
   }
 
   const scopeContainers = [compileContext.tree];
@@ -3139,24 +3232,27 @@ function findBoundVariableInitializerExpressionAtNode(name, node, compileContext
       const declarationNode = (statementNode.children || []).find(
         (child) => child
           && child.kind === 'nonterminal'
-          && (child.name === 'variableStatement' || child.name === 'letDeclaration' || child.name === 'constDeclaration')
-      );
+          && (child.name === 'variableStatement' || child.name === 'letDeclaration' || child.name === 'constDeclaration' || child.name === 'lexicalDeclaration')
+      ) || findFirstNonterminal(statementNode, 'variableStatement')
+        || findFirstNonterminal(statementNode, 'letDeclaration')
+        || findFirstNonterminal(statementNode, 'constDeclaration')
+        || findFirstNonterminal(statementNode, 'lexicalDeclaration');
       if (!declarationNode) {
         continue;
       }
 
       const declarationListNode = (declarationNode.children || []).find(
         (child) => child && child.kind === 'nonterminal' && child.name === 'variableDeclarationList'
-      );
+      ) || findFirstNonterminal(declarationNode, 'variableDeclarationList');
       for (const variableDeclaration of extractVariableDeclarations(declarationListNode)) {
         if (extractVariableDeclarationName(variableDeclaration) === name) {
-          return extractVariableDeclarationInitializer(variableDeclaration);
+          return finish(extractVariableDeclarationInitializer(variableDeclaration));
         }
       }
     }
   }
 
-  return null;
+  return finish(null);
 }
 
 function findEnclosingCallableNode(node, compileContext) {
@@ -4350,6 +4446,24 @@ function inferExprType(node, compileContext = null) {
           ? compileContext.objectLiteralPropertyTypesByFunctionNode.get(enclosingCallableNode)
           : null;
         const propertyType = propertyTypes ? propertyTypes.get(directPropertyName) : null;
+        if (propertyType) {
+          return propertyType;
+        }
+      }
+
+      const basePath = baseExpressionNode && baseExpressionNode.name === 'memberExpression'
+        ? extractPathFromMemberExpression(baseExpressionNode, null)
+        : null;
+      const baseBindingName = Array.isArray(basePath) && basePath.length === 1
+        ? basePath[0]
+        : findFirstIdentifierValue(baseExpressionNode);
+      if (baseBindingName) {
+        const propertyType = inferConstObjectLiteralPropertyTypeAtNode(
+          baseBindingName,
+          directPropertyName,
+          node,
+          compileContext
+        );
         if (propertyType) {
           return propertyType;
         }
@@ -5693,6 +5807,17 @@ function lowerConsoleConcatPieceAsCString(pieceNode, compileContext) {
         if (propertyType === 'string') {
           pieceType = 'string';
         }
+      }
+    }
+    if (baseExpressionNode && directPropertyName && compileContext) {
+      const propertyType = inferConstObjectLiteralPropertyTypeAtNode(
+        findFirstIdentifierValue(baseExpressionNode),
+        directPropertyName,
+        pieceNode,
+        compileContext
+      );
+      if (propertyType === 'string') {
+        pieceType = 'string';
       }
     }
   }
@@ -7805,7 +7930,11 @@ function lowerExpressionValue(node, compileContext) {
     || node.name === 'exponentiationExpressionNoIn'
     || INFIX_EXPRESSION_NODES.has(node.name)
   )) {
-    const staticResolved = lowerStaticModelToRuntimeExpression(
+    // This precedence-level shortcut is safe only for scalar constants. An
+    // aggregate model may represent a literal array below this node, whose
+    // dedicated lowering must retain element values, spread operations and
+    // elisions instead of collapsing it to an empty runtime shape.
+    const staticResolved = lowerStaticModelToExpression(
       resolveStaticModelFromExpression(node, node, compileContext)
     );
     if (staticResolved !== null) {
@@ -9060,6 +9189,21 @@ function lowerCallExpressionValue(node, compileContext) {
     return loweredStaticPromiseThenChain;
   }
 
+  // A call whose receiver and arguments resolve to immutable local values must
+  // stay inside the generated runtime. Restrict this to methods implemented by
+  // the static evaluator: resolving arbitrary calls here is both unsound and
+  // unnecessarily expensive for host APIs such as Reflect.set.
+  const staticLocalMethodNames = new Set([
+    'padStart', 'padEnd', 'map', 'filter', 'reduce', 'reduceRight', 'includes'
+  ]);
+  if (staticLocalMethodNames.has(directPropertyName)) {
+    const staticCallModel = resolveStaticModelFromExpression(node, node, compileContext);
+    const loweredStaticCall = lowerStaticModelToRuntimeExpression(staticCallModel);
+    if (loweredStaticCall !== null) {
+      return loweredStaticCall;
+    }
+  }
+
   let loweredCall = null;
   const lambdaBindingState = getLambdaBindingStateAtCallNode(node, pathSegments, compileContext);
   let droppedJsRuntimeMethodCall = false;
@@ -9163,24 +9307,18 @@ function lowerCallExpressionValue(node, compileContext) {
   }
 
   if (!loweredCall && pathLabel === 'Reflect.set' && argExprs.length >= 3) {
-    const targetExprType = inferExprType(argExprs[0], compileContext);
-    if (targetExprType === 'object' || targetExprType === 'array') {
-      const loweredTarget = lowerExpressionValue(argExprs[0], compileContext);
-      const loweredKey = lowerExpressionValue(argExprs[1], compileContext);
-      const loweredValue = lowerExpressionValue(argExprs[2], compileContext);
-      if (loweredTarget !== null && loweredKey !== null && loweredValue !== null) {
-        loweredCall = `__Reflect((void*)(${loweredTarget}), ${loweredKey}, (long)(${loweredValue}))`;
-      }
+    const loweredTarget = lowerExpressionValue(argExprs[0], compileContext);
+    const loweredKey = lowerExpressionValue(argExprs[1], compileContext);
+    const loweredValue = lowerExpressionValue(argExprs[2], compileContext);
+    if (loweredTarget !== null && loweredKey !== null && loweredValue !== null) {
+      loweredCall = `__Reflect((void*)(${loweredTarget}), ${loweredKey}, (long)(${loweredValue}))`;
     }
   }
 
   if (!loweredCall && pathLabel === 'Reflect.ownKeys' && argExprs.length >= 1) {
-    const targetExprType = inferExprType(argExprs[0], compileContext);
-    if (targetExprType === 'object' || targetExprType === 'array') {
-      const loweredTarget = lowerExpressionValue(argExprs[0], compileContext);
-      if (loweredTarget !== null) {
-        loweredCall = `__Reflect__ownKeys(${loweredTarget})`;
-      }
+    const loweredTarget = lowerExpressionValue(argExprs[0], compileContext);
+    if (loweredTarget !== null) {
+      loweredCall = `__Reflect__ownKeys(${loweredTarget})`;
     }
   }
 
@@ -10039,9 +10177,16 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
     }
 
     const cppType = inferInitializerCppType(initializerExpr, compileContext);
-    const staticRuntimeInit = initializerExpr
+    // Only replace a declaration initializer with a static result when it is
+    // itself a call. Aggregate literals have dedicated lowerers that preserve
+    // their values, spreads and holes; resolving them here would discard that
+    // structure and emit only a length-tagged runtime allocation.
+    const directInitializerCall = initializerExpr
+      ? extractDirectCallExpressionNode(initializerExpr)
+      : null;
+    const staticRuntimeInit = directInitializerCall
       ? lowerStaticModelToRuntimeExpression(
-        resolveStaticModelFromExpression(initializerExpr, initializerExpr, compileContext)
+        resolveStaticModelFromExpression(directInitializerCall, directInitializerCall, compileContext)
       )
       : null;
     const droppedDirectJsRuntimeCall = staticRuntimeInit === null && Boolean(
@@ -10309,6 +10454,23 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       }
       return [`${indent}// [expression statement missing expression]`];
     }
+
+    // A class construction used as a statement has no JavaScript result to
+    // retain, but it still must run the generated Maia constructor wrapper.
+    // `new Class(args)` is not valid for our lowered plain C++98 structs.
+    const directNewClass = extractDirectNewClassInfo(exprNode, compileContext);
+    if (directNewClass) {
+      if (compileContext._newClassStatementTempCount === undefined) {
+        compileContext._newClassStatementTempCount = 0;
+      }
+      const tempName = `__maia_new_${directNewClass.className}_${compileContext._newClassStatementTempCount++}`;
+      const ctorSymbol = getClassInitWrapperMangledName(directNewClass.className, directNewClass.argCount);
+      return [
+        `${indent}${directNewClass.className} ${tempName};`,
+        `${indent}${ctorSymbol}((${directNewClass.className}*)&${tempName}${directNewClass.args && directNewClass.args.trim() ? `, ${directNewClass.args}` : ''});`
+      ];
+    }
+
     const promiseThenCallNode = findFirstPromiseThenCallExpression(exprNode);
     const lowered = promiseThenCallNode
       ? (tryLowerStaticPromiseThenChain(promiseThenCallNode, compileContext) ?? lowerExpressionValue(exprNode, compileContext))

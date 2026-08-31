@@ -46,8 +46,8 @@ test('return fallback: unresolved return expression no longer emits return place
     + '}\n'
   );
 
-  assert.match(cpp, /int delay\(int ms, int value\)/, 'function must be emitted');
-  assert.match(cpp, /return 0;/, 'unresolved return expression should emit default return value');
+  assert.match(cpp, /void\* delay\(int ms, int value\)/, 'function must be emitted with its promise result type');
+  assert.match(cpp, /return \(void\*\)\(__new__Promise\(/, 'promise construction should remain a concrete runtime expression');
   assert.doesNotMatch(cpp, /\[return expression not yet lowered\]/, 'C++ output must not contain return placeholder markers');
 });
 
@@ -70,7 +70,7 @@ test('top-level function-expression bindings lower to callable local functions',
   );
 
   assert.match(cpp, /const char\* expressionFunc\(const char\* param\)/, 'function-expression binding should emit a callable definition');
-  assert.match(cpp, /int trailingCommas\(const char\* a, const char\* b, const char\* c\)/, 'top-level helper binding should emit a callable definition');
+  assert.match(cpp, /const char\* trailingCommas\(const char\* a, const char\* b, const char\* c\)/, 'top-level helper binding should emit a callable definition');
   assert.match(cpp, /void\* __new__Animal\(const char\* name, const char\* species\)/, 'constructor-style binding used by new should emit a constructor helper definition');
   assert.match(cpp, /void\* __maia_this = __maia_obj_literal0\(\);\n  __Reflect\(__maia_this, "name", name\);\n  __Reflect\(__maia_this, "species", species\);/, 'constructor helper should seed and populate a pseudo-object instance');
   assert.match(cpp, /__console__log\(expressionFunc\("World"\)\);/, 'call site should route to the local function symbol');
@@ -103,7 +103,7 @@ test('JS-runtime method calls on lowered non-path bases (array literal) are safe
     + '});\n'
   );
 
-  assert.match(cpp, /double __maia_fn_arg_call_0\(double v, double i, void\* arr\)/, 'array-literal callback should still emit a synthesized helper');
+  assert.match(cpp, /void\* __maia_fn_arg_call_0\(double v, double i, void\* arr\)/, 'array-literal callback should still emit a synthesized helper');
   assert.match(cpp, /const void\* setLike = __maia_runtime_alloc_value\(2, 4, 0, 0\);/, 'pure literal .filter() may resolve statically to a runtime array shape');
   assert.doesNotMatch(cpp, /\.filter\(/, 'JS-only .filter() on literal must not appear in C++ output');
 });
