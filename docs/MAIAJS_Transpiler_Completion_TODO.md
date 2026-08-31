@@ -1,15 +1,37 @@
 # MaiaJS Transpiler Completion Strategy and TODO
 
-Last updated: 2026-04-25
+Last updated: 2026-08-31
 Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
 
-- Full compiler test suite is green: 241/241 passing.
-- End-to-end sample build succeeds through dist fallback path:
-  - `bash compiler/examples/build_test_dist.sh`
-  - MaiaCpp parser still reports parse failure and falls back.
-- Generated C++ for `full_es8_test.js` is now large (about 635 lines), but still contains unlowered placeholders and invalid JS operators/identifiers in C++ output.
+- Full compiler test suite is green: **305/305 passing**.
+- Ported MaiaCpp examples are green: runtime suite **22/22**, course suite **48/48**,
+  and MaiaJS transpilation **22/22**.
+- `bash compiler/examples/validate_full_es8_dist.sh` validates the complete
+  JS -> C++98 -> C -> WASM dist path against source runtime markers.
+- The compiled Node runner prints the required ES8 markers and returns `0`.
+- Compile-context analysis no longer times out on `compiler/examples/test.js`:
+  the representative transpilation takes about five seconds rather than roughly
+  99 seconds. AST first-match lookups are memoized and avoid full repeated scans.
+
+## Remaining Work (post-validation)
+
+The current ES8 compatibility sample and the ported corpus are no longer
+blocked. The remaining work is incremental conformance hardening, not a known
+failure in the validated pipeline:
+
+- [ ] Extend behavior-marker coverage for ES8 forms outside
+  `full_es8_test.js`, especially combinations of async control flow, object
+  spread, and computed properties.
+- [ ] Exercise the generated browser runner in an actual browser as a separate
+  gate; the current end-to-end gate executes the generated Node runner.
+- [ ] Continue replacing intentionally conservative lowering fallbacks with
+  native semantics only when a focused source/runtime regression establishes
+  the required behavior.
+- [ ] Keep compile-context operations memoized when adding new AST analyses;
+  validate representative large inputs so analysis cost stays proportional to
+  the parsed tree.
 
 ## Non-Negotiable Rules
 
@@ -170,8 +192,7 @@ Acceptance gate:
 - [x] Expected marker set defined and validated against `node full_es8_test.js` output.
 - [x] Unsupported constructs emit explicit, structured diagnostics.
 - [x] Full suite: 282/282 pass (270 Phases 1-6 + 12 Phase 7).
-- [ ] **BLOCKED**: Dist node run prints agreed marker set — requires MaiaCpp body lowering
-  for sequential-statement functions before behavioral WASM output is achievable.
+- [x] Dist node run prints agreed marker set through the MaiaCpp body-lowering path.
 
 ## Required Commands Per Slice
 
@@ -197,9 +218,10 @@ For parser/grammar changes only:
 
 ## Definition of Done for MaiaJS transpiler completion
 
-- [ ] No generated-placeholder comments for supported ES8 subset in flagship sample.
-- [ ] No JS-only tokens leak into generated C++ for supported subset.
-- [ ] Full suite green and fixtures green.
-- [ ] Dist node/browser path validated by behavior markers (not only exit code).
-- [ ] Unsupported items explicitly diagnosed and documented as out of scope.
+- [x] No generated-placeholder comments for supported ES8 subset in flagship sample.
+- [x] No JS-only tokens leak into generated C++ for supported subset.
+- [x] Full suite green and fixtures green.
+- [x] Dist Node path validated by behavior markers (not only exit code).
+- [ ] Browser runner behavior-marker gate remains to be executed in a browser.
+- [x] Unsupported items explicitly diagnosed and documented as out of scope.
 - [ ] Ecosystem synchronization protocol followed for any parser-generator-impacting changes.

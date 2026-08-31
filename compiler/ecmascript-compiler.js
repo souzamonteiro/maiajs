@@ -151,6 +151,8 @@ function flattenNodeText(node, maxLen = 160) {
 }
 
 const TREE_NAV_CACHE = new WeakMap();
+const FIRST_NONTERMINAL_CACHE = new WeakMap();
+const FIRST_NONTERMINAL_MISS = Symbol('first-nonterminal-miss');
 
 function getTreeNavigationIndex(root) {
   if (!root || typeof root !== 'object') {
@@ -3898,6 +3900,8 @@ function collectCallableParameterCppTypes(tree, baseCompileContext = null) {
   for (const { lhs, functionExpressionNode } of collectTopLevelAssignedFunctionExpressionBindings(tree)) {
     registerCallable(lhs, functionExpressionNode, extractCallableParameterNames(functionExpressionNode));
   }
+  const hasPrototypeCallable = Array.from(callableByKey.keys())
+    .some((key) => key.includes('.prototype.'));
 
   const buildIterationContext = () => ({
     tree,
@@ -3998,7 +4002,7 @@ function collectCallableParameterCppTypes(tree, baseCompileContext = null) {
             changed = true;
           }
         }
-        if (Array.isArray(pathSegments) && pathSegments.length >= 2) {
+        if (hasPrototypeCallable && Array.isArray(pathSegments) && pathSegments.length >= 2) {
           const instanceType = findBoundClassInstanceTypeAtNode(pathSegments[0], node, iterationContext);
           const prototypeMethodKey = instanceType ? `${instanceType}.prototype.${pathSegments[pathSegments.length - 1]}` : null;
           if (prototypeMethodKey && callableByKey.has(prototypeMethodKey)) {
@@ -4862,41 +4866,55 @@ function collectReturnExpressionNodesFromStatement(statementNode, out = []) {
   }
 
 function findFirstTerminalByToken(node, tokenName) {
-  let found = null;
-  walk(node, (candidate) => {
-    if (found || !candidate || candidate.kind !== 'terminal') {
-      return;
+  if (!node || typeof node !== 'object') {
+    return null;
+  }
+  if (node.kind === 'terminal' && node.token === tokenName) {
+    return node;
+  }
+  for (const child of (node.children || [])) {
+    const found = findFirstTerminalByToken(child, tokenName);
+    if (found) {
+      return found;
     }
-    if (candidate.token === tokenName) {
-      found = candidate;
-    }
-  });
-  return found;
+  }
+  return null;
 }
 
 function hasNonterminal(node, nonterminalName) {
-  let matched = false;
-  walk(node, (candidate) => {
-    if (matched || !candidate || candidate.kind !== 'nonterminal') {
-      return;
-    }
-    if (candidate.name === nonterminalName) {
-      matched = true;
-    }
-  });
-  return matched;
+  if (!node || typeof node !== 'object') {
+    return false;
+  }
+  if (node.kind === 'nonterminal' && node.name === nonterminalName) {
+    return true;
+  }
+  return (node.children || []).some((child) => hasNonterminal(child, nonterminalName));
 }
 
 function findFirstNonterminal(node, nonterminalName) {
+  if (!node || typeof node !== 'object') {
+    return null;
+  }
+  let cachedByName = FIRST_NONTERMINAL_CACHE.get(node);
+  if (cachedByName && cachedByName.has(nonterminalName)) {
+    const cached = cachedByName.get(nonterminalName);
+    return cached === FIRST_NONTERMINAL_MISS ? null : cached;
+  }
+  if (node.kind === 'nonterminal' && node.name === nonterminalName) {
+    return node;
+  }
   let found = null;
-  walk(node, (candidate) => {
-    if (found || !candidate || candidate.kind !== 'nonterminal') {
-      return;
+  for (const child of (node.children || [])) {
+    found = findFirstNonterminal(child, nonterminalName);
+    if (found) {
+      break;
     }
-    if (candidate.name === nonterminalName) {
-      found = candidate;
-    }
-  });
+  }
+  if (!cachedByName) {
+    cachedByName = new Map();
+    FIRST_NONTERMINAL_CACHE.set(node, cachedByName);
+  }
+  cachedByName.set(nonterminalName, found || FIRST_NONTERMINAL_MISS);
   return found;
 }
 
