@@ -50,6 +50,19 @@ test('object literal lowering: lowers identifier values in property initializers
   assert.match(cpp, /void\* o = __maia_obj_literal1\(\(char\*\)"a", \(long\)\(x\)\);/, 'C++ must lower identifier property value through helper call');
 });
 
+test('object literal lowering: resolves static computed property keys', () => {
+  const cpp = runCompilerCpp('const key = "answer";\nconst o = { [key]: 42 };\nconsole.log("Computed key:", o.answer);\n');
+
+  assert.match(cpp, /__maia_obj_literal1\(\(char\*\)"answer", \(long\)\(42\)\)/,
+    'C++ must use the resolved constant key rather than the binding identifier');
+  assert.doesNotMatch(cpp, /__maia_obj_literal1\(\(char\*\)"key", \(long\)\(42\)\)/,
+    'C++ must not treat the computed key expression as a literal identifier');
+  assert.match(cpp, /__maia_console_to_cstr_number\(\(double\)\(__maia_console_value_tmp[0-9]+\)\)/,
+    'console.log must convert the resolved numeric property through the one-string ABI');
+  assert.doesNotMatch(cpp, /__console__log\("Computed key:",/,
+    'console.log must not emit multiple C++ arguments for its one-string ABI');
+});
+
 test('object literal lowering: uses builder for arity > 4', () => {
   const cpp = runCompilerCpp('let o = { a: 1, b: 2, c: 3, d: 4, e: 5 };\n');
 

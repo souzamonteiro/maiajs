@@ -2079,7 +2079,7 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
   }
 
   if (current.name === 'objectLiteral') {
-    const properties = extractObjectLiteralProperties(current);
+    const properties = extractObjectLiteralProperties(current, compileContext);
     const propertyMap = new Map();
     for (const property of properties) {
       propertyMap.set(property.key, resolveStaticModelFromExpression(property.valueExprNode, targetNode, compileContext, seenBindings));
@@ -3069,7 +3069,7 @@ function inferConstObjectLiteralPropertyTypeAtNode(bindingName, propertyName, ta
     return null;
   }
 
-  const property = extractObjectLiteralProperties(objectLiteralNode).find(
+  const property = extractObjectLiteralProperties(objectLiteralNode, compileContext).find(
     (candidate) => candidate.key === propertyName
   );
   return property ? inferExprType(property.valueExprNode, compileContext) : null;
@@ -5834,8 +5834,8 @@ function lowerConsoleConcatPieceAsCString(pieceNode, compileContext) {
         pieceNode,
         compileContext
       );
-      if (propertyType === 'string') {
-        pieceType = 'string';
+      if (propertyType === 'string' || propertyType === 'number' || propertyType === 'bool') {
+        pieceType = propertyType;
       }
     }
   }
@@ -6030,6 +6030,31 @@ function lowerConsoleLogArgumentExpression(expressionNode, compileContext) {
   );
   err('unsupported lowering: console.log argument expression');
   return '0';
+}
+
+function lowerConsoleLogCallArguments(argExprs, compileContext) {
+  if (!Array.isArray(argExprs) || argExprs.length === 0) {
+    return '""';
+  }
+  if (argExprs.length === 1) {
+    return lowerConsoleLogArgumentExpression(argExprs[0], compileContext);
+  }
+
+  let combined = lowerConsoleConcatPieceAsCString(argExprs[0], compileContext);
+  if (combined === null) {
+    return null;
+  }
+  if (compileContext) {
+    compileContext.consoleConcatHelperUsed = true;
+  }
+  for (let i = 1; i < argExprs.length; i += 1) {
+    const next = lowerConsoleConcatPieceAsCString(argExprs[i], compileContext);
+    if (next === null) {
+      return null;
+    }
+    combined = `__maia_console_concat2(__maia_console_concat2(${combined}, " "), ${next})`;
+  }
+  return combined;
 }
 
 function lowerConditionalExpressionValue(node, compileContext) {
@@ -6227,7 +6252,7 @@ function lowerMemberExpressionNewCallValue(node, compileContext) {
   return `__new__${ctorBase}(${args})`;
 }
 
-function extractObjectLiteralProperties(objectLiteralNode) {
+function extractObjectLiteralProperties(objectLiteralNode, compileContext = null) {
   if (!objectLiteralNode || objectLiteralNode.kind !== 'nonterminal' || objectLiteralNode.name !== 'objectLiteral') {
     return [];
   }
@@ -6266,7 +6291,34 @@ function extractObjectLiteralProperties(objectLiteralNode) {
       continue;
     }
 
-    const key = findFirstIdentifierValue(propertyNameNode);
+    const computedPropertyName = findFirstNonterminal(propertyNameNode, 'computedPropertyName');
+    let key = null;
+    if (computedPropertyName) {
+      const keyExpressionNode = (computedPropertyName.children || []).find(
+        (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'assignmentExpression'
+      ) || findFirstNonterminal(computedPropertyName, 'assignmentExpression');
+      let keyModel = keyExpressionNode && compileContext
+        ? resolveStaticModelFromExpression(keyExpressionNode, computedPropertyName, compileContext)
+        : resolveFlatStaticPrimitiveModel(keyExpressionNode);
+      if (!keyModel && keyExpressionNode && compileContext) {
+        const keyBindingName = findFirstIdentifierValue(keyExpressionNode);
+        const keyInitializer = keyBindingName
+          ? findBoundVariableInitializerExpressionAtNode(keyBindingName, computedPropertyName, compileContext)
+          : null;
+        keyModel = resolveFlatStaticPrimitiveModel(keyInitializer);
+      }
+      if (keyModel && (keyModel.kind === 'string' || keyModel.kind === 'number')) {
+        key = String(keyModel.value);
+      } else if (compileContext) {
+        reportUnsupportedLowering(
+          compileContext,
+          'computed-object-property-unlowerable',
+          'computed object property requires a static string or numeric key'
+        );
+      }
+    } else {
+      key = findFirstIdentifierValue(propertyNameNode);
+    }
     if (!key) {
       continue;
     }
@@ -6290,7 +6342,7 @@ function lowerObjectLiteralValue(objectLiteralNode, compileContext) {
     return null;
   }
 
-  const properties = extractObjectLiteralProperties(objectLiteralNode);
+  const properties = extractObjectLiteralProperties(objectLiteralNode, compileContext);
   const propertyAssignmentCount = (objectLiteralNode.children || []).filter(
     (child) => child && child.kind === 'nonterminal' && child.name === 'propertyAssignment'
   ).length;
@@ -8274,7 +8326,7 @@ function lowerExpressionValue(node, compileContext) {
 
 const MAX_INLINE_OBJECT_PROPERTIES = 8;
 
-function collectObjectLiteralArities(tree) {
+function collectObjectLiteralArities(tree, compileContext = null) {
   const simpleArities = new Set();
   let requiresBuilderHooks = false;
 
@@ -8283,7 +8335,7 @@ function collectObjectLiteralArities(tree) {
       return;
     }
 
-    const properties = extractObjectLiteralProperties(node);
+    const properties = extractObjectLiteralProperties(node, compileContext);
     if (properties.length > MAX_INLINE_OBJECT_PROPERTIES) {
       requiresBuilderHooks = true;
     } else {
@@ -8294,8 +8346,8 @@ function collectObjectLiteralArities(tree) {
   return { simpleArities, requiresBuilderHooks };
 }
 
-function emitObjectLiteralRuntimeDeclsCpp(tree) {
-  const { simpleArities, requiresBuilderHooks } = collectObjectLiteralArities(tree);
+function emitObjectLiteralRuntimeDeclsCpp(tree, compileContext = null) {
+  const { simpleArities, requiresBuilderHooks } = collectObjectLiteralArities(tree, compileContext);
   const requiresCtorObjectSeed = collectTopLevelConstructorFunctionExpressionBindings(tree).length > 0;
   if (simpleArities.size === 0 && !requiresBuilderHooks && !requiresCtorObjectSeed) {
     return '';
@@ -8330,8 +8382,8 @@ function emitObjectLiteralRuntimeDeclsCpp(tree) {
   return decls.join('\n');
 }
 
-function emitSharedRuntimeFallbackHelpersCpp(tree) {
-  const objArities = collectObjectLiteralArities(tree);
+function emitSharedRuntimeFallbackHelpersCpp(tree, compileContext = null) {
+  const objArities = collectObjectLiteralArities(tree, compileContext);
   const hasObjectFallback = objArities.simpleArities.size > 0
     || objArities.requiresBuilderHooks
     || collectTopLevelConstructorFunctionExpressionBindings(tree).length > 0;
@@ -8731,8 +8783,8 @@ function emitSharedRuntimeFallbackHelpersCpp(tree) {
   ].join('\n');
 }
 
-function emitObjectLiteralRuntimeFallbackCpp(tree) {
-  const { simpleArities, requiresBuilderHooks } = collectObjectLiteralArities(tree);
+function emitObjectLiteralRuntimeFallbackCpp(tree, compileContext = null) {
+  const { simpleArities, requiresBuilderHooks } = collectObjectLiteralArities(tree, compileContext);
   const requiresCtorObjectSeed = collectTopLevelConstructorFunctionExpressionBindings(tree).length > 0;
   if (simpleArities.size === 0 && !requiresBuilderHooks && !requiresCtorObjectSeed) {
     return '';
@@ -9608,8 +9660,16 @@ function lowerCallExpressionValue(node, compileContext) {
       }
       return null;
     }
-    if (hostSymbol === '__console__log' && argExprs.length === 1) {
-      const safeArg = lowerConsoleLogArgumentExpression(argExprs[0], compileContext);
+    if (hostSymbol === '__console__log') {
+      const safeArg = lowerConsoleLogCallArguments(argExprs, compileContext);
+      if (safeArg === null) {
+        reportUnsupportedLowering(
+          compileContext,
+          'console-log-arguments-unlowerable',
+          'console.log arguments could not be converted to the C++ string ABI'
+        );
+        return null;
+      }
       loweredCall = `${hostSymbol}(${safeArg})`;
       return loweredCall;
     }
@@ -12212,6 +12272,10 @@ function treeUsesConsoleConcatHelper(tree, compileContext) {
     }
     const argListNode = (argsNode.children || []).find((child) => child && child.kind === 'nonterminal' && child.name === 'argumentList') || null;
     const argExprs = argListNode ? collectArgumentExpressions(argListNode) : [];
+    if (argExprs.length > 1) {
+      found = true;
+      return;
+    }
     if (argExprs.length !== 1) {
       return;
     }
@@ -12347,11 +12411,11 @@ function emitConsoleConcatHelpersCpp(tree, compileContext) {
   const functionPrototypes = profileStep('emitTopLevelFunctionPrototypes', () => emitTopLevelFunctionPrototypes(tree, compileContext));
   const functionDefs = profileStep('emitTopLevelFunctionDefinitions', () => emitTopLevelFunctionDefinitions(tree, compileContext));
   const classDefs = profileStep('emitTopLevelClassDefinitions', () => emitTopLevelClassDefinitions(tree, compileContext));
-  const sharedRuntimeFallbackHelpers = profileStep('emitSharedRuntimeFallbackHelpersCpp', () => emitSharedRuntimeFallbackHelpersCpp(tree));
+  const sharedRuntimeFallbackHelpers = profileStep('emitSharedRuntimeFallbackHelpersCpp', () => emitSharedRuntimeFallbackHelpersCpp(tree, compileContext));
   const consoleConcatHelpers = profileStep('emitConsoleConcatHelpersCpp', () => emitConsoleConcatHelpersCpp(tree, compileContext));
   const exponentiationAssignmentHelpers = profileStep('emitExponentiationAssignmentHelpersCpp', () => emitExponentiationAssignmentHelpersCpp(tree));
-  const objectLiteralDecls = profileStep('emitObjectLiteralRuntimeDeclsCpp', () => emitObjectLiteralRuntimeDeclsCpp(tree));
-  const objectLiteralFallback = profileStep('emitObjectLiteralRuntimeFallbackCpp', () => emitObjectLiteralRuntimeFallbackCpp(tree));
+  const objectLiteralDecls = profileStep('emitObjectLiteralRuntimeDeclsCpp', () => emitObjectLiteralRuntimeDeclsCpp(tree, compileContext));
+  const objectLiteralFallback = profileStep('emitObjectLiteralRuntimeFallbackCpp', () => emitObjectLiteralRuntimeFallbackCpp(tree, compileContext));
   const arrayLiteralDecls = profileStep('emitArrayLiteralRuntimeDeclsCpp', () => emitArrayLiteralRuntimeDeclsCpp(tree));
   const arrayLiteralFallback = profileStep('emitArrayLiteralRuntimeFallbackCpp', () => emitArrayLiteralRuntimeFallbackCpp(tree));
   const lambdaDecls = profileStep('emitLambdaRuntimeDeclsCpp', () => emitLambdaRuntimeDeclsCpp(tree));
