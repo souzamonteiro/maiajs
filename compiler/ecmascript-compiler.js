@@ -12220,6 +12220,7 @@ function emitTopLevelClassDefinitions(tree, compileContext) {
     const classBodyLines = [];
     const wrapperLines = [];
     const inferredFieldNames = new Set();
+    let constructorSuperArgs = null;
     if (methodEntries.length === 0) {
       classBodyLines.push('  // [empty class body]');
     }
@@ -12245,6 +12246,41 @@ function emitTopLevelClassDefinitions(tree, compileContext) {
       const methodReturnType = isConstructor ? 'void' : 'int';
       beginDeferredPromiseQueueScope(compileContext);
       for (const stmtNode of methodStatements) {
+        const superCallNode = findFirstNonterminal(stmtNode, 'superCall');
+        if (superCallNode) {
+          const superArgumentsNode = findFirstNonterminal(superCallNode, 'arguments');
+          const superArgumentList = superArgumentsNode
+            ? findFirstNonterminal(superArgumentsNode, 'argumentList')
+            : null;
+          const superArgumentExprs = superArgumentList ? collectArgumentExpressions(superArgumentList) : [];
+          if (!isConstructor || !heritageName || constructorSuperArgs !== null) {
+            reportUnsupportedLowering(
+              compileContext,
+              'super-call-unlowerable',
+              'super call must appear once in a derived class constructor'
+            );
+            if (compileContext && compileContext.strictLowering) {
+              err('unsupported lowering: super call placement');
+            }
+            continue;
+          }
+          const loweredSuperArgs = superArgumentExprs.map((argumentExpr) =>
+            lowerExpressionValue(argumentExpr, compileContext)
+          );
+          if (loweredSuperArgs.some((argument) => argument === null)) {
+            reportUnsupportedLowering(
+              compileContext,
+              'super-call-unlowerable',
+              'super call argument could not be lowered'
+            );
+            if (compileContext && compileContext.strictLowering) {
+              err('unsupported lowering: super call argument');
+            }
+            continue;
+          }
+          constructorSuperArgs = loweredSuperArgs;
+          continue;
+        }
         methodBodyLines.push(...lowerStatementNode(stmtNode, compileContext, 2, { returnTypeCpp: methodReturnType }));
       }
       methodBodyLines.push(...takeDeferredPromiseStatements(compileContext, '    '));
@@ -12272,7 +12308,8 @@ function emitTopLevelClassDefinitions(tree, compileContext) {
         const wrapperBodyLines = rewriteClassMethodBodyLinesForWrapper(methodBodyLines, className);
         wrapperLines.push(`void ${initWrapperName}(${className}* self${cppParams === 'void' ? '' : `, ${cppParams}`}) {`);
         if (heritageName) {
-          wrapperLines.push(`  ${getClassInitWrapperMangledName(heritageName, 0)}((${heritageName}*)self);`);
+          const forwardedSuperArgs = constructorSuperArgs || [];
+          wrapperLines.push(`  ${getClassInitWrapperMangledName(heritageName, forwardedSuperArgs.length)}((${heritageName}*)self${forwardedSuperArgs.length > 0 ? `, ${forwardedSuperArgs.join(', ')}` : ''});`);
         }
         for (const line of wrapperBodyLines) {
           wrapperLines.push(line.replace(/^ {4}/, '  '));

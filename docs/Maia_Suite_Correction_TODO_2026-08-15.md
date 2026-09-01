@@ -99,7 +99,9 @@ Concrete MaiaJS lowering areas still visibly marked as partial/unsupported in co
   bindings; dynamic sources, aliases, defaults, nested patterns, and rest
   bindings still use explicit diagnostics rather than incomplete semantics
 - [x] labeled `break` / labeled `continue` preserve their labelled targets
-- some `super(...)` call paths unsupported
+- derived constructors forward a single explicit `super(...)` call to the
+  matching base initializer wrapper; invalid placement and other class-runtime
+  semantics remain explicitly guarded
 - several JS-runtime method-chain truncation paths still degrade behavior conservatively
 
 Recommended order inside MaiaJS:
@@ -118,6 +120,9 @@ Latest completed slice:
 - Static scalar array destructuring and shorthand object destructuring now emit
   typed C++98 scalar declarations and retain their types through `console.log`;
   JS -> C++ -> C -> WASM probes print `values: 10 20` and `point: 10 20`.
+- Derived constructors now forward `super(value)` to the arity-matched base
+  initializer wrapper, rather than dropping the argument or invoking an
+  unavailable zero-argument wrapper.
 
 Acceptance:
 - new positive fixtures

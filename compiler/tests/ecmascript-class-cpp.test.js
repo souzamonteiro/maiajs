@@ -52,6 +52,19 @@ test('class lowering: records extends as explicit non-lowered note', () => {
   assert.match(cpp, /Base_ctor_init__pv\(\(Base\*\)self\);/, 'C++ must route default base initialization through the generated base init wrapper');
 });
 
+test('class lowering: forwards explicit super arguments to the matching base initializer wrapper', () => {
+  const cpp = runCompilerCpp(
+    'class Base { constructor(value) { this.value = value; } }\n'
+    + 'class Derived extends Base { constructor(value) { super(value); this.extra = value + 1; } }\n'
+    + 'const derived = new Derived(7);\n'
+  );
+
+  assert.match(cpp, /Base_ctor_init__pvi\(\(Base\*\)self, value\);/, 'derived constructor must forward super(value) to the arity-one base initializer');
+  assert.match(cpp, /self->extra = value \+ 1;/, 'statements after super(value) must remain in the derived constructor body');
+  assert.doesNotMatch(cpp, /^\s*value;$/m, 'super argument must not degrade into a standalone expression statement');
+  assert.doesNotMatch(cpp, /super call with arguments is not supported/, 'supported super forwarding must not emit an unsupported diagnostic');
+});
+
 test('class lowering: top-level class declaration is not emitted as unsupported statement in main', () => {
   const cpp = runCompilerCpp('class A { constructor(){} }\n');
 
