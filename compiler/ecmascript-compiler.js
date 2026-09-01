@@ -2236,6 +2236,23 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
       staticCallModel = applyStaticStringMethodModel(baseModel, directPropertyName, argumentModels);
     }
 
+    if (!staticCallModel && directPropertyName === 'join' && baseExpressionNode && argExprs.length <= 1) {
+      const baseModel = resolveStaticModelFromExpression(baseExpressionNode, targetNode, compileContext, seenBindings);
+      const separatorModel = argExprs.length === 1
+        ? resolveStaticModelFromExpression(argExprs[0], targetNode, compileContext, seenBindings)
+        : { kind: 'string', value: ',' };
+      if (baseModel
+        && baseModel.kind === 'array'
+        && Array.isArray(baseModel.values)
+        && separatorModel
+        && separatorModel.kind === 'string') {
+        const values = baseModel.values.map(staticModelToJsString);
+        if (values.every((value) => value !== null)) {
+          staticCallModel = { kind: 'string', value: values.join(separatorModel.value) };
+        }
+      }
+    }
+
     if (!staticCallModel && directPropertyName === 'includes' && baseExpressionNode && argExprs.length >= 1) {
       const baseModel = resolveStaticModelFromExpression(baseExpressionNode, targetNode, compileContext, seenBindings);
       const searchModel = resolveStaticModelFromExpression(argExprs[0], targetNode, compileContext, seenBindings);

@@ -132,6 +132,8 @@ Latest completed slice:
 - Statically known string call chains now propagate their intermediate model,
   allowing `trim`, case conversion, `startsWith`, and `endsWith` to fold before
   C++ lowering rather than being truncated as runtime method calls.
+- Static arrays of scalar values now fold `join(separator)` to a C string
+  literal, avoiding a JS-only array method call in generated C++.
 
 Acceptance:
 - new positive fixtures

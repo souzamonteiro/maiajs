@@ -171,3 +171,12 @@ test('static string method chains fold before C++ lowering', () => {
   assert.match(cpp, /__maia_console_to_cstr_number\(\(double\)\(\(double\)\(1\)\)\)/, 'static startsWith/endsWith calls should fold to boolean output values');
   assert.doesNotMatch(cpp, /__raw__trim\(\)/, 'folded string chain must not call a host trim function');
 });
+
+test('static array join folds scalar elements before C++ lowering', () => {
+  const cpp = runCompilerCpp(
+    'const values = [1, "two", true];\n'
+    + 'console.log(values.join("|"));\n'
+  );
+
+  assert.match(cpp, /__console__log\("1\|two\|true"\);/, 'static array join should lower to its final C string literal');
+});
