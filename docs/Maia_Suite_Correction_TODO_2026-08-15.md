@@ -123,6 +123,9 @@ Latest completed slice:
 - Derived constructors now forward `super(value)` to the arity-matched base
   initializer wrapper, rather than dropping the argument or invoking an
   unavailable zero-argument wrapper.
+- Direct numeric fields of known class instances now retain numeric type
+  inference through `console.log`; the full WASM probe prints `x: 7` rather
+  than the previous pointer placeholder.
 
 Acceptance:
 - new positive fixtures

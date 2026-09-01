@@ -4421,6 +4421,17 @@ function inferExprType(node, compileContext = null) {
       return 'number';
     }
   }
+  if (node.name === 'memberExpression' || node.name === 'memberExpressionNoIn') {
+    const memberChildren = node.children || [];
+    const directPropertyIndex = memberChildren.findIndex(
+      (child) => child && child.kind === 'terminal' && child.value === '.'
+    );
+    const baseExpressionNode = directPropertyIndex > 0 ? memberChildren[0] : null;
+    const baseBindingName = baseExpressionNode ? findFirstIdentifierValue(baseExpressionNode) : null;
+    if (baseBindingName && findBoundClassInstanceTypeAtNode(baseBindingName, node, compileContext)) {
+      return 'number';
+    }
+  }
   if (EXPR_PASSTHROUGH_NODES.has(node.name)) {
     const ntc = (node.children || []).filter((c) => c.kind === 'nonterminal');
     return ntc.length === 1 ? inferExprType(ntc[0], compileContext) : 'any';
@@ -4529,6 +4540,13 @@ function inferExprType(node, compileContext = null) {
         ? basePath[0]
         : findFirstIdentifierValue(baseExpressionNode);
       if (baseBindingName) {
+        const instanceType = findBoundClassInstanceTypeAtNode(baseBindingName, node, compileContext);
+        if (instanceType) {
+          // Class fields emitted by the current C++98 class wrapper are int.
+          // Method calls use the callExpression branch above, so a direct
+          // instance property access can safely retain numeric formatting.
+          return 'number';
+        }
         const propertyType = inferConstObjectLiteralPropertyTypeAtNode(
           baseBindingName,
           directPropertyName,

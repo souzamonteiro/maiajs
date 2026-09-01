@@ -65,6 +65,18 @@ test('class lowering: forwards explicit super arguments to the matching base ini
   assert.doesNotMatch(cpp, /super call with arguments is not supported/, 'supported super forwarding must not emit an unsupported diagnostic');
 });
 
+test('class lowering: instance numeric fields preserve number formatting in console.log', () => {
+  const cpp = runCompilerCpp(
+    'class Point { constructor(x) { this.x = x; } }\n'
+    + 'const point = new Point(7);\n'
+    + 'console.log("x:", point.x);\n'
+  );
+
+  assert.match(cpp, /double __maia_console_value_tmp[0-9]+ = \(double\)\(point\.x\);/, 'instance field should use a numeric console temporary');
+  assert.match(cpp, /__maia_console_to_cstr_number\(\(double\)\(__maia_console_value_tmp[0-9]+\)\)/, 'instance field should use numeric console formatting');
+  assert.doesNotMatch(cpp, /__maia_console_to_cstr_ptr\(\(void\*\)\(__maia_console_value_tmp[0-9]+\)\)/, 'instance field must not be formatted as a pointer');
+});
+
 test('class lowering: top-level class declaration is not emitted as unsupported statement in main', () => {
   const cpp = runCompilerCpp('class A { constructor(){} }\n');
 
