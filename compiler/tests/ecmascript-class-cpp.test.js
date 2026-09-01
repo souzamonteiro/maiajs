@@ -77,6 +77,18 @@ test('class lowering: instance numeric fields preserve number formatting in cons
   assert.doesNotMatch(cpp, /__maia_console_to_cstr_ptr\(\(void\*\)\(__maia_console_value_tmp[0-9]+\)\)/, 'instance field must not be formatted as a pointer');
 });
 
+test('class lowering: inherited methods resolve to the base class wrapper', () => {
+  const cpp = runCompilerCpp(
+    'class Base { constructor(value) { this.value = value; } getValue() { return this.value; } }\n'
+    + 'class Derived extends Base { constructor(value) { super(value); } }\n'
+    + 'const derived = new Derived(9);\n'
+    + 'console.log("value:", derived.getValue());\n'
+  );
+
+  assert.match(cpp, /Base_meth_getValue\(&derived\)/, 'inherited call must target the base method wrapper');
+  assert.doesNotMatch(cpp, /Derived_meth_getValue\(/, 'derived class must not invent a wrapper for an inherited method');
+});
+
 test('class lowering: top-level class declaration is not emitted as unsupported statement in main', () => {
   const cpp = runCompilerCpp('class A { constructor(){} }\n');
 

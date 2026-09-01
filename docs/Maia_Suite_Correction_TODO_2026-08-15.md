@@ -126,6 +126,9 @@ Latest completed slice:
 - Direct numeric fields of known class instances now retain numeric type
   inference through `console.log`; the full WASM probe prints `x: 7` rather
   than the previous pointer placeholder.
+- Inherited class methods now resolve to the wrapper owned by the base class;
+  a derived instance calling `getValue()` reaches `Base_meth_getValue` and
+  preserves its value through the WASM runtime.
 
 Acceptance:
 - new positive fixtures

@@ -3546,8 +3546,33 @@ function findPrototypeMethodSymbolForInstanceType(instanceType, methodName, comp
     if (directSymbol) {
       return directSymbol;
     }
-    currentType = compileContext.topLevelPrototypeHeritageMap
-      ? (compileContext.topLevelPrototypeHeritageMap.get(currentType) || null)
+    currentType = compileContext.topLevelClassHeritageMap
+      ? (compileContext.topLevelClassHeritageMap.get(currentType) || null)
+      : null;
+  }
+
+  return null;
+}
+
+function findClassMethodOwnerType(instanceType, methodName, compileContext) {
+  if (!instanceType || !methodName || !compileContext || !compileContext.tree) {
+    return null;
+  }
+
+  let currentType = instanceType;
+  const seenTypes = new Set();
+  while (currentType && !seenTypes.has(currentType)) {
+    seenTypes.add(currentType);
+    const classDeclaration = collectTopLevelClassDeclarations(compileContext.tree).find(
+      (candidate) => extractClassDeclarationName(candidate) === currentType
+    );
+    if (classDeclaration && extractClassMethodEntries(classDeclaration).some(({ methodDefinition, isStatic }) =>
+      !isStatic && extractMethodDefinitionName(methodDefinition) === methodName
+    )) {
+      return currentType;
+    }
+    currentType = compileContext.topLevelClassHeritageMap
+      ? (compileContext.topLevelClassHeritageMap.get(currentType) || null)
       : null;
   }
 
@@ -9556,7 +9581,8 @@ function lowerCallExpressionValue(node, compileContext) {
           if (prototypeMethodSymbol) {
             loweredCall = `${prototypeMethodSymbol}(${loweredBase}${args && args.trim() ? `, ${args}` : ''})`;
           } else {
-            loweredCall = `${getClassMethodWrapperName(wrapperClassName, methodName)}(&${loweredBase}${args && args.trim() ? `, ${args}` : ''})`;
+            const methodOwnerType = findClassMethodOwnerType(wrapperClassName, methodName, compileContext) || wrapperClassName;
+            loweredCall = `${getClassMethodWrapperName(methodOwnerType, methodName)}(&${loweredBase}${args && args.trim() ? `, ${args}` : ''})`;
           }
         }
       } else {
