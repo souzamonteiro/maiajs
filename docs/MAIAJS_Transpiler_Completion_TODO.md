@@ -5,7 +5,7 @@ Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
 
-- Full compiler test suite is green: **305/305 passing**.
+- Full compiler test suite is green: **307/307 passing**.
 - Ported MaiaCpp examples are green: runtime suite **22/22**, course suite **48/48**,
   and MaiaJS transpilation **22/22**.
 - `bash compiler/examples/validate_full_es8_dist.sh` validates the complete
@@ -14,6 +14,9 @@ Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 - Compile-context analysis no longer times out on `compiler/examples/test.js`:
   the representative transpilation takes about five seconds rather than roughly
   99 seconds. AST first-match lookups are memoized and avoid full repeated scans.
+- Labelled `break` and `continue` preserve their target semantics through the
+  JS -> C++98 -> C -> WASM pipeline using unique internal continuation and exit
+  targets, rather than silently retargeting nested loops.
 
 ## Remaining Work (post-validation)
 

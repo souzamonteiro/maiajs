@@ -10304,6 +10304,23 @@ function indentation(level) {
   return '  '.repeat(level);
 }
 
+function isIterationStatementNode(statementNode) {
+  return !!(statementNode
+    && statementNode.kind === 'nonterminal'
+    && (statementNode.children || []).some(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'iterationStatement'
+    ));
+}
+
+function allocateLabelTarget(compileContext, label, kind) {
+  if (!compileContext) {
+    return `__maia_${kind}_${label}`;
+  }
+  compileContext._labelTargetCount = (compileContext._labelTargetCount || 0) + 1;
+  const safeLabel = String(label).replace(/[^A-Za-z0-9_]/g, '_');
+  return `__maia_${kind}_${safeLabel}_${compileContext._labelTargetCount}`;
+}
+
 function lowerStatementNode(statementNode, compileContext, indentLevel = 1, options = {}) {
   const lines = [];
   const indent = indentation(indentLevel);
@@ -10628,7 +10645,9 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       lines.push(`${indent}while (${loweredCond}) {`);
       
       if (bodyStmt) {
-        lines.push(...lowerStatementNode(bodyStmt, compileContext, indentLevel + 1, options));
+        lines.push(...lowerStatementNode(bodyStmt, compileContext, indentLevel + 1, Object.assign({}, options, {
+          labelledContinueTarget: null
+        })));
       } else {
         reportUnsupportedLowering(
           compileContext,
@@ -10639,6 +10658,9 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
           err('unsupported lowering: while loop body statement');
         }
         lines.push(`${indentation(indentLevel + 1)}// [while body not yet lowered]`);
+      }
+      if (options.labelledContinueTarget) {
+        lines.push(`${indentation(indentLevel + 1)}${options.labelledContinueTarget}: ;`);
       }
       
       lines.push(`${indent}}`);
@@ -10668,7 +10690,9 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       lines.push(`${indent}do {`);
       
       if (bodyStmt) {
-        lines.push(...lowerStatementNode(bodyStmt, compileContext, indentLevel + 1, options));
+        lines.push(...lowerStatementNode(bodyStmt, compileContext, indentLevel + 1, Object.assign({}, options, {
+          labelledContinueTarget: null
+        })));
       } else {
         reportUnsupportedLowering(
           compileContext,
@@ -10679,6 +10703,9 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
           err('unsupported lowering: do-while loop body statement');
         }
         lines.push(`${indentation(indentLevel + 1)}// [do-while body not yet lowered]`);
+      }
+      if (options.labelledContinueTarget) {
+        lines.push(`${indentation(indentLevel + 1)}${options.labelledContinueTarget}: ;`);
       }
       
       const loweredCond = condExpr
@@ -10999,7 +11026,9 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       lines.push(forHeader);
 
       if (bodyStmt) {
-        lines.push(...lowerStatementNode(bodyStmt, compileContext, bodyIndentLevel, options));
+        lines.push(...lowerStatementNode(bodyStmt, compileContext, bodyIndentLevel, Object.assign({}, options, {
+          labelledContinueTarget: null
+        })));
       } else {
         reportUnsupportedLowering(
           compileContext,
@@ -11010,6 +11039,9 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
           err('unsupported lowering: for loop body statement');
         }
         lines.push(`${indentation(bodyIndentLevel)}// [for body not yet lowered]`);
+      }
+      if (options.labelledContinueTarget) {
+        lines.push(`${indentation(bodyIndentLevel)}${options.labelledContinueTarget}: ;`);
       }
 
       lines.push(`${forIndent}}`);
@@ -11313,6 +11345,10 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     }
     const label = labelIdNode ? findFirstIdentifierValue(labelIdNode) : null;
     if (label) {
+      const target = options.labelTargets && options.labelTargets[label];
+      if (target && target.breakTarget) {
+        return [`${indent}goto ${target.breakTarget};`];
+      }
       reportUnsupportedLowering(
         compileContext,
         'break-label-unsupported',
@@ -11339,6 +11375,10 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
     }
     const label = labelIdNode ? findFirstIdentifierValue(labelIdNode) : null;
     if (label) {
+      const target = options.labelTargets && options.labelTargets[label];
+      if (target && target.continueTarget) {
+        return [`${indent}goto ${target.continueTarget};`];
+      }
       reportUnsupportedLowering(
         compileContext,
         'continue-label-unsupported',
@@ -11407,9 +11447,23 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
       nestedStmt = findFirstNonterminal(labelledStmtNode, 'statement');
     }
     const label = labelIdNode ? findFirstIdentifierValue(labelIdNode) : null;
-    if (label) { lines.push(`${indent}${label}:`); }
-    if (nestedStmt) { 
-      lines.push(...lowerStatementNode(nestedStmt, compileContext, indentLevel, options)); 
+    if (label && nestedStmt) {
+      const breakTarget = allocateLabelTarget(compileContext, label, 'break');
+      const continueTarget = isIterationStatementNode(nestedStmt)
+        ? allocateLabelTarget(compileContext, label, 'continue')
+        : null;
+      const labelTargets = Object.assign({}, options.labelTargets || {}, {
+        [label]: { breakTarget, continueTarget }
+      });
+      lines.push(...lowerStatementNode(nestedStmt, compileContext, indentLevel, Object.assign({}, options, {
+        labelTargets,
+        labelledContinueTarget: continueTarget
+      })));
+      lines.push(`${indent}${breakTarget}: ;`);
+    } else if (label) {
+      lines.push(`${indent}${label}: ;`);
+    } else if (nestedStmt) {
+      lines.push(...lowerStatementNode(nestedStmt, compileContext, indentLevel, options));
     } else {
       reportUnsupportedLowering(
         compileContext,

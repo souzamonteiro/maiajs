@@ -96,14 +96,22 @@ Acceptance:
 
 Concrete MaiaJS lowering areas still visibly marked as partial/unsupported in code:
 - destructuring currently lowered to safe defaults/comments instead of real semantics
-- labeled `break` / labeled `continue` unsupported
+- [x] labeled `break` / labeled `continue` preserve their labelled targets
 - some `super(...)` call paths unsupported
 - several JS-runtime method-chain truncation paths still degrade behavior conservatively
 
 Recommended order inside MaiaJS:
-1. labeled control-flow support
+1. [x] labeled control-flow support
 2. destructuring semantics beyond safe fallback
 3. selected call-chain/runtime-method lowering gaps
+
+Latest completed slice:
+
+- `label: statement`, `break label`, and `continue label` lower through unique
+  internal targets. A continuation target is consumed by its labelled loop and
+  is not inherited by nested loops.
+- A nested-loop runtime probe confirms `continue outer` executes three outer
+  iterations, rather than incorrectly continuing the inner loop.
 
 Acceptance:
 - new positive fixtures

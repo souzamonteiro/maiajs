@@ -27,25 +27,29 @@ function runCompilerCpp(sourceCode) {
   return fs.readFileSync(cppOut, 'utf8');
 }
 
-test('labeled statements: label preserves identifier', () => {
+test('labeled statements: break exits the labelled statement', () => {
   const cpp = runCompilerCpp(`
-    myLabel:
-    const x = 1;
+    outer: {
+      break outer;
+    }
   `);
 
-  assert.match(cpp, /myLabel\s*:/, 'Should have label identifier in output');
+  assert.match(cpp, /goto __maia_break_outer_\d+;/, 'Should lower break label to its unique exit target');
+  assert.match(cpp, /__maia_break_outer_\d+:\s*;/, 'Should emit the exit target after the labelled statement');
+  assert.doesNotMatch(cpp, /break-label-unsupported/, 'Should not report a supported labelled break');
 });
 
-test('labeled statements: multiple labels', () => {
+test('labeled statements: nested labels retain distinct break targets', () => {
   const cpp = runCompilerCpp(`
-    label1:
-    const x = 1;
-    label2:
-    const y = 2;
+    outer: {
+      inner: {
+        break outer;
+      }
+    }
   `);
 
-  assert.match(cpp, /label1\s*:/, 'Should have first label');
-  assert.match(cpp, /label2\s*:/, 'Should have second label');
+  assert.match(cpp, /goto __maia_break_outer_\d+;/, 'Should resolve the enclosing label rather than the nearest block');
+  assert.match(cpp, /__maia_break_inner_\d+:\s*;/, 'Should retain an independent inner target');
 });
 
 test('labeled statements: break works in switch', () => {
@@ -73,6 +77,21 @@ test('labeled statements: while loop with break', () => {
 
   assert.match(cpp, /break\s*;/, 'Should have break statement in while loop');
   assert.doesNotMatch(cpp, /\/\/ \[.*not yet lowered\]/, 'Should not have placeholder comments');
+});
+
+test('labeled statements: continue targets the labelled outer loop', () => {
+  const cpp = runCompilerCpp(`
+    outer: while (true) {
+      while (true) {
+        continue outer;
+      }
+    }
+  `);
+
+  assert.match(cpp, /goto __maia_continue_outer_\d+;/, 'Should lower labelled continue to the outer loop continuation target');
+  assert.match(cpp, /__maia_continue_outer_\d+:\s*;/, 'Should emit the continuation target inside the outer loop');
+  assert.equal((cpp.match(/__maia_continue_outer_\d+:\s*;/g) || []).length, 1, 'Should not duplicate the outer continuation target in nested loops');
+  assert.doesNotMatch(cpp, /continue-label-unsupported/, 'Should not report a supported labelled continue');
 });
 
 test('labeled statements: break in nested blocks', () => {
