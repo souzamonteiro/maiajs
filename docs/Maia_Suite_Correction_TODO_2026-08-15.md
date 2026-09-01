@@ -95,14 +95,17 @@ Acceptance:
 ### A3. Continue lowering hardening in documented unsupported zones
 
 Concrete MaiaJS lowering areas still visibly marked as partial/unsupported in code:
-- destructuring currently lowered to safe defaults/comments instead of real semantics
+- destructuring supports static scalar array bindings and shorthand object
+  bindings; dynamic sources, aliases, defaults, nested patterns, and rest
+  bindings still use explicit diagnostics rather than incomplete semantics
 - [x] labeled `break` / labeled `continue` preserve their labelled targets
 - some `super(...)` call paths unsupported
 - several JS-runtime method-chain truncation paths still degrade behavior conservatively
 
 Recommended order inside MaiaJS:
 1. [x] labeled control-flow support
-2. destructuring semantics beyond safe fallback
+2. [~] destructuring semantics beyond safe fallback (static scalar arrays and
+   shorthand object bindings done)
 3. selected call-chain/runtime-method lowering gaps
 
 Latest completed slice:
@@ -112,6 +115,9 @@ Latest completed slice:
   is not inherited by nested loops.
 - A nested-loop runtime probe confirms `continue outer` executes three outer
   iterations, rather than incorrectly continuing the inner loop.
+- Static scalar array destructuring and shorthand object destructuring now emit
+  typed C++98 scalar declarations and retain their types through `console.log`;
+  JS -> C++ -> C -> WASM probes print `values: 10 20` and `point: 10 20`.
 
 Acceptance:
 - new positive fixtures

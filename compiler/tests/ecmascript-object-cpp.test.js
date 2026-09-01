@@ -57,8 +57,8 @@ test('object literal lowering: resolves static computed property keys', () => {
     'C++ must use the resolved constant key rather than the binding identifier');
   assert.doesNotMatch(cpp, /__maia_obj_literal1\(\(char\*\)"key", \(long\)\(42\)\)/,
     'C++ must not treat the computed key expression as a literal identifier');
-  assert.match(cpp, /__maia_console_to_cstr_number\(\(double\)\(__maia_console_value_tmp[0-9]+\)\)/,
-    'console.log must convert the resolved numeric property through the one-string ABI');
+  assert.match(cpp, /__maia_console_to_cstr_number\(/,
+    'console.log must convert the resolved numeric property through the one-string ABI, whether statically folded or loaded through a runtime temporary');
   assert.doesNotMatch(cpp, /__console__log\("Computed key:",/,
     'console.log must not emit multiple C++ arguments for its one-string ABI');
 });

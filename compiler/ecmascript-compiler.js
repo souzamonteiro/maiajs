@@ -1705,6 +1705,32 @@ function collectVisibleVariableBindingsAtNode(targetNode, compileContext) {
       for (const declaration of declarations) {
         const bindingName = extractVariableDeclarationName(declaration);
         if (!bindingName) {
+          const bindingPattern = (declaration.children || []).find(
+            (child) => child && child.kind === 'nonterminal' && child.name === 'bindingPattern'
+          );
+          const arrayBindingPattern = bindingPattern && findFirstNonterminal(bindingPattern, 'arrayBindingPattern');
+          const objectBindingPattern = bindingPattern && findFirstNonterminal(bindingPattern, 'objectBindingPattern');
+          const initializerExpression = extractVariableDeclarationInitializer(declaration);
+          const arrayBindings = extractSimpleArrayBindingEntries(arrayBindingPattern);
+          if (arrayBindings && initializerExpression) {
+            for (const arrayBinding of arrayBindings) {
+              bindings.set(arrayBinding.name, {
+                kind: declarationIsConst ? 'initializer' : 'mutable-binding',
+                expressionNode: initializerExpression,
+                staticProjection: { kind: 'array-index', index: arrayBinding.index }
+              });
+            }
+          }
+          const objectBindings = extractSimpleObjectBindingEntries(objectBindingPattern);
+          if (objectBindings && initializerExpression) {
+            for (const objectBinding of objectBindings) {
+              bindings.set(objectBinding.name, {
+                kind: declarationIsConst ? 'initializer' : 'mutable-binding',
+                expressionNode: initializerExpression,
+                staticProjection: { kind: 'object-property', property: objectBinding.property }
+              });
+            }
+          }
           continue;
         }
         bindings.set(bindingName, {
@@ -1942,6 +1968,33 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
   }
 
   const flattenedExpression = flattenNodeText(expressionNode);
+  if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(flattenedExpression)) {
+    const identifierName = flattenedExpression;
+    if (!seenBindings.has(identifierName)) {
+      const visibleBindings = collectVisibleVariableBindingsAtNode(targetNode, compileContext);
+      const bindingInfo = visibleBindings.get(identifierName) || null;
+      if (bindingInfo && bindingInfo.kind === 'initializer' && bindingInfo.expressionNode) {
+        seenBindings.add(identifierName);
+        const sourceModel = resolveStaticModelFromExpression(
+          bindingInfo.expressionNode,
+          targetNode,
+          compileContext,
+          seenBindings
+        );
+        seenBindings.delete(identifierName);
+        if (bindingInfo.staticProjection && bindingInfo.staticProjection.kind === 'array-index'
+          && sourceModel && sourceModel.kind === 'array' && Array.isArray(sourceModel.values)) {
+          const projected = sourceModel.values[bindingInfo.staticProjection.index] || null;
+          return finish(projected);
+        }
+        if (bindingInfo.staticProjection && bindingInfo.staticProjection.kind === 'object-property'
+          && sourceModel && sourceModel.kind === 'object' && sourceModel.properties instanceof Map) {
+          return finish(sourceModel.properties.get(bindingInfo.staticProjection.property) || null);
+        }
+        return finish(sourceModel);
+      }
+    }
+  }
   if (flattenedExpression.startsWith('[') && flattenedExpression.endsWith(']')) {
     const directArrayLiteral = findFirstNonterminal(expressionNode, 'arrayLiteral');
     if (directArrayLiteral) {
@@ -1952,6 +2005,20 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
         );
         return finish({ kind: 'array', length: values.length, values });
       }
+    }
+  }
+  if (flattenedExpression.startsWith('{') && flattenedExpression.endsWith('}')) {
+    const directObjectLiteral = findFirstNonterminal(expressionNode, 'objectLiteral');
+    if (directObjectLiteral) {
+      const properties = extractObjectLiteralProperties(directObjectLiteral, compileContext);
+      const propertyMap = new Map();
+      for (const property of properties) {
+        propertyMap.set(
+          property.key,
+          resolveStaticModelFromExpression(property.valueExprNode, targetNode, compileContext, seenBindings)
+        );
+      }
+      return finish({ kind: 'object', properties: propertyMap });
     }
   }
 
@@ -9977,6 +10044,59 @@ function extractArrayBindingIdentifiers(arrayBindingPatternNode, compileContext 
   return names;
 }
 
+// Returns simple array bindings together with their source indexes. This keeps
+// the supported destructuring subset deliberately narrow: defaults, nested
+// patterns, and rest bindings need JavaScript runtime semantics.
+function extractSimpleArrayBindingEntries(arrayBindingPatternNode) {
+  if (!arrayBindingPatternNode
+    || arrayBindingPatternNode.kind !== 'nonterminal'
+    || arrayBindingPatternNode.name !== 'arrayBindingPattern') {
+    return null;
+  }
+
+  const bindingElementList = (arrayBindingPatternNode.children || []).find(
+    (child) => child && child.kind === 'nonterminal' && child.name === 'bindingElementList'
+  ) || findFirstNonterminal(arrayBindingPatternNode, 'bindingElementList');
+  const restBinding = (arrayBindingPatternNode.children || []).find(
+    (child) => child && child.kind === 'nonterminal' && child.name === 'bindingRestElement'
+  );
+  if (!bindingElementList || restBinding) {
+    return null;
+  }
+
+  const entries = [];
+  let sourceIndex = 0;
+  for (const child of (bindingElementList.children || [])) {
+    if (!child || child.kind !== 'nonterminal' || child.name !== 'bindingElisionElement') {
+      continue;
+    }
+    const elision = (child.children || []).find(
+      (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'elision'
+    );
+    if (elision) {
+      sourceIndex += (elision.children || []).filter(
+        (candidate) => candidate && candidate.kind === 'terminal' && candidate.value === ','
+      ).length;
+    }
+    const bindingElement = (child.children || []).find(
+      (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'bindingElement'
+    );
+    const singleNameBinding = bindingElement && (bindingElement.children || []).find(
+      (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'singleNameBinding'
+    );
+    if (!bindingElement || !singleNameBinding || findFirstNonterminal(singleNameBinding, 'initializer')) {
+      return null;
+    }
+    const bindingName = findFirstIdentifierValue(singleNameBinding);
+    if (!bindingName) {
+      return null;
+    }
+    entries.push({ name: bindingName, index: sourceIndex });
+    sourceIndex += 1;
+  }
+  return entries.length > 0 ? entries : null;
+}
+
 // Returns array of identifier name strings from objectBindingPattern
 function extractObjectBindingIdentifiers(objectBindingPatternNode, compileContext = null) {
   const names = [];
@@ -10007,6 +10127,46 @@ function extractObjectBindingIdentifiers(objectBindingPatternNode, compileContex
     if (ident) { names.push(ident); }
   }
   return names;
+}
+
+// The parser currently exposes shorthand object bindings directly as
+// bindingProperty -> singleNameBinding. Keep aliases and defaults on the
+// diagnostic path until their JavaScript evaluation rules are lowered.
+function extractSimpleObjectBindingEntries(objectBindingPatternNode) {
+  if (!objectBindingPatternNode
+    || objectBindingPatternNode.kind !== 'nonterminal'
+    || objectBindingPatternNode.name !== 'objectBindingPattern') {
+    return null;
+  }
+
+  const bindingPropertyList = (objectBindingPatternNode.children || []).find(
+    (child) => child && child.kind === 'nonterminal' && child.name === 'bindingPropertyList'
+  ) || findFirstNonterminal(objectBindingPatternNode, 'bindingPropertyList');
+  const restBinding = (objectBindingPatternNode.children || []).find(
+    (child) => child && child.kind === 'nonterminal' && child.name === 'bindingRestProperty'
+  );
+  if (!bindingPropertyList || restBinding) {
+    return null;
+  }
+
+  const entries = [];
+  for (const child of (bindingPropertyList.children || [])) {
+    if (!child || child.kind !== 'nonterminal' || child.name !== 'bindingProperty') {
+      continue;
+    }
+    const singleNameBinding = (child.children || []).find(
+      (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'singleNameBinding'
+    );
+    if (!singleNameBinding || findFirstNonterminal(singleNameBinding, 'initializer')) {
+      return null;
+    }
+    const bindingName = findFirstIdentifierValue(singleNameBinding);
+    if (!bindingName) {
+      return null;
+    }
+    entries.push({ name: bindingName, property: bindingName });
+  }
+  return entries.length > 0 ? entries : null;
 }
 
 function extractVariableDeclarations(variableDeclarationListNode, compileContext = null) {
@@ -10196,6 +10356,30 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
         if (arrayPattern) {
           const names = extractArrayBindingIdentifiers(arrayPattern, compileContext);
           const namesLabel = names.length > 0 ? names.join(', ') : '(empty pattern)';
+          const arrayBindings = extractSimpleArrayBindingEntries(arrayPattern);
+          const initializerExpr = extractVariableDeclarationInitializer(variableDeclaration, compileContext);
+          const sourceModel = arrayBindings && initializerExpr
+            ? resolveStaticModelFromExpression(initializerExpr, initializerExpr, compileContext)
+            : null;
+          const hasStaticScalarValues = sourceModel
+            && sourceModel.kind === 'array'
+            && Array.isArray(sourceModel.values)
+            && arrayBindings
+            && arrayBindings.every((binding) => {
+              const value = sourceModel.values[binding.index];
+              return value && ['number', 'string', 'bool'].includes(value.kind);
+            });
+          if (hasStaticScalarValues) {
+            for (const binding of arrayBindings) {
+              const valueModel = sourceModel.values[binding.index];
+              const cppType = valueModel.kind === 'string'
+                ? 'const char*'
+                : (valueModel.kind === 'number' ? 'double' : 'int');
+              const constQualifier = isConst && cppType !== 'const char*' ? 'const ' : '';
+              lowered.push(`${indent}${constQualifier}${cppType} ${binding.name} = ${lowerStaticModelToExpression(valueModel)};`);
+            }
+            continue;
+          }
           reportUnsupportedLowering(
             compileContext,
             'unsupported-array-destructuring',
@@ -10205,6 +10389,30 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
         } else if (objectPattern) {
           const names = extractObjectBindingIdentifiers(objectPattern, compileContext);
           const namesLabel = names.length > 0 ? names.join(', ') : '(empty pattern)';
+          const objectBindings = extractSimpleObjectBindingEntries(objectPattern);
+          const initializerExpr = extractVariableDeclarationInitializer(variableDeclaration, compileContext);
+          const sourceModel = objectBindings && initializerExpr
+            ? resolveStaticModelFromExpression(initializerExpr, initializerExpr, compileContext)
+            : null;
+          const hasStaticScalarValues = sourceModel
+            && sourceModel.kind === 'object'
+            && sourceModel.properties instanceof Map
+            && objectBindings
+            && objectBindings.every((binding) => {
+              const value = sourceModel.properties.get(binding.property);
+              return value && ['number', 'string', 'bool'].includes(value.kind);
+            });
+          if (hasStaticScalarValues) {
+            for (const binding of objectBindings) {
+              const valueModel = sourceModel.properties.get(binding.property);
+              const cppType = valueModel.kind === 'string'
+                ? 'const char*'
+                : (valueModel.kind === 'number' ? 'double' : 'int');
+              const constQualifier = isConst && cppType !== 'const char*' ? 'const ' : '';
+              lowered.push(`${indent}${constQualifier}${cppType} ${binding.name} = ${lowerStaticModelToExpression(valueModel)};`);
+            }
+            continue;
+          }
           reportUnsupportedLowering(
             compileContext,
             'unsupported-object-destructuring',

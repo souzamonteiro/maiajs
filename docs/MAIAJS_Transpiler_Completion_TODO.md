@@ -1,11 +1,11 @@
 # MaiaJS Transpiler Completion Strategy and TODO
 
-Last updated: 2026-08-31
+Last updated: 2026-09-01
 Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
 
-- Full compiler test suite is green: **307/307 passing**.
+- Full compiler test suite is green: **309/309 passing**.
 - Ported MaiaCpp examples are green: runtime suite **22/22**, course suite **48/48**,
   and MaiaJS transpilation **22/22**.
 - `bash compiler/examples/validate_full_es8_dist.sh` validates the complete

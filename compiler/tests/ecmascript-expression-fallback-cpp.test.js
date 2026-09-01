@@ -132,3 +132,31 @@ test('destructuring lowers to C++98-safe fallback without auto/member indexing t
   assert.doesNotMatch(cpp, /__arr\d+\s*\[/, 'array-index destructuring temps must not leak into output');
   assert.doesNotMatch(cpp, /__obj\d+\./, 'object-member destructuring temps must not leak into output');
 });
+
+test('static array destructuring lowers bound scalar values and preserves their types', () => {
+  const cpp = runCompilerCpp(
+    'const values = [10, 20];\n'
+    + 'const [first, second] = values;\n'
+    + 'console.log(first, second);\n'
+  );
+
+  assert.match(cpp, /const double first = 10;/, 'first static array item should become a scalar declaration');
+  assert.match(cpp, /const double second = 20;/, 'second static array item should become a scalar declaration');
+  assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("10"\)\)/, 'first value should retain number formatting at the console call');
+  assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("20"\)\)/, 'second value should retain number formatting at the console call');
+  assert.doesNotMatch(cpp, /unsupported array destructuring/, 'supported static array destructuring must not use the fallback diagnostic');
+});
+
+test('static object destructuring lowers shorthand scalar bindings and preserves their types', () => {
+  const cpp = runCompilerCpp(
+    'const point = { x: 10, y: 20 };\n'
+    + 'const { x, y } = point;\n'
+    + 'console.log(x, y);\n'
+  );
+
+  assert.match(cpp, /const double x = 10;/, 'x static object property should become a scalar declaration');
+  assert.match(cpp, /const double y = 20;/, 'y static object property should become a scalar declaration');
+  assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("10"\)\)/, 'x should retain number formatting at the console call');
+  assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("20"\)\)/, 'y should retain number formatting at the console call');
+  assert.doesNotMatch(cpp, /unsupported object destructuring/, 'supported static object destructuring must not use the fallback diagnostic');
+});
