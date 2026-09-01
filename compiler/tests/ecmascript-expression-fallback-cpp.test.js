@@ -160,3 +160,14 @@ test('static object destructuring lowers shorthand scalar bindings and preserves
   assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("20"\)\)/, 'y should retain number formatting at the console call');
   assert.doesNotMatch(cpp, /unsupported object destructuring/, 'supported static object destructuring must not use the fallback diagnostic');
 });
+
+test('static string method chains fold before C++ lowering', () => {
+  const cpp = runCompilerCpp(
+    'const raw = "  MaiaJS  ";\n'
+    + 'console.log(raw.trim().toUpperCase(), raw.startsWith("  "), raw.endsWith("  "));\n'
+  );
+
+  assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("MAIAJS"\)\)/, 'static trim/toUpperCase chain should fold to its final string');
+  assert.match(cpp, /__maia_console_to_cstr_number\(\(double\)\(\(double\)\(1\)\)\)/, 'static startsWith/endsWith calls should fold to boolean output values');
+  assert.doesNotMatch(cpp, /__raw__trim\(\)/, 'folded string chain must not call a host trim function');
+});

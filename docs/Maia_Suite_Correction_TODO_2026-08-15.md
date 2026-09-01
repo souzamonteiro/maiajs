@@ -129,6 +129,9 @@ Latest completed slice:
 - Inherited class methods now resolve to the wrapper owned by the base class;
   a derived instance calling `getValue()` reaches `Base_meth_getValue` and
   preserves its value through the WASM runtime.
+- Statically known string call chains now propagate their intermediate model,
+  allowing `trim`, case conversion, `startsWith`, and `endsWith` to fold before
+  C++ lowering rather than being truncated as runtime method calls.
 
 Acceptance:
 - new positive fixtures

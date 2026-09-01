@@ -2228,6 +2228,14 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
       }
     }
 
+    if (!staticCallModel && baseExpressionNode) {
+      const baseModel = resolveStaticModelFromExpression(baseExpressionNode, targetNode, compileContext, seenBindings);
+      const argumentModels = argExprs.map((argument) =>
+        resolveStaticModelFromExpression(argument, targetNode, compileContext, seenBindings)
+      );
+      staticCallModel = applyStaticStringMethodModel(baseModel, directPropertyName, argumentModels);
+    }
+
     if (!staticCallModel && directPropertyName === 'includes' && baseExpressionNode && argExprs.length >= 1) {
       const baseModel = resolveStaticModelFromExpression(baseExpressionNode, targetNode, compileContext, seenBindings);
       const searchModel = resolveStaticModelFromExpression(argExprs[0], targetNode, compileContext, seenBindings);
@@ -2286,7 +2294,14 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
     }
 
     if (staticCallModel) {
-      return finish(resolveStaticModelFromCallChainSuffix(current, argsNode, staticCallModel));
+      return finish(resolveStaticModelFromCallChainSuffix(
+        current,
+        argsNode,
+        staticCallModel,
+        targetNode,
+        compileContext,
+        seenBindings
+      ));
     }
   }
 
@@ -2490,7 +2505,39 @@ function extractCallExpressionMemberAndArgs(callExpressionNode) {
   return { memberExprNode, argsNode, argExprs };
 }
 
-function resolveStaticModelFromCallChainSuffix(callExpressionNode, argsNode, initialModel) {
+function applyStaticStringMethodModel(baseModel, methodName, argumentModels) {
+  if (!baseModel || baseModel.kind !== 'string') {
+    return null;
+  }
+  const value = baseModel.value;
+  if (methodName === 'trim' && argumentModels.length === 0) {
+    return { kind: 'string', value: value.trim() };
+  }
+  if (methodName === 'trimStart' && argumentModels.length === 0) {
+    return { kind: 'string', value: value.trimStart() };
+  }
+  if (methodName === 'trimEnd' && argumentModels.length === 0) {
+    return { kind: 'string', value: value.trimEnd() };
+  }
+  if (methodName === 'toUpperCase' && argumentModels.length === 0) {
+    return { kind: 'string', value: value.toUpperCase() };
+  }
+  if (methodName === 'toLowerCase' && argumentModels.length === 0) {
+    return { kind: 'string', value: value.toLowerCase() };
+  }
+  if ((methodName === 'startsWith' || methodName === 'endsWith')
+    && argumentModels.length === 1
+    && argumentModels[0]
+    && argumentModels[0].kind === 'string') {
+    const matched = methodName === 'startsWith'
+      ? value.startsWith(argumentModels[0].value)
+      : value.endsWith(argumentModels[0].value);
+    return { kind: 'bool', value: matched ? 1 : 0 };
+  }
+  return null;
+}
+
+function resolveStaticModelFromCallChainSuffix(callExpressionNode, argsNode, initialModel, targetNode, compileContext, seenBindings) {
   if (!callExpressionNode || !initialModel) {
     return initialModel;
   }
@@ -2532,6 +2579,20 @@ function resolveStaticModelFromCallChainSuffix(callExpressionNode, argsNode, ini
     );
 
     if (propertyFollowedByArgs) {
+      const argumentList = (nextChainChild.children || []).find(
+        (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'argumentList'
+      ) || findFirstNonterminal(nextChainChild, 'argumentList');
+      const argumentModels = argumentList
+        ? collectArgumentExpressions(argumentList).map((argument) =>
+          resolveStaticModelFromExpression(argument, targetNode, compileContext, seenBindings)
+        )
+        : [];
+      const stringMethodModel = applyStaticStringMethodModel(currentModel, propertyName, argumentModels);
+      if (stringMethodModel) {
+        currentModel = stringMethodModel;
+        i += 2;
+        continue;
+      }
       if (currentModel.kind === 'array' && (propertyName === 'map' || propertyName === 'filter')) {
         currentModel = { kind: 'array', length: currentModel.length || 0 };
         i += 2;
