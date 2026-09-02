@@ -2606,12 +2606,20 @@ function applyStaticStringMethodModel(baseModel, methodName, argumentModels) {
     return { kind: 'string', value: value.toLowerCase() };
   }
   if ((methodName === 'startsWith' || methodName === 'endsWith')
-    && argumentModels.length === 1
+    && argumentModels.length >= 1
+    && argumentModels.length <= 2
     && argumentModels[0]
-    && argumentModels[0].kind === 'string') {
+    && argumentModels[0].kind === 'string'
+    && (argumentModels.length === 1
+      || (argumentModels[1]
+        && argumentModels[1].kind === 'number'
+        && Number.isFinite(Number(argumentModels[1].value))))) {
+    const position = argumentModels.length === 2
+      ? Math.trunc(Number(argumentModels[1].value))
+      : undefined;
     const matched = methodName === 'startsWith'
-      ? value.startsWith(argumentModels[0].value)
-      : value.endsWith(argumentModels[0].value);
+      ? value.startsWith(argumentModels[0].value, position)
+      : value.endsWith(argumentModels[0].value, position);
     return { kind: 'bool', value: matched ? 1 : 0 };
   }
   return null;

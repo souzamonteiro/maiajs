@@ -165,10 +165,12 @@ test('static string method chains fold before C++ lowering', () => {
   const cpp = runCompilerCpp(
     'const raw = "  MaiaJS  ";\n'
     + 'console.log(raw.trim().toUpperCase(), raw.startsWith("  "), raw.endsWith("  "));\n'
+    + 'console.log("maia".startsWith("m", 1), "maia".endsWith("a", 3));\n'
   );
 
   assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("MAIAJS"\)\)/, 'static trim/toUpperCase chain should fold to its final string');
   assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("true"\)\)/, 'static startsWith/endsWith calls should retain JavaScript boolean output values');
+  assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("false"\)\)/, 'static startsWith/endsWith calls should honour their optional position');
   assert.doesNotMatch(cpp, /__raw__trim\(\)/, 'folded string chain must not call a host trim function');
 });
 

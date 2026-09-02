@@ -138,6 +138,8 @@ Latest completed slice:
   `indexOf(value, fromIndex)`, and `lastIndexOf(value, fromIndex)` when the
   optional position is statically numeric; console output retains JavaScript
   boolean and numeric text values.
+- Static `startsWith(value, position)` and `endsWith(value, position)` now
+  likewise fold when their optional position is statically numeric.
 
 Acceptance:
 - new positive fixtures
