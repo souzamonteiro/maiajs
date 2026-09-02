@@ -2253,34 +2253,58 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
       }
     }
 
-    if (!staticCallModel && directPropertyName === 'includes' && baseExpressionNode && argExprs.length >= 1) {
+    if (!staticCallModel && directPropertyName === 'includes' && baseExpressionNode && argExprs.length >= 1 && argExprs.length <= 2) {
       const baseModel = resolveStaticModelFromExpression(baseExpressionNode, targetNode, compileContext, seenBindings);
       const searchModel = resolveStaticModelFromExpression(argExprs[0], targetNode, compileContext, seenBindings);
-      if (baseModel && searchModel && baseModel.kind === 'array' && Array.isArray(baseModel.values)) {
+      const fromIndex = argExprs.length === 2
+        ? resolveStaticSearchFromIndex(argExprs[1], targetNode, compileContext, seenBindings)
+        : 0;
+      if (fromIndex !== null && baseModel && searchModel && baseModel.kind === 'array' && Array.isArray(baseModel.values)) {
         const searchKey = JSON.stringify(searchModel);
+        const startIndex = fromIndex < 0
+          ? Math.max(baseModel.values.length + fromIndex, 0)
+          : Math.min(fromIndex, baseModel.values.length);
         staticCallModel = {
           kind: 'bool',
-          value: baseModel.values.some((valueModel) => JSON.stringify(valueModel) === searchKey) ? 1 : 0
+          value: baseModel.values.slice(startIndex).some((valueModel) => JSON.stringify(valueModel) === searchKey) ? 1 : 0
         };
       }
-      if (!staticCallModel && baseModel && searchModel && baseModel.kind === 'string' && searchModel.kind === 'string') {
-        staticCallModel = { kind: 'bool', value: baseModel.value.includes(searchModel.value) ? 1 : 0 };
+      if (!staticCallModel && fromIndex !== null && baseModel && searchModel && baseModel.kind === 'string' && searchModel.kind === 'string') {
+        staticCallModel = { kind: 'bool', value: baseModel.value.includes(searchModel.value, fromIndex) ? 1 : 0 };
       }
     }
 
     if (!staticCallModel
       && (directPropertyName === 'indexOf' || directPropertyName === 'lastIndexOf')
       && baseExpressionNode
-      && argExprs.length === 1) {
+      && argExprs.length >= 1
+      && argExprs.length <= 2) {
       const baseModel = resolveStaticModelFromExpression(baseExpressionNode, targetNode, compileContext, seenBindings);
       const searchModel = resolveStaticModelFromExpression(argExprs[0], targetNode, compileContext, seenBindings);
-      if (baseModel && searchModel && baseModel.kind === 'array' && Array.isArray(baseModel.values)) {
+      const fromIndex = argExprs.length === 2
+        ? resolveStaticSearchFromIndex(argExprs[1], targetNode, compileContext, seenBindings)
+        : null;
+      const hasUsableFromIndex = argExprs.length === 1 || fromIndex !== null;
+      if (hasUsableFromIndex && baseModel && searchModel && baseModel.kind === 'array' && Array.isArray(baseModel.values)) {
         const searchKey = JSON.stringify(searchModel);
         let foundIndex = -1;
         if (directPropertyName === 'indexOf') {
-          foundIndex = baseModel.values.findIndex((valueModel) => JSON.stringify(valueModel) === searchKey);
+          const startIndex = fromIndex !== null && fromIndex < 0
+            ? Math.max(baseModel.values.length + fromIndex, 0)
+            : Math.min(fromIndex || 0, baseModel.values.length);
+          for (let index = startIndex; index < baseModel.values.length; index += 1) {
+            if (JSON.stringify(baseModel.values[index]) === searchKey) {
+              foundIndex = index;
+              break;
+            }
+          }
         } else {
-          for (let index = baseModel.values.length - 1; index >= 0; index -= 1) {
+          const startIndex = fromIndex === null
+            ? baseModel.values.length - 1
+            : (fromIndex >= 0
+              ? Math.min(fromIndex, baseModel.values.length - 1)
+              : baseModel.values.length + fromIndex);
+          for (let index = startIndex; index >= 0; index -= 1) {
             if (JSON.stringify(baseModel.values[index]) === searchKey) {
               foundIndex = index;
               break;
@@ -2289,12 +2313,12 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
         }
         staticCallModel = { kind: 'number', value: foundIndex };
       }
-      if (!staticCallModel && baseModel && searchModel && baseModel.kind === 'string' && searchModel.kind === 'string') {
+      if (!staticCallModel && hasUsableFromIndex && baseModel && searchModel && baseModel.kind === 'string' && searchModel.kind === 'string') {
         staticCallModel = {
           kind: 'number',
           value: directPropertyName === 'indexOf'
-            ? baseModel.value.indexOf(searchModel.value)
-            : baseModel.value.lastIndexOf(searchModel.value)
+            ? baseModel.value.indexOf(searchModel.value, fromIndex === null ? undefined : fromIndex)
+            : baseModel.value.lastIndexOf(searchModel.value, fromIndex === null ? undefined : fromIndex)
         };
       }
     }
@@ -2468,6 +2492,14 @@ function staticModelToJsString(model) {
     return model.value ? 'true' : 'false';
   }
   return null;
+}
+
+function resolveStaticSearchFromIndex(expressionNode, targetNode, compileContext, seenBindings) {
+  const model = resolveStaticModelFromExpression(expressionNode, targetNode, compileContext, seenBindings);
+  if (!model || model.kind !== 'number' || !Number.isFinite(Number(model.value))) {
+    return null;
+  }
+  return Math.trunc(Number(model.value));
 }
 
 function extractCallableReturnExpressionNode(callableNode) {
@@ -5984,10 +6016,13 @@ function lowerConsoleConcatPieceAsCString(pieceNode, compileContext) {
     return staticStringLiteralCpp(literalText);
   }
 
+  const staticCallNode = pieceNode && pieceNode.kind === 'nonterminal'
+    ? (pieceNode.name === 'callExpression' ? pieceNode : findFirstNonterminal(pieceNode, 'callExpression'))
+    : null;
   const staticPieceModel = compileContext
     && pieceNode
     && pieceNode.kind === 'nonterminal'
-    ? resolveStaticModelFromExpression(pieceNode, pieceNode, compileContext)
+    ? resolveStaticModelFromExpression(staticCallNode || pieceNode, staticCallNode || pieceNode, compileContext)
     : null;
   const staticPieceJsString = staticModelToJsString(staticPieceModel);
   if (staticPieceJsString !== null) {

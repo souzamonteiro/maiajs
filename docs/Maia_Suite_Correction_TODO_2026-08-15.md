@@ -134,8 +134,10 @@ Latest completed slice:
   C++ lowering rather than being truncated as runtime method calls.
 - Static arrays of scalar values now fold `join(separator)` to a C string
   literal, avoiding a JS-only array method call in generated C++.
-- Static scalar arrays and strings now fold `indexOf(value)` and
-  `lastIndexOf(value)` to numeric values before C++ lowering.
+- Static scalar arrays and strings now fold `includes(value, fromIndex)`,
+  `indexOf(value, fromIndex)`, and `lastIndexOf(value, fromIndex)` when the
+  optional position is statically numeric; console output retains JavaScript
+  boolean and numeric text values.
 
 Acceptance:
 - new positive fixtures

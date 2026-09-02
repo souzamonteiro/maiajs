@@ -168,7 +168,7 @@ test('static string method chains fold before C++ lowering', () => {
   );
 
   assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("MAIAJS"\)\)/, 'static trim/toUpperCase chain should fold to its final string');
-  assert.match(cpp, /__maia_console_to_cstr_number\(\(double\)\(\(double\)\(1\)\)\)/, 'static startsWith/endsWith calls should fold to boolean output values');
+  assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("true"\)\)/, 'static startsWith/endsWith calls should retain JavaScript boolean output values');
   assert.doesNotMatch(cpp, /__raw__trim\(\)/, 'folded string chain must not call a host trim function');
 });
 
@@ -184,9 +184,13 @@ test('static array join folds scalar elements before C++ lowering', () => {
 test('static indexOf and lastIndexOf fold to numeric values before C++ lowering', () => {
   const cpp = runCompilerCpp(
     'const values = [1, 2, 1];\n'
-    + 'console.log(values.indexOf(1), values.lastIndexOf(1), "maia".indexOf("i"));\n'
+    + 'console.log(values.includes(2, 2), values.indexOf(1, 1), values.lastIndexOf(1, 1));\n'
+    + 'console.log("maia".indexOf("a", 2), "maia".lastIndexOf("a", 2));\n'
   );
 
-  assert.match(cpp, /__maia_console_to_cstr_number\(\(double\)\(\(double\)\(0\)\)\)/, 'static indexOf should fold to the first index');
-  assert.match(cpp, /__maia_console_to_cstr_number\(\(double\)\(\(double\)\(2\)\)\)/, 'static lastIndexOf and string indexOf should fold to their index');
+  assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("false"\)\)/, 'static includes should honour fromIndex');
+  assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("2"\)\)/, 'static array indexOf should honour fromIndex');
+  assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("0"\)\)/, 'static array lastIndexOf should honour fromIndex');
+  assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("3"\)\)/, 'static string indexOf should honour fromIndex');
+  assert.match(cpp, /__maia_console_to_cstr_string\(\(const char\*\)\("1"\)\)/, 'static string lastIndexOf should honour fromIndex');
 });
