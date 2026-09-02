@@ -27,8 +27,9 @@ failure in the validated pipeline:
 - [ ] Extend behavior-marker coverage for ES8 forms outside
   `full_es8_test.js`, especially combinations of async control flow, object
   spread, and computed properties.
-- [ ] Exercise the generated browser runner in an actual browser as a separate
-  gate; the current end-to-end gate executes the generated Node runner.
+- [x] Exercise the generated browser runner in Chrome headless as a separate
+  gate via `npm run test:browser:es8`; it generates a temporary ES8 dist,
+  clicks the runner's `Run` control, and validates behavior markers.
 - [ ] Continue replacing intentionally conservative lowering fallbacks with
   native semantics only when a focused source/runtime regression establishes
   the required behavior.
@@ -225,6 +226,6 @@ For parser/grammar changes only:
 - [x] No JS-only tokens leak into generated C++ for supported subset.
 - [x] Full suite green and fixtures green.
 - [x] Dist Node path validated by behavior markers (not only exit code).
-- [ ] Browser runner behavior-marker gate remains to be executed in a browser.
+- [x] Browser runner behavior-marker gate passes in Chrome headless.
 - [x] Unsupported items explicitly diagnosed and documented as out of scope.
 - [ ] Ecosystem synchronization protocol followed for any parser-generator-impacting changes.
