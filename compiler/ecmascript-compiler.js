@@ -2268,6 +2268,37 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
       }
     }
 
+    if (!staticCallModel
+      && (directPropertyName === 'indexOf' || directPropertyName === 'lastIndexOf')
+      && baseExpressionNode
+      && argExprs.length === 1) {
+      const baseModel = resolveStaticModelFromExpression(baseExpressionNode, targetNode, compileContext, seenBindings);
+      const searchModel = resolveStaticModelFromExpression(argExprs[0], targetNode, compileContext, seenBindings);
+      if (baseModel && searchModel && baseModel.kind === 'array' && Array.isArray(baseModel.values)) {
+        const searchKey = JSON.stringify(searchModel);
+        let foundIndex = -1;
+        if (directPropertyName === 'indexOf') {
+          foundIndex = baseModel.values.findIndex((valueModel) => JSON.stringify(valueModel) === searchKey);
+        } else {
+          for (let index = baseModel.values.length - 1; index >= 0; index -= 1) {
+            if (JSON.stringify(baseModel.values[index]) === searchKey) {
+              foundIndex = index;
+              break;
+            }
+          }
+        }
+        staticCallModel = { kind: 'number', value: foundIndex };
+      }
+      if (!staticCallModel && baseModel && searchModel && baseModel.kind === 'string' && searchModel.kind === 'string') {
+        staticCallModel = {
+          kind: 'number',
+          value: directPropertyName === 'indexOf'
+            ? baseModel.value.indexOf(searchModel.value)
+            : baseModel.value.lastIndexOf(searchModel.value)
+        };
+      }
+    }
+
     if (!staticCallModel && (directPropertyName === 'reduce' || directPropertyName === 'reduceRight') && baseExpressionNode && argExprs.length >= 1) {
       const baseModel = resolveStaticModelFromExpression(baseExpressionNode, targetNode, compileContext, seenBindings);
       const callbackNode = findCallableNodeFromExpression(argExprs[0]);

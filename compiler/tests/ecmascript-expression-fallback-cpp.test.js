@@ -180,3 +180,13 @@ test('static array join folds scalar elements before C++ lowering', () => {
 
   assert.match(cpp, /__console__log\("1\|two\|true"\);/, 'static array join should lower to its final C string literal');
 });
+
+test('static indexOf and lastIndexOf fold to numeric values before C++ lowering', () => {
+  const cpp = runCompilerCpp(
+    'const values = [1, 2, 1];\n'
+    + 'console.log(values.indexOf(1), values.lastIndexOf(1), "maia".indexOf("i"));\n'
+  );
+
+  assert.match(cpp, /__maia_console_to_cstr_number\(\(double\)\(\(double\)\(0\)\)\)/, 'static indexOf should fold to the first index');
+  assert.match(cpp, /__maia_console_to_cstr_number\(\(double\)\(\(double\)\(2\)\)\)/, 'static lastIndexOf and string indexOf should fold to their index');
+});
