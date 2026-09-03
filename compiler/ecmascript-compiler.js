@@ -1094,7 +1094,8 @@ function extractMethodParameterNames(methodDefinitionNode) {
 }
 
 function extractFunctionDeclarationName(functionDeclarationNode) {
-  if (!functionDeclarationNode || functionDeclarationNode.kind !== 'nonterminal' || functionDeclarationNode.name !== 'functionDeclaration') {
+  if (!functionDeclarationNode || functionDeclarationNode.kind !== 'nonterminal'
+    || (functionDeclarationNode.name !== 'functionDeclaration' && functionDeclarationNode.name !== 'asyncFunctionDeclaration')) {
     return null;
   }
 
@@ -1108,6 +1109,14 @@ function collectTopLevelFunctionNames(tree) {
   const names = new Set();
   for (const fnNode of collectTopLevelFunctionDeclarations(tree)) {
     const fnName = extractFunctionDeclarationName(fnNode);
+    if (fnName) {
+      names.add(fnName);
+    }
+  }
+
+  for (const statementNode of extractTopLevelStatementNodes(tree)) {
+    const asyncFunction = extractAsyncFunctionDeclarationFromStatement(statementNode);
+    const fnName = extractFunctionDeclarationName(asyncFunction);
     if (fnName) {
       names.add(fnName);
     }
@@ -1144,7 +1153,13 @@ function functionBodyUsesArguments(functionNode) {
 function collectLocalFunctionArgumentsInfo(tree) {
   const info = new Map();
 
-  for (const functionDeclaration of collectTopLevelFunctionDeclarations(tree)) {
+  const declarations = [
+    ...collectTopLevelFunctionDeclarations(tree),
+    ...extractTopLevelStatementNodes(tree)
+      .map(extractAsyncFunctionDeclarationFromStatement)
+      .filter(Boolean)
+  ];
+  for (const functionDeclaration of declarations) {
     const functionName = extractFunctionDeclarationName(functionDeclaration);
     if (!functionName) {
       continue;
@@ -12591,7 +12606,9 @@ function buildAsyncRuntimeBridgePlan(asyncFunctions) {
     plan.push({
       functionName: machine.name,
       structName,
-      bridgeSymbol: `${structName}__resume_bridge`,
+      // MaiaCpp lowers the C++ bridge `__async_name__resume_bridge(void*)`
+      // into this stable C/WASM ABI symbol.
+      bridgeSymbol: `async_${machine.name}_resume__pv`,
       machineId: index + 1,
       suspendPointCount: suspendCount,
       scheduleStateStart,
@@ -12604,7 +12621,25 @@ function buildAsyncRuntimeBridgePlan(asyncFunctions) {
 
 function generateCpp(inputPath, tree, hostCalls, compileContext) {
 
-function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map()) {
+function lowerAsyncStateStatements(machine, stateIndex, compileContext) {
+  const statementNodes = Array.isArray(machine.statementNodes) ? machine.statementNodes : [];
+  const suspendPoints = Array.isArray(machine.body) ? machine.body : [];
+  const previousSuspend = stateIndex === 0 ? null : suspendPoints[stateIndex - 1];
+  const nextSuspend = suspendPoints[stateIndex] || null;
+  const startIndex = previousSuspend ? previousSuspend.statementIndex + 1 : 0;
+  const endIndex = nextSuspend ? nextSuspend.statementIndex : statementNodes.length;
+  const lines = [];
+
+  beginDeferredPromiseQueueScope(compileContext);
+  for (let index = startIndex; index < endIndex; index += 1) {
+    resetStatementLoweringState(compileContext);
+    lines.push(...lowerStatementNode(statementNodes[index], compileContext, 3, { returnTypeCpp: machine.returnValueCppType }));
+  }
+  lines.push(...takeDeferredPromiseStatements(compileContext, '      '));
+  return { lines, suspendPoint: nextSuspend };
+}
+
+function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(), compileContext = null) {
   if (!machines || machines.length === 0) { return ''; }
 
   return machines.map((machine) => {
@@ -12617,10 +12652,26 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       ? '  // no parameters'
       : machine.params.map((p) => `  ${p.cppType} ${p.name};`).join('\n');
 
-    let switchBody = '    case 0: /* initial state */ break;\n';
-    
-    for (let i = 1; i <= machine.suspendPointCount; i += 1) {
-      const suspendPoint = machine.body[i - 1] || null;
+    let switchBody = '';
+
+    for (let stateIndex = 0; stateIndex <= machine.suspendPointCount; stateIndex += 1) {
+      const stateBody = compileContext
+        ? lowerAsyncStateStatements(machine, stateIndex, compileContext)
+        : { lines: [], suspendPoint: machine.body[stateIndex] || null };
+      const suspendPoint = stateBody.suspendPoint;
+      switchBody += `    case ${stateIndex}: ${stateIndex === 0 ? '/* initial state */' : `/* resumed after await ${stateIndex} */`}\n`;
+      for (const line of stateBody.lines) {
+        switchBody += `${line}\n`;
+      }
+
+      if (!suspendPoint) {
+        switchBody += `      __async_complete((void*)__sm);\n`;
+        switchBody += `      __free((void*)__sm);\n`;
+        switchBody += `      return;\n`;
+        continue;
+      }
+
+      const i = stateIndex + 1;
       const awaitedExprComment = suspendPoint && suspendPoint.awaitedExpr
         ? `: ${suspendPoint.awaitedExpr}`
         : '';
@@ -12632,8 +12683,10 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         ? (machinePlan.scheduleStateStart + i - 1)
         : i;
 
-      switchBody += `    case ${i}: /* await checkpoint ${i}${awaitedExprComment} */\n`;
-      switchBody += `      __async_schedule((void*)__sm, ${globalScheduleState});\n`;
+      switchBody += `      /* await checkpoint ${i}${awaitedExprComment} */\n`;
+      if (suspendPoint.awaitedExpr) {
+        switchBody += `      ${suspendPoint.awaitedExpr};\n`;
+      }
       
       if (tryDepth > 0) {
         if (catchHandlers.length > 0) {
@@ -12670,17 +12723,24 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         switchBody += `      }\n`;
       }
       
-      switchBody += `      break;\n`;
+      switchBody += `      __sm->__state = ${i};\n`;
+      switchBody += `      __async_schedule((void*)__sm, ${globalScheduleState});\n`;
+      switchBody += `      return;\n`;
     }
-    
     switchBody += `    default:\n`;
     switchBody += `      __async_complete((void*)__sm);\n`;
-    switchBody += `      __sm->__state = ${terminalState};\n`;
+    switchBody += `      __free((void*)__sm);\n`;
     switchBody += `      return;\n`;
+
+    const paramList = machine.params.length === 0
+      ? 'void'
+      : machine.params.map((p) => `${p.cppType} ${p.name}`).join(', ');
+    const paramAssignments = machine.params.map((p) => `  __sm->${p.name} = ${p.name};`);
+    const paramLocals = machine.params.map((p) => `  ${p.cppType} ${p.name} = __sm->${p.name};`);
 
     return [
       `/* async function ${machine.name} -> state machine */`,
-      `/* host resume bridge symbol: ${structName}__resume_bridge */`,
+      `/* host resume bridge symbol: ${machinePlan ? machinePlan.bridgeSymbol : `${structName}__resume_bridge`} */`,
       `struct ${structName} {`,
       `  int __state;`,
       `  ${machine.returnValueCppType} __result;`,
@@ -12688,6 +12748,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       `};`,
       ``,
       `static void ${structName}__resume(struct ${structName}* __sm) {`,
+      paramLocals.join('\n'),
       `  switch (__sm->__state) {`,
       switchBody.trimRight(),
       `  }`,
@@ -12695,6 +12756,15 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       ``,
       `extern "C" void ${structName}__resume_bridge(void* __smv) {`,
       `  ${structName}__resume((struct ${structName}*)__smv);`,
+      `}`,
+      ``,
+      `void ${machine.name}(${paramList}) {`,
+      `  struct ${structName}* __sm = (struct ${structName}*)__malloc(sizeof(struct ${structName}));`,
+      `  if (!__sm) { return; }`,
+      `  __sm->__state = 0;`,
+      `  __sm->__result = 0;`,
+      paramAssignments.join('\n'),
+      `  ${structName}__resume(__sm);`,
       `}`
     ].join('\n');
   }).join('\n\n');
@@ -12706,7 +12776,9 @@ function emitAsyncSchedulerHookDeclsCpp(machines) {
   return [
     '/* async scheduler hooks (runtime-provided) */',
     'extern void __async_schedule(void* sm, int state_id);',
-    'extern void __async_complete(void* sm);'
+    'extern void __async_complete(void* sm);',
+    'extern void* __malloc(unsigned long size);',
+    'extern void __free(void* ptr);'
   ].join('\n');
 }
 
@@ -12934,7 +13006,7 @@ function emitConsoleConcatHelpersCpp(tree, compileContext) {
     asyncRuntimeBridgePlan.map((entry) => [entry.functionName, entry])
   );
   const asyncSchedulerHooks = profileStep('emitAsyncSchedulerHookDeclsCpp', () => emitAsyncSchedulerHookDeclsCpp(asyncIr.asyncFunctions));
-  const asyncCpp = profileStep('emitAsyncStateMachinesCpp', () => emitAsyncStateMachinesCpp(asyncIr.asyncFunctions, bridgePlanByFunctionName));
+  const asyncCpp = profileStep('emitAsyncStateMachinesCpp', () => emitAsyncStateMachinesCpp(asyncIr.asyncFunctions, bridgePlanByFunctionName, compileContext));
 
   const statements = profileStep('lowerProgramToCppStatements', () => lowerProgramToCppStatements(tree, compileContext, {
     includeFunctionDeclarations: false,

@@ -365,6 +365,22 @@ function extractParams(formalParameterListNode) {
   return params;
 }
 
+function collectFunctionBodyStatementNodes(functionBodyNode) {
+  if (!functionBodyNode) { return []; }
+  return (functionBodyNode.children || [])
+    .filter((child) => child && child.kind === 'nonterminal' && child.name === 'sourceElement')
+    .map((sourceElement) => (sourceElement.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'statement'
+    ))
+    .filter(Boolean);
+}
+
+function nodeContains(root, target) {
+  if (!root || !target) { return false; }
+  if (root === target) { return true; }
+  return (root.children || []).some((child) => nodeContains(child, target));
+}
+
 /**
  * Build a minimal AsyncStateMachine IR for one async function declaration node.
  * @param {Object} functionDeclarationNode  - must have async:true or be under asyncFunctionDeclaration
@@ -379,11 +395,14 @@ function buildAsyncStateMachine(functionDeclarationNode, options = {}) {
   const formalParams = findChild(functionDeclarationNode, 'formalParameterList');
   const params = extractParams(formalParams);
 
+  const asyncFunctionBody = findChild(functionDeclarationNode, 'asyncFunctionBody');
   const functionBody = findChild(functionDeclarationNode, 'functionBody')
-    || findChild(functionDeclarationNode, 'asyncFunctionBody');
+    || findChild(asyncFunctionBody, 'functionBody')
+    || asyncFunctionBody;
 
   const awaitExpressions = collectAwaitExpressions(functionBody);
   const suspendPointCount = awaitExpressions.length;
+  const statementNodes = collectFunctionBodyStatementNodes(functionBody);
 
   const body = [];
   for (let i = 0; i < suspendPointCount; i += 1) {
@@ -399,7 +418,7 @@ function buildAsyncStateMachine(functionDeclarationNode, options = {}) {
     const finallyHandlers = collectFinallyHandlersForAwait(awaitNode, functionBody);
     const finallyDepth = finallyHandlers.length;
 
-    body.push({
+    const suspendPoint = {
       kind: 'suspend',
       stateId: i + 1,
       awaitedExpr: awaitedExpr !== null ? awaitedExpr : null,
@@ -407,10 +426,16 @@ function buildAsyncStateMachine(functionDeclarationNode, options = {}) {
       catchHandlers: catchHandlers,
       finallyDepth: finallyDepth,
       finallyHandlers: finallyHandlers
+    };
+    const statementIndex = statementNodes.findIndex((statementNode) => nodeContains(statementNode, awaitNode));
+    Object.defineProperties(suspendPoint, {
+      awaitNode: { value: awaitNode, enumerable: false },
+      statementIndex: { value: statementIndex, enumerable: false }
     });
+    body.push(suspendPoint);
   }
 
-  return {
+  const machine = {
     kind: 'AsyncStateMachine',
     name,
     params,
@@ -418,6 +443,10 @@ function buildAsyncStateMachine(functionDeclarationNode, options = {}) {
     body,
     suspendPointCount
   };
+  // AST references power the C++ lowering pass but must not leak into the
+  // persisted IR manifest, which is deliberately language-neutral JSON.
+  Object.defineProperty(machine, 'statementNodes', { value: statementNodes, enumerable: false });
+  return machine;
 }
 
 /**

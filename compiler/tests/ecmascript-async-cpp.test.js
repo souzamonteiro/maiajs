@@ -50,23 +50,25 @@ test('async C++ emission: struct is generated for async function with no await',
   assert.match(cpp, /int __state;/, 'struct must have __state field');
   assert.match(cpp, /int __result;/, 'struct must have __result field');
   assert.match(cpp, /static void __async_noop__resume\(struct __async_noop\* __sm\) \{/, 'C++ must emit resume function');
-  assert.match(cpp, /case 0: \/\* initial state \*\/ break;/, 'resume must have initial state case');
+  assert.match(cpp, /case 0: \/\* initial state \*\//, 'resume must have initial state case');
+  assert.match(cpp, /void noop\(void\) \{[\s\S]*__async_noop__resume\(__sm\);/, 'async declarations must emit a callable starter');
 });
 
 test('async C++ emission: struct emits one suspend point per await', () => {
   const cpp = runCompilerCpp('async function load() { await fetch(); }\n');
 
   assert.match(cpp, /struct __async_load \{/, 'C++ must emit state machine struct');
-  assert.match(cpp, /case 1: \/\* await checkpoint 1: __fetch\(\) \*\//, 'must emit checkpoint for first await');
-  assert.doesNotMatch(cpp, /case 2:/, 'must not emit checkpoint 2 for single await');
+  assert.match(cpp, /case 0:[\s\S]*\/\* await checkpoint 1: __fetch\(\) \*\//, 'must emit checkpoint for first await');
+  assert.match(cpp, /__sm->__state = 1;[\s\S]*__async_schedule\(\(void\*\)__sm, 1\);/, 'must schedule the resumed state');
+  assert.match(cpp, /case 1: \/\* resumed after await 1 \*\//, 'must resume after the first await');
 });
 
 test('async C++ emission: two awaits produce two suspend points', () => {
   const cpp = runCompilerCpp('async function run() { await step1(); await step2(); }\n');
 
-  assert.match(cpp, /case 1: \/\* await checkpoint 1: __step1\(\) \*\//, 'must emit first checkpoint');
-  assert.match(cpp, /case 2: \/\* await checkpoint 2: __step2\(\) \*\//, 'must emit second checkpoint');
-  assert.match(cpp, /default:\s+__async_complete\(\(void\*\)__sm\);\s+__sm->__state = 3;\s+return;/s, 'default must notify completion and point past last state');
+  assert.match(cpp, /case 0:[\s\S]*\/\* await checkpoint 1: __step1\(\) \*\//, 'must emit first checkpoint');
+  assert.match(cpp, /case 1:[\s\S]*\/\* await checkpoint 2: __step2\(\) \*\//, 'must emit second checkpoint');
+  assert.match(cpp, /case 2: \/\* resumed after await 2 \*\/[\s\S]*__async_complete\(\(void\*\)__sm\);/, 'final resumed state must notify completion');
 });
 
 test('async C++ emission: struct includes parameter fields', () => {
@@ -104,7 +106,7 @@ test('async IR JSON includes asyncIR manifest in --ir-json-out', () => {
   assert.ok(ir.asyncRuntime, 'IR JSON must include asyncRuntime metadata');
   assert.ok(Array.isArray(ir.asyncRuntime.resumeBridges), 'asyncRuntime must include resumeBridges array');
   assert.equal(ir.asyncRuntime.resumeBridges[0].functionName, 'fetch', 'bridge metadata must reference async function name');
-  assert.equal(ir.asyncRuntime.resumeBridges[0].bridgeSymbol, '__async_fetch__resume_bridge', 'bridge metadata must provide resume bridge symbol');
+  assert.equal(ir.asyncRuntime.resumeBridges[0].bridgeSymbol, 'async_fetch_resume__pv', 'bridge metadata must provide the MaiaCpp-lowered resume ABI symbol');
   assert.equal(ir.asyncRuntime.resumeBridges[0].machineId, 1, 'bridge metadata must include stable machine identity');
   assert.equal(ir.asyncRuntime.resumeBridges[0].scheduleStateStart, 1, 'bridge metadata must include schedule state range start');
   assert.equal(ir.asyncRuntime.resumeBridges[0].scheduleStateEnd, 1, 'bridge metadata must include schedule state range end');
@@ -125,9 +127,9 @@ test('async IR JSON assigns non-overlapping schedule state ranges across machine
 test('async C++ emission: await outside try has no exception checks', () => {
   const cpp = runCompilerCpp('async function load() { await fetch(); }\n');
 
-  assert.match(cpp, /case 1: \/\* await checkpoint 1:/, 'must emit checkpoint 1');
+  assert.match(cpp, /case 0:[\s\S]*\/\* await checkpoint 1:/, 'must emit checkpoint 1');
   assert.doesNotMatch(cpp, /if \(__exc_active\(\)\)/, 'checkpoint outside try must not check exception');
-  assert.match(cpp, /case 1:.*break;/s, 'checkpoint must have break statement');
+  assert.match(cpp, /__async_schedule\(\(void\*\)__sm, 1\);\s+return;/s, 'checkpoint must suspend after scheduling its continuation');
 });
 
 test('async C++ emission: await inside try emits exception checks', () => {
@@ -163,7 +165,7 @@ test('async C++ emission: emits scheduler hook declarations for async runtime', 
 test('async C++ emission: emits host resume bridge symbol per async machine', () => {
   const cpp = runCompilerCpp('async function load() { await fetch(); }\n');
 
-  assert.match(cpp, /host resume bridge symbol: __async_load__resume_bridge/, 'must annotate bridge symbol name');
+  assert.match(cpp, /host resume bridge symbol: async_load_resume__pv/, 'must annotate bridge ABI symbol name');
   assert.match(cpp, /extern "C" void __async_load__resume_bridge\(void\* __smv\)/, 'must emit C bridge signature for host dispatch');
   assert.match(cpp, /__async_load__resume\(\(struct __async_load\*\)__smv\);/, 'bridge must forward to typed resume function');
 });

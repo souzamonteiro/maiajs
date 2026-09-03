@@ -31,8 +31,13 @@ failure in the validated pipeline:
   `npm run test:browser:promise-object`.
 - [ ] Implement object spread only as an ES2018+ work item. It is deliberately
   rejected by the ES8 grammar today; do not present it as ES8 compatibility.
-- [ ] Extend behavior-marker coverage for async state machines once the
-  MaiaCpp/WebC async struct-layout lowering supports their generated C++.
+- [x] Establish an executable async state-machine baseline through MaiaJS,
+  MaiaCpp, MaiaC/WebC, and the Node/browser scheduler bridges. Linear async
+  bodies now run before and after `await` rather than emitting a passive
+  skeleton.
+- [ ] Extend async behavior-marker coverage to control flow, locals retained
+  across `await`, awaited result assignment, rejection routing, and concurrent
+  invocations.
 - [x] Exercise the generated browser runner in Chrome headless as a separate
   gate via `npm run test:browser:es8`; it generates a temporary ES8 dist,
   clicks the runner's `Run` control, and validates behavior markers.

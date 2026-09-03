@@ -42,7 +42,7 @@ test('MaiaCpp port async: async and try/catch/finally emit state machine and exc
   );
 
   assert.match(cpp, /struct __async_run \{/, 'async function must emit a state machine struct');
-  assert.match(cpp, /case 1: \/\* await checkpoint 1: __fetch\(value\) \*\//, 'await must emit a suspend checkpoint');
+  assert.match(cpp, /case 0:[\s\S]*\/\* await checkpoint 1: __fetch\(value\) \*\//, 'await must emit a suspend checkpoint from the initial state');
   assert.match(cpp, /if \(__exc_active\(\)\)/, 'await inside try must emit exception checks');
   assert.match(cpp, /__exc_matches\(__exc_type\(\), 1\)/, 'catch block must emit exception type matching');
   assert.match(cpp, /catch handler for err/, 'catch handler annotation must include the parameter name');
