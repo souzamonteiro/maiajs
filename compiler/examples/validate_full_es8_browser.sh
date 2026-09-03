@@ -3,11 +3,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
-SOURCE_JS="$SCRIPT_DIR/full_es8_test.js"
+SOURCE_JS="${BROWSER_SOURCE_JS:-$SCRIPT_DIR/full_es8_test.js}"
 WEBCPP_SH="$REPO_ROOT/maiacpp/bin/webcpp.sh"
 CHROME_BIN="${CHROME_BIN:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 REQUESTED_PORT="${BROWSER_PORT:-0}"
-APP_NAME="full_es8_test"
+APP_NAME="${BROWSER_APP_NAME:-full_es8_test}"
 RUN_WAIT_MS="${BROWSER_RUN_WAIT_MS:-12000}"
 VIRTUAL_TIME_MS="${BROWSER_VIRTUAL_TIME_MS:-20000}"
 
@@ -50,7 +50,7 @@ echo "[validate-full-es8-browser] building browser dist"
 cat > "$HARNESS" <<HTML
 <!doctype html>
 <meta charset="utf-8">
-<iframe id="runner" src="./browser-runner.html?app=full_es8_test"></iframe>
+<iframe id="runner" src="./browser-runner.html?app=$APP_NAME"></iframe>
 <pre id="result">waiting</pre>
 <script>
   const frame = document.getElementById('runner');
@@ -92,7 +92,7 @@ if ! curl --fail --silent --show-error "http://127.0.0.1:$PORT/browser-headless-
 fi
 
 echo "[validate-full-es8-browser] running Chrome headless"
-"$CHROME_BIN" \
+if ! "$CHROME_BIN" \
   --headless=new \
   --disable-gpu \
   --disable-background-networking \
@@ -102,18 +102,26 @@ echo "[validate-full-es8-browser] running Chrome headless"
   --virtual-time-budget="$VIRTUAL_TIME_MS" \
   --dump-dom \
   "http://127.0.0.1:$PORT/browser-headless-harness.html" \
-  >"$DOM_OUT" 2>"$CHROME_LOG"
+  >"$DOM_OUT" 2>"$CHROME_LOG"; then
+  echo "[validate-full-es8-browser] Chrome headless failed." >&2
+  cat "$CHROME_LOG" >&2 || true
+  exit 1
+fi
 
-required_markers=(
-  "ES8 SYNTAX TESTER - compatibility mode"
-  "--- SECTION 1: OPERATORS ---"
-  "--- SECTION 8: PROMISES ---"
-  "--- SECTION 13: REFLECT + COLLECTIONS ---"
-  "promise chain result: 13"
-  "promise result: AB"
-  "ES8 SYNTAX TEST COMPLETE (compatibility mode)"
-  "[webc] program returned: 0"
-)
+if [[ -n "${BROWSER_REQUIRED_MARKERS:-}" ]]; then
+  IFS=$'\n' read -r -d '' -a required_markers <<<"$BROWSER_REQUIRED_MARKERS" || true
+else
+  required_markers=(
+    "ES8 SYNTAX TESTER - compatibility mode"
+    "--- SECTION 1: OPERATORS ---"
+    "--- SECTION 8: PROMISES ---"
+    "--- SECTION 13: REFLECT + COLLECTIONS ---"
+    "promise chain result: 13"
+    "promise result: AB"
+    "ES8 SYNTAX TEST COMPLETE (compatibility mode)"
+    "[webc] program returned: 0"
+  )
+fi
 
 missing=0
 for marker in "${required_markers[@]}"; do

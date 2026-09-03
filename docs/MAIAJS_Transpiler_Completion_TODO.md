@@ -1,6 +1,6 @@
 # MaiaJS Transpiler Completion Strategy and TODO
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
@@ -24,9 +24,15 @@ The current ES8 compatibility sample and the ported corpus are no longer
 blocked. The remaining work is incremental conformance hardening, not a known
 failure in the validated pipeline:
 
-- [ ] Extend behavior-marker coverage for ES8 forms outside
-  `full_es8_test.js`, especially combinations of async control flow, object
-  spread, and computed properties.
+- [x] Add a JS -> C++98 -> C -> WASM marker gate for a static
+  `Promise.resolve(...).then(...)` callback that consumes an object with a
+  computed property: `npm run test:es8:promise-object`.
+- [x] Provide a Chrome-headless gate for that same object/Promise marker:
+  `npm run test:browser:promise-object`.
+- [ ] Implement object spread only as an ES2018+ work item. It is deliberately
+  rejected by the ES8 grammar today; do not present it as ES8 compatibility.
+- [ ] Extend behavior-marker coverage for async state machines once the
+  MaiaCpp/WebC async struct-layout lowering supports their generated C++.
 - [x] Exercise the generated browser runner in Chrome headless as a separate
   gate via `npm run test:browser:es8`; it generates a temporary ES8 dist,
   clicks the runner's `Run` control, and validates behavior markers.

@@ -29,6 +29,8 @@
     "test:course": "bash compiler/examples/programming_in_javascript_course_en/run_all.sh",
     "test:dist": "bash compiler/examples/build_test_dist.sh",
     "test:browser:es8": "bash compiler/examples/validate_full_es8_browser.sh",
+    "test:es8:promise-object": "bash compiler/examples/validate_es8_promise_object_computed.sh",
+    "test:browser:promise-object": "bash compiler/examples/validate_es8_promise_object_browser.sh",
     "test:full": "npm run test && npm run test:suite:build && npm run test:suite:run && npm run test:course && npm run test:dist",
     "build:parser": "bash compiler/build.sh",
     "compile": "bin/webjs.sh",

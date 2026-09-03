@@ -3073,18 +3073,28 @@ function evaluateStaticExpressionModel(expressionNode, scopeModels, compileConte
   }
   if (current.name === 'additiveExpression') {
     const parts = infixChildren.filter((child) => child && child.kind === 'nonterminal');
-    const operator = infixChildren.find((child) => child && child.kind === 'terminal' && child.value === '+');
-    if (parts.length === 2 && operator) {
-      const lhs = evaluateStaticExpressionModel(parts[0], scopeModels, compileContext);
-      const rhs = evaluateStaticExpressionModel(parts[1], scopeModels, compileContext);
-      if (lhs && rhs && lhs.kind === 'number' && rhs.kind === 'number') {
-        return { kind: 'number', value: lhs.value + rhs.value };
+    const operators = infixChildren.filter(
+      (child) => child && child.kind === 'terminal' && child.value === '+'
+    );
+    if (parts.length >= 2 && operators.length === parts.length - 1) {
+      let result = evaluateStaticExpressionModel(parts[0], scopeModels, compileContext);
+      for (let i = 1; result && i < parts.length; i += 1) {
+        const next = evaluateStaticExpressionModel(parts[i], scopeModels, compileContext);
+        if (!next) {
+          return null;
+        }
+        if (result.kind === 'number' && next.kind === 'number') {
+          result = { kind: 'number', value: result.value + next.value };
+          continue;
+        }
+        const resultString = staticModelToJsString(result);
+        const nextString = staticModelToJsString(next);
+        if (resultString === null || nextString === null) {
+          return null;
+        }
+        result = { kind: 'string', value: resultString + nextString };
       }
-      const lhsString = staticModelToJsString(lhs);
-      const rhsString = staticModelToJsString(rhs);
-      if (lhsString !== null && rhsString !== null && (lhs.kind === 'string' || rhs.kind === 'string')) {
-        return { kind: 'string', value: lhsString + rhsString };
-      }
+      return result;
     }
   }
 

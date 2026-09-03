@@ -70,3 +70,16 @@ test('object literal lowering: uses builder for arity > 4', () => {
   assert.match(cpp, /__maia_obj_builder_set_key\(/, 'C++ must chain set_key calls for each property');
   assert.match(cpp, /__maia_obj_builder_end\(/, 'C++ must close with builder end');
 });
+
+test('static Promise.then: preserves a computed object projection across multi-part string concatenation', () => {
+  const cpp = runCompilerCpp([
+    'const key = "score";',
+    'const record = { id: 7, [key]: 22, state: "ready" };',
+    'Promise.resolve(record).then(result => console.log("es8 promise object: " + result.id + " " + result.score + " " + result.state));'
+  ].join('\n'));
+
+  assert.match(cpp, /__console__log\("es8 promise object: 7 22 ready"\);/,
+    'Promise callback must preserve every statically-known object property in the deferred marker');
+  assert.doesNotMatch(cpp, /__Promise__resolve\(record\);/,
+    'a statically lowered Promise.then chain must not fall back to a truncated resolve call');
+});
