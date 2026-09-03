@@ -133,23 +133,26 @@ patch_manifest_copied_libs() {
 
   node -e "
     const fs = require('fs');
-    const p = process.argv[1];
+    const distDir = process.argv[1];
     const libs = JSON.parse(process.argv[2]);
     const irPath = process.argv[3];
-    const m = JSON.parse(fs.readFileSync(p, 'utf8'));
-    if (libs.length > 0) {
-      m.copiedLibraries = libs;
-    }
-    if (irPath && fs.existsSync(irPath)) {
-      const ir = JSON.parse(fs.readFileSync(irPath, 'utf8'));
-      if (ir && ir.asyncRuntime && Array.isArray(ir.asyncRuntime.resumeBridges)) {
-        m.asyncRuntime = {
-          resumeBridges: ir.asyncRuntime.resumeBridges
-        };
+    const ir = irPath && fs.existsSync(irPath)
+      ? JSON.parse(fs.readFileSync(irPath, 'utf8'))
+      : null;
+    const manifests = fs.readdirSync(distDir)
+      .filter((name) => name === 'manifest.json' || name.endsWith('.manifest.json'));
+    for (const name of manifests) {
+      const p = require('path').join(distDir, name);
+      const m = JSON.parse(fs.readFileSync(p, 'utf8'));
+      if (libs.length > 0) {
+        m.copiedLibraries = libs;
       }
+      if (ir && ir.asyncRuntime && Array.isArray(ir.asyncRuntime.resumeBridges)) {
+        m.asyncRuntime = { resumeBridges: ir.asyncRuntime.resumeBridges };
+      }
+      fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\\n');
     }
-    fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\\n');
-  " "$manifest" "$names_json" "$ir_json_path"
+  " "$dist_dir" "$names_json" "$ir_json_path"
 
   if [[ ${#COPIED_LIB_NAMES[@]} -gt 0 ]]; then
     echo "[webjs] manifest patched: copiedLibraries → ${#COPIED_LIB_NAMES[@]} lib(s)"
