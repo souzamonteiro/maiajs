@@ -214,7 +214,7 @@ test('async runtime transports string and object promise values through handles'
   assert.equal(new TextDecoder().decode(bytes.subarray(stringPtr, end)), 'async handle text');
 });
 
-test('async runtime turns a rejected host promise into an exception before resume', async () => {
+test('async runtime turns a rejected host promise into an exception while resuming its machine', async () => {
   const runtime = await instantiateExceptionRuntime({
     wasmBytes: loadRuntimeWasmBytes(),
     autoDrain: false
@@ -225,13 +225,49 @@ test('async runtime turns a rejected host promise into an exception before resum
   };
 
   runtime.attachPromiseImports(imports);
+  const observedExceptions = [];
+  runtime.scheduler.registerResumeHandler(300, () => {
+    observedExceptions.push({
+      active: runtime.exports.__exc_active(),
+      type: runtime.exports.__exc_type()
+    });
+    runtime.env.__exc_clear();
+  });
   imports.__async_prepare_await(300, 4);
   imports.__failLater();
   imports.__async_schedule(300, 4);
 
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(runtime.exports.__exc_active(), 1, 'rejection must activate the exception ABI');
-  assert.equal(runtime.exports.__exc_type(), 1, 'rejection must use the generic async exception type');
+  assert.equal(runtime.exports.__exc_active(), 0, 'unrelated machines must not observe a pending rejection');
   assert.equal(runtime.scheduler.drain(), 1, 'rejection must schedule the awaiting state machine');
-  runtime.env.__exc_clear();
+  assert.deepEqual(observedExceptions, [{ active: 1, type: 1 }], 'rejection must activate the generic exception ABI for its resume');
+  runtime.scheduler.unregisterResumeHandler(300);
+});
+
+test('async runtime isolates concurrent rejected promises by state machine', async () => {
+  const runtime = await instantiateExceptionRuntime({
+    wasmBytes: loadRuntimeWasmBytes(),
+    autoDrain: false
+  });
+  const imports = {
+    __failFirst: () => Promise.reject('first rejection'),
+    __failSecond: () => Promise.reject('second rejection'),
+    ...runtime.env
+  };
+  const observed = [];
+  runtime.attachPromiseImports(imports);
+  for (const entry of [[401, 8, '__failFirst'], [402, 9, '__failSecond']]) {
+    const [smPtr, stateId, hostName] = entry;
+    runtime.scheduler.registerResumeHandler(smPtr, () => {
+      observed.push(runtime.scheduler.getHostHandle(runtime.exports.__exc_data()));
+      runtime.env.__exc_clear();
+    });
+    imports.__async_prepare_await(smPtr, stateId);
+    imports[hostName]();
+    imports.__async_schedule(smPtr, stateId);
+  }
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(runtime.scheduler.drain(), 2, 'each rejection must retain its own queued resume');
+  assert.deepEqual(observed, ['first rejection', 'second rejection']);
 });

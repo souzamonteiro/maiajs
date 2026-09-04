@@ -5,7 +5,7 @@ Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
 
-- Full compiler test suite is green: **326/326 passing**.
+- Full compiler test suite is green: **327/327 passing**.
 - Ported MaiaCpp examples are green: runtime suite **22/22**, course suite **48/48**,
   and MaiaJS transpilation **22/22**.
 - `bash compiler/examples/validate_full_es8_dist.sh` validates the complete
@@ -39,8 +39,8 @@ failure in the validated pipeline:
   `npm run test:browser:async` verifies that an `await` resumes and the program
   returns `0` in the generated browser runner. The gate is implemented but the
   current console session ends Chrome before its observation window completes.
-- [ ] Extend async behavior-marker coverage to control flow, rejection routing,
-  and concurrent invocations.
+- [ ] Extend async behavior-marker coverage to control flow and nested error
+  propagation.
 - [x] Materialize declaration targets for `await Promise.resolve(value)` in the
   resumed state and verify them through Node/WASM:
   `npm run test:async:await-result`.
@@ -55,10 +55,16 @@ failure in the validated pipeline:
   through `__async_handle_get_string` and `__async_handle_get_i32`, verified by
   `npm run test:async:dynamic-value` with `{ status: 201 }` and a string.
 - [x] Route a rejected dynamic promise through the exception ABI and execute a
-  simple async `catch` body in a synthetic state. The public Node/WASM gate is
-  `npm run test:async:rejection`.
-- [ ] Extend rejection handling to nested `try/finally`, error-value bindings,
-  outer propagation and concurrent rejected invocations.
+  simple async `catch` body in a synthetic state, including the error-value
+  binding. The public Node/WASM gate is `npm run test:async:rejection`.
+- [x] Isolate concurrent rejected promises by state-machine pointer so each
+  queued resume activates only its own exception. The public Node/WASM gate is
+  `npm run test:async:concurrent-rejections`.
+- [x] Execute an enclosing `finally` state when an awaited promise rejects and
+  no local `catch` handles it: `npm run test:async:rejection-finally`.
+- [ ] Extend rejection handling to nested `try/finally` plus outer `catch`
+  propagation. This needs chained synthetic continuation states so JavaScript
+  ordering is preserved (`finally` before the enclosing `catch`).
 - [ ] Extend handle lowering to object methods, nested properties and typed
   structured values.
 - [x] Preserve top-level local bindings in the async state structure and verify

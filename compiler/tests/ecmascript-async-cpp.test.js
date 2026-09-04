@@ -126,7 +126,7 @@ test('async C++ emission: rejected await resumes into its catch handler state', 
   );
 
   assert.match(cpp, /case 1:[\s\S]*if \(__exc_active\(\) && __exc_matches\(__exc_type\(\), 1\)\)/, 'resumed state must route an async rejection through exception matching');
-  assert.match(cpp, /case 3: \{ \/\* async catch handler \*\/[\s\S]*__exc_clear\(\);[\s\S]*__console__log\("rejection caught"\);/, 'catch body must execute in a synthetic async state');
+  assert.match(cpp, /case 3: \{ \/\* async catch handler \*\/[\s\S]*const char\* err = __async_handle_get_string\(__exc_data\(\)\);[\s\S]*__exc_clear\(\);[\s\S]*__console__log\("rejection caught"\);/, 'catch state must bind the rejection before clearing the exception');
 });
 
 test('async C++ emission: multiple async functions each get their own struct', () => {
@@ -247,6 +247,8 @@ test('async C++ emission: await inside try/finally emits finally transition', ()
 
   assert.ok(cpp.includes('__exc_active()'), 'must check active exception in try/finally checkpoint');
   assert.ok(cpp.includes('finally handler transition'), 'must emit finally transition annotation');
+  assert.match(cpp, /case \d+: \{ \/\* async finally handler \*\/[\s\S]*cleanup\(\);[\s\S]*__exc_clear\(\);/,
+    'finally transition must target a materialized state that executes its body');
 });
 
 test('async C++ emission: try/catch/finally emits catch routing and finally transition', () => {

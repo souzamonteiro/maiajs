@@ -343,7 +343,9 @@ function collectFinallyHandlersForAwait(awaitExpressionNode, functionBodyNode) {
       continue;
     }
 
-    handlers.push({ kind: 'finally' });
+    const handler = { kind: 'finally' };
+    Object.defineProperty(handler, 'finallyNode', { value: finallyNode, enumerable: false });
+    handlers.push(handler);
   }
 
   return handlers;
@@ -466,8 +468,11 @@ function buildAsyncStateMachine(functionDeclarationNode, options = {}) {
       : null;
     const tryDepth = findTryDepth(awaitNode, functionBody);
     const catchHandlerArrays = collectCatchHandlersForAwait(awaitNode, functionBody);
-    // Get handlers from the innermost try (last in array), or empty if not in try
-    const catchHandlers = catchHandlerArrays.length > 0 ? catchHandlerArrays[catchHandlerArrays.length - 1] : [];
+    // Only the innermost try catches here. Propagation through enclosing
+    // finally/catch frames needs explicit continuation states in the emitter.
+    const catchHandlers = catchHandlerArrays.length > 0
+      ? catchHandlerArrays[catchHandlerArrays.length - 1]
+      : [];
     const finallyHandlers = collectFinallyHandlersForAwait(awaitNode, functionBody);
     const finallyDepth = finallyHandlers.length;
 

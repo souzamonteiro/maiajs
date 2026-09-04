@@ -35,6 +35,8 @@
     "test:async:await-result": "bash compiler/examples/validate_async_await_result_dist.sh",
     "test:async:dynamic-value": "bash compiler/examples/validate_async_dynamic_value_dist.sh",
     "test:async:rejection": "bash compiler/examples/validate_async_rejection_dist.sh",
+    "test:async:rejection-finally": "bash compiler/examples/validate_async_rejection_finally_dist.sh",
+    "test:async:concurrent-rejections": "bash compiler/examples/validate_async_concurrent_rejections_dist.sh",
     "test:es8:promise-object": "bash compiler/examples/validate_es8_promise_object_computed.sh",
     "test:browser:promise-object": "bash compiler/examples/validate_es8_promise_object_browser.sh",
     "test:full": "npm run test && npm run test:suite:build && npm run test:suite:run && npm run test:course && npm run test:dist",
