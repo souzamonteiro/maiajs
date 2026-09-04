@@ -12691,13 +12691,14 @@ function findAsyncIfGuard(machine, suspendPoint) {
     if (!consequent || !nodeContainsTarget(consequent, awaitNode)) { continue; }
     if (findFirstNonterminal(alternate, 'awaitExpression')) { continue; }
 
-    let awaitCount = 0;
-    walk(ifNode, (node) => {
+    const awaitNodes = [];
+    walk(consequent, (node) => {
       if (node && node.kind === 'nonterminal' && node.name === 'awaitExpression') {
-        awaitCount += 1;
+        awaitNodes.push(node);
       }
     });
-    if (awaitCount !== 1) { continue; }
+    const awaitIndex = awaitNodes.indexOf(awaitNode);
+    if (awaitIndex < 0) { continue; }
 
     const condition = (ifNode.children || []).find(
       (child) => child && child.kind === 'nonterminal' && child.name === 'expression'
@@ -12711,11 +12712,25 @@ function findAsyncIfGuard(machine, suspendPoint) {
         (statement) => nodeContainsTarget(statement, awaitNode)
       );
       if (awaitStatementIndex < 0) { continue; }
+      const previousAwaitStatementIndex = awaitIndex === 0
+        ? -1
+        : consequentStatements.findIndex((statement) => nodeContainsTarget(statement, awaitNodes[awaitIndex - 1]));
+      const nextAwaitStatementIndex = awaitIndex + 1 < awaitNodes.length
+        ? consequentStatements.findIndex((statement) => nodeContainsTarget(statement, awaitNodes[awaitIndex + 1]))
+        : consequentStatements.length;
+      if (previousAwaitStatementIndex >= awaitStatementIndex || nextAwaitStatementIndex <= awaitStatementIndex) {
+        continue;
+      }
       return {
         condition,
         alternate,
-        preAwaitStatements: consequentStatements.slice(0, awaitStatementIndex),
-        postAwaitStatements: consequentStatements.slice(awaitStatementIndex + 1)
+        ifNode,
+        isFirstAwait: awaitIndex === 0,
+        isLastAwait: awaitIndex + 1 === awaitNodes.length,
+        preAwaitStatements: consequentStatements.slice(previousAwaitStatementIndex + 1, awaitStatementIndex),
+        postAwaitStatements: awaitIndex + 1 === awaitNodes.length
+          ? consequentStatements.slice(awaitStatementIndex + 1, nextAwaitStatementIndex)
+          : []
       };
     }
   }
@@ -12905,12 +12920,18 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       exceptionRoutesBySuspend.set(suspendPoint, routes);
     }
     const ifGuardsBySuspend = new Map();
+    const ifBranchMarkersByNode = new Map();
     let nextIfBranchMarker = 1;
     for (const suspendPoint of (machine.body || [])) {
       const guard = findAsyncIfGuard(machine, suspendPoint);
       if (guard) {
-        guard.branchMarker = nextIfBranchMarker;
-        nextIfBranchMarker += 1;
+        let marker = ifBranchMarkersByNode.get(guard.ifNode);
+        if (!marker) {
+          marker = nextIfBranchMarker;
+          nextIfBranchMarker += 1;
+          ifBranchMarkersByNode.set(guard.ifNode, marker);
+        }
+        guard.branchMarker = marker;
         ifGuardsBySuspend.set(suspendPoint, guard);
       }
     }
@@ -12959,9 +12980,11 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         switchBody += `        return;\n`;
         switchBody += `      }\n`;
       }
-      if (previousIfGuard) {
+      if (previousIfGuard && (previousIfGuard.isLastAwait || resumedAssignment || previousIfGuard.postAwaitStatements.length > 0)) {
         switchBody += `      if (__sm->__branch == ${previousIfGuard.branchMarker}) {\n`;
-        switchBody += `        __sm->__branch = 0;\n`;
+        if (previousIfGuard.isLastAwait) {
+          switchBody += `        __sm->__branch = 0;\n`;
+        }
         if (resumedAssignment) {
           switchBody += `${resumedAssignment}\n`;
         }
@@ -12977,7 +13000,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
           }
         }
         switchBody += `      }\n`;
-      } else if (resumedAssignment) {
+      } else if (!previousIfGuard && resumedAssignment) {
         switchBody += `${resumedAssignment}\n`;
       }
       for (const line of stateBody.lines) {
@@ -13004,20 +13027,28 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
 
       switchBody += `      /* await checkpoint ${i}${awaitedExprComment} */\n`;
       if (ifGuard) {
-        const loweredCondition = lowerExpressionValue(ifGuard.condition, compileContext);
-        if (loweredCondition !== null) {
-          switchBody += `      if (!(${loweredCondition})) {\n`;
-          if (ifGuard.alternate) {
-            const alternateLines = lowerStatementNode(
-              ifGuard.alternate,
-              compileContext,
-              3,
-              { returnTypeCpp: machine.returnValueCppType }
-            );
-            for (const line of alternateLines) {
-              switchBody += `${line}\n`;
+        if (ifGuard.isFirstAwait) {
+          const loweredCondition = lowerExpressionValue(ifGuard.condition, compileContext);
+          if (loweredCondition !== null) {
+            switchBody += `      if (!(${loweredCondition})) {\n`;
+            if (ifGuard.alternate) {
+              const alternateLines = lowerStatementNode(
+                ifGuard.alternate,
+                compileContext,
+                3,
+                { returnTypeCpp: machine.returnValueCppType }
+              );
+              for (const line of alternateLines) {
+                switchBody += `${line}\n`;
+              }
             }
+            switchBody += `        __sm->__state = ${i};\n`;
+            switchBody += `        ${structName}__resume(__sm);\n`;
+            switchBody += `        return;\n`;
+            switchBody += `      }\n`;
           }
+        } else {
+          switchBody += `      if (__sm->__branch != ${ifGuard.branchMarker}) {\n`;
           switchBody += `        __sm->__state = ${i};\n`;
           switchBody += `        ${structName}__resume(__sm);\n`;
           switchBody += `        return;\n`;
@@ -13034,7 +13065,9 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
             switchBody += `${line}\n`;
           }
         }
-        switchBody += `      __sm->__branch = ${ifGuard.branchMarker};\n`;
+        if (ifGuard.isFirstAwait) {
+          switchBody += `      __sm->__branch = ${ifGuard.branchMarker};\n`;
+        }
       }
       switchBody += `      __sm->__state = ${i};\n`;
       if (usesDynamicTransport) {

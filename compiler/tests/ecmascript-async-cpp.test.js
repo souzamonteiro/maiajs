@@ -268,6 +268,16 @@ test('async C++ emission: if branch retains statements around its await', () => 
     'the resumed branch must emit its post-await statements before outer continuation');
 });
 
+test('async C++ emission: if branch keeps its marker through sequential awaits', () => {
+  const cpp = runCompilerCpp('async function run() { let enabled = 1; if (enabled) { await first(); betweenAwaits(); await second(); afterSecond(); } afterBranch(); }\n');
+
+  assert.match(cpp, /__sm->__branch = 1;[\s\S]*__first\(\);/, 'the first await must activate the true-branch marker');
+  assert.match(cpp, /case 1:[\s\S]*await checkpoint 2:[\s\S]*__betweenAwaits\(\);[\s\S]*__second\(\);/,
+    'the first resume must preserve the branch interval while it reaches the second await');
+  assert.match(cpp, /case 2:[\s\S]*if \(__sm->__branch == 1\)[\s\S]*__sm->__branch = 0;[\s\S]*__afterSecond\(\);[\s\S]*__afterBranch\(\);/,
+    'the final resume must clear the marker after its branch-local statements');
+});
+
 test('async C++ emission: multiple machines use non-overlapping schedule IDs', () => {
   const cpp = runCompilerCpp('async function first() { await a(); await b(); }\nasync function second() { await c(); }\n');
 
