@@ -229,10 +229,14 @@ function collectCatchHandlers(tryStatementNode) {
 
     const paramName = extractCatchParameterName(child);
     if (paramName) {
-      handlers.push({
+      const handler = {
         paramName: paramName,
         typeCode: 1  // Generic exception type for now; can be refined later
-      });
+      };
+      // The AST is only needed by the C++ state-machine emitter and must not
+      // become part of the persisted language-neutral IR manifest.
+      Object.defineProperty(handler, 'catchNode', { value: child, enumerable: false });
+      handlers.push(handler);
     }
   }
 

@@ -5,7 +5,7 @@ Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
 
-- Full compiler test suite is green: **324/324 passing**.
+- Full compiler test suite is green: **326/326 passing**.
 - Ported MaiaCpp examples are green: runtime suite **22/22**, course suite **48/48**,
   and MaiaJS transpilation **22/22**.
 - `bash compiler/examples/validate_full_es8_dist.sh` validates the complete
@@ -54,8 +54,13 @@ failure in the validated pipeline:
   objects. Direct string output and one-level scalar property reads are lowered
   through `__async_handle_get_string` and `__async_handle_get_i32`, verified by
   `npm run test:async:dynamic-value` with `{ status: 201 }` and a string.
+- [x] Route a rejected dynamic promise through the exception ABI and execute a
+  simple async `catch` body in a synthetic state. The public Node/WASM gate is
+  `npm run test:async:rejection`.
+- [ ] Extend rejection handling to nested `try/finally`, error-value bindings,
+  outer propagation and concurrent rejected invocations.
 - [ ] Extend handle lowering to object methods, nested properties and typed
-  structured values; then route promise rejections through the exception ABI.
+  structured values.
 - [x] Preserve top-level local bindings in the async state structure and verify
   their resumed reads through the public Node/WASM distribution path:
   `npm run test:async:locals`.

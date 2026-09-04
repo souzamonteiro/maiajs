@@ -213,3 +213,25 @@ test('async runtime transports string and object promise values through handles'
   const end = bytes.indexOf(0, stringPtr);
   assert.equal(new TextDecoder().decode(bytes.subarray(stringPtr, end)), 'async handle text');
 });
+
+test('async runtime turns a rejected host promise into an exception before resume', async () => {
+  const runtime = await instantiateExceptionRuntime({
+    wasmBytes: loadRuntimeWasmBytes(),
+    autoDrain: false
+  });
+  const imports = {
+    __failLater: () => Promise.reject(new Error('expected rejection')),
+    ...runtime.env
+  };
+
+  runtime.attachPromiseImports(imports);
+  imports.__async_prepare_await(300, 4);
+  imports.__failLater();
+  imports.__async_schedule(300, 4);
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(runtime.exports.__exc_active(), 1, 'rejection must activate the exception ABI');
+  assert.equal(runtime.exports.__exc_type(), 1, 'rejection must use the generic async exception type');
+  assert.equal(runtime.scheduler.drain(), 1, 'rejection must schedule the awaiting state machine');
+  runtime.env.__exc_clear();
+});

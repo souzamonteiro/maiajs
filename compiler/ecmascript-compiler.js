@@ -12793,6 +12793,19 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
     const machinePlan = bridgePlanByFunctionName.get(machine.name) || null;
     const terminalState = machine.suspendPointCount + 1;
     let nextSyntheticState = terminalState + 1;
+    const catchStatesBySuspend = new Map();
+    const syntheticCatchStates = [];
+    for (const suspendPoint of (machine.body || [])) {
+      const states = [];
+      for (const handler of ((suspendPoint && suspendPoint.catchHandlers) || [])) {
+        const stateId = nextSyntheticState;
+        nextSyntheticState += 1;
+        const entry = { stateId, handler };
+        states.push(entry);
+        syntheticCatchStates.push(entry);
+      }
+      catchStatesBySuspend.set(suspendPoint, states);
+    }
     const localFields = compileContext ? collectAsyncStateLocalFields(machine, compileContext) : [];
     const previousAsyncStateFields = compileContext ? compileContext.asyncStateLocalFields : null;
     const previousAsyncStateFieldTypes = compileContext ? compileContext.asyncStateLocalFieldTypes : null;
@@ -12821,10 +12834,26 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         ? lowerAsyncStateStatements(machine, stateIndex, compileContext)
         : { lines: [], suspendPoint: machine.body[stateIndex] || null };
       const suspendPoint = stateBody.suspendPoint;
+      const previousSuspendPoint = stateIndex > 0 ? machine.body[stateIndex - 1] : null;
       const resumedAssignment = stateIndex > 0
-        ? lowerAsyncAwaitResultAssignment(machine.body[stateIndex - 1], compileContext)
+        ? lowerAsyncAwaitResultAssignment(previousSuspendPoint, compileContext)
         : null;
       switchBody += `    case ${stateIndex}: ${stateIndex === 0 ? '/* initial state */' : `/* resumed after await ${stateIndex} */`}\n`;
+      const resumeCatchStates = catchStatesBySuspend.get(previousSuspendPoint) || [];
+      if (resumeCatchStates.length > 0) {
+        for (const entry of resumeCatchStates) {
+          switchBody += `      if (__exc_active() && __exc_matches(__exc_type(), ${entry.handler.typeCode})) {\n`;
+          switchBody += `        __sm->__state = ${entry.stateId};\n`;
+          switchBody += `        ${structName}__resume(__sm);\n`;
+          switchBody += `        return;\n`;
+          switchBody += `      }\n`;
+        }
+        switchBody += `      if (__exc_active()) {\n`;
+        switchBody += `        __sm->__state = ${terminalState};\n`;
+        switchBody += `        ${structName}__resume(__sm);\n`;
+        switchBody += `        return;\n`;
+        switchBody += `      }\n`;
+      }
       if (resumedAssignment) {
         switchBody += `${resumedAssignment}\n`;
       }
@@ -12865,13 +12894,12 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       if (tryDepth > 0) {
         if (catchHandlers.length > 0) {
           // Generate __exc_matches() type routing for each catch handler.
-          for (let j = 0; j < catchHandlers.length; j += 1) {
-            const handler = catchHandlers[j];
-            const handlerState = nextSyntheticState;
-            nextSyntheticState += 1;
-            switchBody += `      if (__exc_active() && __exc_matches(__exc_type(), ${handler.typeCode})) {\n`;
-            switchBody += `        /* catch handler for ${handler.paramName} (state ${handlerState}) */\n`;
-            switchBody += `        __sm->__state = ${handlerState};\n`;
+          const catchStates = catchStatesBySuspend.get(suspendPoint) || [];
+          for (const entry of catchStates) {
+            switchBody += `      if (__exc_active() && __exc_matches(__exc_type(), ${entry.handler.typeCode})) {\n`;
+            switchBody += `        /* catch handler for ${entry.handler.paramName} (state ${entry.stateId}) */\n`;
+            switchBody += `        __sm->__state = ${entry.stateId};\n`;
+            switchBody += `        ${structName}__resume(__sm);\n`;
             switchBody += `        return;\n`;
             switchBody += `      }\n`;
           }
@@ -12885,6 +12913,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
             switchBody += `      if (__exc_active()) {\n`;
             switchBody += `        /* finally handler transition (state ${finallyState}, depth ${finallyDepth}) */\n`;
             switchBody += `        __sm->__state = ${finallyState};\n`;
+            switchBody += `        ${structName}__resume(__sm);\n`;
             switchBody += `        return;\n`;
             switchBody += `      }\n`;
           }
@@ -12893,12 +12922,34 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         switchBody += `      if (__exc_active()) {\n`;
         switchBody += `        /* exception frame depth: ${tryDepth} - propagate to outer handler */\n`;
         switchBody += `        __sm->__state = ${terminalState};\n`;
+        switchBody += `        ${structName}__resume(__sm);\n`;
         switchBody += `        return;\n`;
         switchBody += `      }\n`;
       }
       
       switchBody += `      __async_schedule((void*)__sm, ${globalScheduleState});\n`;
       switchBody += `      return;\n`;
+    }
+    for (const entry of syntheticCatchStates) {
+      const catchBlock = entry.handler.catchNode
+        ? findFirstNonterminal(entry.handler.catchNode, 'block')
+        : null;
+      const catchStatements = catchBlock
+        ? (catchBlock.children || []).filter((child) => child && child.kind === 'nonterminal' && child.name === 'statement')
+        : [];
+      switchBody += `    case ${entry.stateId}: { /* async catch handler */\n`;
+      switchBody += `      __exc_clear();\n`;
+      switchBody += `      const char* ${entry.handler.paramName} = (const char*)0;\n`;
+      for (const statement of catchStatements) {
+        const loweredCatchLines = lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType });
+        for (const line of loweredCatchLines) {
+          switchBody += `${line}\n`;
+        }
+      }
+      switchBody += `      __async_complete((void*)__sm);\n`;
+      switchBody += `      __free((void*)__sm);\n`;
+      switchBody += `      return;\n`;
+      switchBody += `    }\n`;
     }
     switchBody += `    default:\n`;
     switchBody += `      __async_complete((void*)__sm);\n`;

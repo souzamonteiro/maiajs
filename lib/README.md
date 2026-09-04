@@ -17,6 +17,8 @@ This directory contains WebAssembly (WAT/WASM) runtime modules that are included
   - Dynamic handle ABI: `__async_handle_get_i32(handle, key)` for a one-level
     scalar object property and `__async_handle_get_string(handle)` for a UTF-8
     string copied into application linear memory
+  - Rejected dynamic promises activate the exception ABI with generic type `1`;
+    async state machines route a matching rejection into a synthetic `catch` state
   - Optional diagnostics: `__async_pending_count()`, `__async_last_state()`
 
 - **exception.js** — Optional wrapper helper to instantiate `exception.wasm` and build `env` imports

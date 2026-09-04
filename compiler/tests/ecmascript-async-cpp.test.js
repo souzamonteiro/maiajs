@@ -120,6 +120,15 @@ test('async C++ emission: dynamic await handles lower string and object reads th
   assert.match(cpp, /extern const char\* __async_handle_get_string\(int handle\);/, 'generated C++ must declare the string handle ABI');
 });
 
+test('async C++ emission: rejected await resumes into its catch handler state', () => {
+  const cpp = runCompilerCpp(
+    'async function load() { try { await failLater(); } catch (err) { console.log("rejection caught"); } }\n'
+  );
+
+  assert.match(cpp, /case 1:[\s\S]*if \(__exc_active\(\) && __exc_matches\(__exc_type\(\), 1\)\)/, 'resumed state must route an async rejection through exception matching');
+  assert.match(cpp, /case 3: \{ \/\* async catch handler \*\/[\s\S]*__exc_clear\(\);[\s\S]*__console__log\("rejection caught"\);/, 'catch body must execute in a synthetic async state');
+});
+
 test('async C++ emission: multiple async functions each get their own struct', () => {
   const cpp = runCompilerCpp('async function a() {}\nasync function b() {}\n');
 
@@ -179,7 +188,7 @@ test('async C++ emission: await inside try emits exception checks', () => {
 
   assert.match(cpp, /if \(__exc_active\(\)\)/, 'checkpoint inside try must emit exception check');
   assert.match(cpp, /exception frame depth: 1/, 'must annotate try depth level');
-  assert.match(cpp, /__sm->__state =[^\n]+;\s+return;/s, 'exception check must transition state and return');
+  assert.match(cpp, /__sm->__state =[^\n]+;\s+__async_run__resume\(__sm\);\s+return;/s, 'exception check must enter the target state before returning');
 });
 
 test('async C++ emission: nested try levels emit nested exception depth', () => {
