@@ -12703,7 +12703,20 @@ function findAsyncIfGuard(machine, suspendPoint) {
       (child) => child && child.kind === 'nonterminal' && child.name === 'expression'
     ) || null;
     if (condition) {
-      return { condition, alternate };
+      const block = findFirstNonterminal(consequent, 'block');
+      const consequentStatements = block
+        ? (block.children || []).filter((child) => child && child.kind === 'nonterminal' && child.name === 'statement')
+        : [consequent];
+      const awaitStatementIndex = consequentStatements.findIndex(
+        (statement) => nodeContainsTarget(statement, awaitNode)
+      );
+      if (awaitStatementIndex < 0) { continue; }
+      return {
+        condition,
+        alternate,
+        preAwaitStatements: consequentStatements.slice(0, awaitStatementIndex),
+        postAwaitStatements: consequentStatements.slice(awaitStatementIndex + 1)
+      };
     }
   }
 
@@ -12891,6 +12904,16 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       }
       exceptionRoutesBySuspend.set(suspendPoint, routes);
     }
+    const ifGuardsBySuspend = new Map();
+    let nextIfBranchMarker = 1;
+    for (const suspendPoint of (machine.body || [])) {
+      const guard = findAsyncIfGuard(machine, suspendPoint);
+      if (guard) {
+        guard.branchMarker = nextIfBranchMarker;
+        nextIfBranchMarker += 1;
+        ifGuardsBySuspend.set(suspendPoint, guard);
+      }
+    }
     const localFields = compileContext ? collectAsyncStateLocalFields(machine, compileContext) : [];
     const previousAsyncStateFields = compileContext ? compileContext.asyncStateLocalFields : null;
     const previousAsyncStateFieldTypes = compileContext ? compileContext.asyncStateLocalFieldTypes : null;
@@ -12920,6 +12943,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         : { lines: [], suspendPoint: machine.body[stateIndex] || null };
       const suspendPoint = stateBody.suspendPoint;
       const previousSuspendPoint = stateIndex > 0 ? machine.body[stateIndex - 1] : null;
+      const previousIfGuard = ifGuardsBySuspend.get(previousSuspendPoint) || null;
       const resumedAssignment = stateIndex > 0
         ? lowerAsyncAwaitResultAssignment(previousSuspendPoint, compileContext)
         : null;
@@ -12927,12 +12951,33 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       const resumeRoutes = exceptionRoutesBySuspend.get(previousSuspendPoint) || [];
       if (resumeRoutes.length > 0) {
         switchBody += `      if (__exc_active()) {\n`;
+        if (previousIfGuard) {
+          switchBody += `        __sm->__branch = 0;\n`;
+        }
         switchBody += `        __sm->__state = ${resumeRoutes[0].stateId};\n`;
         switchBody += `        ${structName}__resume(__sm);\n`;
         switchBody += `        return;\n`;
         switchBody += `      }\n`;
       }
-      if (resumedAssignment) {
+      if (previousIfGuard) {
+        switchBody += `      if (__sm->__branch == ${previousIfGuard.branchMarker}) {\n`;
+        switchBody += `        __sm->__branch = 0;\n`;
+        if (resumedAssignment) {
+          switchBody += `${resumedAssignment}\n`;
+        }
+        for (const statement of previousIfGuard.postAwaitStatements) {
+          const postAwaitLines = lowerStatementNode(
+            statement,
+            compileContext,
+            3,
+            { returnTypeCpp: machine.returnValueCppType }
+          );
+          for (const line of postAwaitLines) {
+            switchBody += `${line}\n`;
+          }
+        }
+        switchBody += `      }\n`;
+      } else if (resumedAssignment) {
         switchBody += `${resumedAssignment}\n`;
       }
       for (const line of stateBody.lines) {
@@ -12951,7 +12996,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       const awaitedExprComment = awaitedExpr
         ? `: ${awaitedExpr}`
         : '';
-      const ifGuard = findAsyncIfGuard(machine, suspendPoint);
+      const ifGuard = ifGuardsBySuspend.get(suspendPoint) || null;
       const globalScheduleState = machinePlan && Number.isInteger(machinePlan.scheduleStateStart)
         ? (machinePlan.scheduleStateStart + i - 1)
         : i;
@@ -12978,6 +13023,18 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
           switchBody += `        return;\n`;
           switchBody += `      }\n`;
         }
+        for (const statement of ifGuard.preAwaitStatements) {
+          const preAwaitLines = lowerStatementNode(
+            statement,
+            compileContext,
+            3,
+            { returnTypeCpp: machine.returnValueCppType }
+          );
+          for (const line of preAwaitLines) {
+            switchBody += `${line}\n`;
+          }
+        }
+        switchBody += `      __sm->__branch = ${ifGuard.branchMarker};\n`;
       }
       switchBody += `      __sm->__state = ${i};\n`;
       if (usesDynamicTransport) {
@@ -13085,6 +13142,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       `/* host resume bridge symbol: ${machinePlan ? machinePlan.bridgeSymbol : `${structName}__resume_bridge`} */`,
       `struct ${structName} {`,
       `  int __state;`,
+      `  int __branch;`,
       `  ${machine.returnValueCppType} __result;`,
       paramFields,
       localFieldLines,
@@ -13105,6 +13163,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       `  struct ${structName}* __sm = (struct ${structName}*)__malloc(sizeof(struct ${structName}));`,
       `  if (!__sm) { return; }`,
       `  __sm->__state = 0;`,
+      `  __sm->__branch = 0;`,
       `  __sm->__result = 0;`,
       paramAssignments.join('\n'),
       localFieldAssignments.join('\n'),

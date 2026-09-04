@@ -259,6 +259,15 @@ test('async C++ emission: await in an if branch guards scheduling and lowers els
     'the resumed state must retain statements after the if form');
 });
 
+test('async C++ emission: if branch retains statements around its await', () => {
+  const cpp = runCompilerCpp('async function run() { let enabled = 1; if (enabled) { beforeAwait(); await fetch(); afterAwait(); } afterBranch(); }\n');
+
+  assert.match(cpp, /if \(!\(__sm->__local_enabled\)\)[\s\S]*__beforeAwait\(\);[\s\S]*__sm->__branch = 1;[\s\S]*__fetch\(\);/,
+    'the true branch must emit statements before its await before scheduling it');
+  assert.match(cpp, /case 1:[\s\S]*if \(__sm->__branch == 1\)[\s\S]*__afterAwait\(\);[\s\S]*__afterBranch\(\);/,
+    'the resumed branch must emit its post-await statements before outer continuation');
+});
+
 test('async C++ emission: multiple machines use non-overlapping schedule IDs', () => {
   const cpp = runCompilerCpp('async function first() { await a(); await b(); }\nasync function second() { await c(); }\n');
 
