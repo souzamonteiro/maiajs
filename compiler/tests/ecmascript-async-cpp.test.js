@@ -110,6 +110,16 @@ test('async C++ emission: dynamic await result uses the scalar runtime ABI', () 
   assert.match(cpp, /extern int __async_take_i32\(void\* sm\);/, 'generated C++ must declare the scalar runtime ABI');
 });
 
+test('async C++ emission: dynamic await handles lower string and object reads through the runtime ABI', () => {
+  const cpp = runCompilerCpp(
+    'async function load() { const response = await getResponse(); if (response.status === 201) { console.log("ok"); } const message = await getMessage(); console.log(message); }\n'
+  );
+
+  assert.match(cpp, /__async_handle_get_i32\(__sm->__local_response, \(const char\*\)"status"\)/, 'object property must read from the dynamic handle');
+  assert.match(cpp, /__console__log\(__async_handle_get_string\(__sm->__local_message\)\);/, 'string handle must convert to C string for console output');
+  assert.match(cpp, /extern const char\* __async_handle_get_string\(int handle\);/, 'generated C++ must declare the string handle ABI');
+});
+
 test('async C++ emission: multiple async functions each get their own struct', () => {
   const cpp = runCompilerCpp('async function a() {}\nasync function b() {}\n');
 

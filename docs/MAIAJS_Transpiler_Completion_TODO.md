@@ -1,11 +1,11 @@
 # MaiaJS Transpiler Completion Strategy and TODO
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
 
-- Full compiler test suite is green: **315/315 passing**.
+- Full compiler test suite is green: **324/324 passing**.
 - Ported MaiaCpp examples are green: runtime suite **22/22**, course suite **48/48**,
   and MaiaJS transpilation **22/22**.
 - `bash compiler/examples/validate_full_es8_dist.sh` validates the complete
@@ -50,8 +50,12 @@ failure in the validated pipeline:
   `void` host imports, queues their resolution by state-machine pointer, and
   resumes `const value = await dynamicPromise()` through the public pipeline:
   `npm run test:async:dynamic-value`.
-- [ ] Extend the dynamic promise ABI with linear-memory codecs for strings and
-  structured objects, then route promise rejections through the exception ABI.
+- [x] Extend the dynamic promise ABI with opaque handles for strings and host
+  objects. Direct string output and one-level scalar property reads are lowered
+  through `__async_handle_get_string` and `__async_handle_get_i32`, verified by
+  `npm run test:async:dynamic-value` with `{ status: 201 }` and a string.
+- [ ] Extend handle lowering to object methods, nested properties and typed
+  structured values; then route promise rejections through the exception ABI.
 - [x] Preserve top-level local bindings in the async state structure and verify
   their resumed reads through the public Node/WASM distribution path:
   `npm run test:async:locals`.

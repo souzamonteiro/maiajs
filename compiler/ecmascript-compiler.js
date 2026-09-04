@@ -6285,6 +6285,12 @@ function lowerConsoleLogArgumentExpression(expressionNode, compileContext) {
   if (directIdentifierNode) {
     const identifierValue = findFirstIdentifierValue(directIdentifierNode);
     if (identifierValue && identifierValue !== 'arguments') {
+      const dynamicHandleField = compileContext
+        && compileContext.asyncStateDynamicHandleFields
+        && compileContext.asyncStateDynamicHandleFields.get(identifierValue);
+      if (dynamicHandleField) {
+        return `__async_handle_get_string(__sm->${dynamicHandleField})`;
+      }
       return lowerIdentifierValue(identifierValue, compileContext);
     }
   }
@@ -8384,6 +8390,12 @@ function lowerExpressionValue(node, compileContext) {
       const isThisMember = segments[0] === 'this';
       const localClassType = isThisMember ? null : findBoundClassInstanceTypeAtNode(segments[0], node, compileContext);
       if (!isThisMember && !localClassType) {
+        const dynamicHandleField = compileContext
+          && compileContext.asyncStateDynamicHandleFields
+          && compileContext.asyncStateDynamicHandleFields.get(segments[0]);
+        if (dynamicHandleField && segments.length === 2) {
+          return `__async_handle_get_i32(__sm->${dynamicHandleField}, (const char*)"${segments[1]}")`;
+        }
         const staticResolved = resolveStaticMemberAccessExpression(segments, node, compileContext);
         if (staticResolved !== null) {
           return staticResolved;
@@ -12784,9 +12796,18 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
     const localFields = compileContext ? collectAsyncStateLocalFields(machine, compileContext) : [];
     const previousAsyncStateFields = compileContext ? compileContext.asyncStateLocalFields : null;
     const previousAsyncStateFieldTypes = compileContext ? compileContext.asyncStateLocalFieldTypes : null;
+    const previousAsyncStateDynamicHandleFields = compileContext ? compileContext.asyncStateDynamicHandleFields : null;
     if (compileContext) {
       compileContext.asyncStateLocalFields = new Map(localFields.map((field) => [field.name, field.fieldName]));
       compileContext.asyncStateLocalFieldTypes = new Map(localFields.map((field) => [field.name, field.cppType]));
+      compileContext.asyncStateDynamicHandleFields = new Map(
+        machine.body
+          .filter((suspendPoint) => suspendPoint && suspendPoint.resultBinding && awaitUsesDynamicRuntimeTransport(suspendPoint))
+          .map((suspendPoint) => [
+            suspendPoint.resultBinding.name,
+            `__local_${suspendPoint.resultBinding.name}`
+          ])
+      );
     }
 
     const paramFields = machine.params.length === 0
@@ -12899,6 +12920,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
     if (compileContext) {
       compileContext.asyncStateLocalFields = previousAsyncStateFields;
       compileContext.asyncStateLocalFieldTypes = previousAsyncStateFieldTypes;
+      compileContext.asyncStateDynamicHandleFields = previousAsyncStateDynamicHandleFields;
     }
 
     return [
@@ -12944,6 +12966,10 @@ function emitAsyncSchedulerHookDeclsCpp(machines) {
     'extern void __async_prepare_await(void* sm, int state_id);',
     'extern int __async_take_i32(void* sm);',
     'extern double __async_take_f64(void* sm);',
+    'extern int __async_handle_get_i32(int handle, const char* key);',
+    'extern double __async_handle_get_f64(int handle, const char* key);',
+    'extern const char* __async_handle_get_string(int handle);',
+    'extern int __async_handle_length(int handle);',
     'extern void __async_complete(void* sm);',
     'extern void* __malloc(unsigned long size);',
     'extern void __free(void* ptr);'

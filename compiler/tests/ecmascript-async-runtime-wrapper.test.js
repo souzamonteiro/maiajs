@@ -174,3 +174,42 @@ test('async runtime transports a scalar resolved by a host promise', async () =>
   assert.equal(imports.__async_take_value_tag(123), 1, 'resolved scalar must expose its value tag');
   assert.equal(imports.__async_take_i32(123), 42, 'resolved scalar must be readable by resumed WASM code');
 });
+
+test('async runtime transports string and object promise values through handles', async () => {
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  let nextPtr = 128;
+  const runtime = await instantiateExceptionRuntime({
+    wasmBytes: loadRuntimeWasmBytes(),
+    autoDrain: false,
+    getMemory: () => memory
+  });
+  const imports = {
+    __getResponse: () => Promise.resolve({ status: 201 }),
+    __getMessage: () => Promise.resolve('async handle text'),
+    __malloc: (size) => {
+      const ptr = nextPtr;
+      nextPtr += Number(size) | 0;
+      return ptr;
+    },
+    ...runtime.env
+  };
+  new TextEncoder().encodeInto('status\0', new Uint8Array(memory.buffer).subarray(16));
+
+  runtime.attachPromiseImports(imports);
+  imports.__async_prepare_await(200, 1);
+  imports.__getResponse();
+  imports.__async_schedule(200, 1);
+  imports.__async_prepare_await(201, 2);
+  imports.__getMessage();
+  imports.__async_schedule(201, 2);
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(runtime.scheduler.drain(), 2, 'each fulfilled promise must resume its own machine');
+  const responseHandle = imports.__async_take_i32(200);
+  const messageHandle = imports.__async_take_i32(201);
+  assert.equal(imports.__async_handle_get_i32(responseHandle, 16), 201, 'object property must be readable through its handle');
+  const stringPtr = imports.__async_handle_get_string(messageHandle);
+  const bytes = new Uint8Array(memory.buffer);
+  const end = bytes.indexOf(0, stringPtr);
+  assert.equal(new TextDecoder().decode(bytes.subarray(stringPtr, end)), 'async handle text');
+});

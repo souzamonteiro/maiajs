@@ -1,8 +1,10 @@
-async function useDynamicValue() {
-  const status = await getStatus();
-  if (status === 42) {
-    console.log('async dynamic value retained');
+async function useDynamicValues() {
+  const response = await getResponse();
+  if (response.status === 201) {
+    console.log('async dynamic object retained');
   }
+  const message = await getMessage();
+  console.log(message);
 }
 
-useDynamicValue();
+useDynamicValues();
