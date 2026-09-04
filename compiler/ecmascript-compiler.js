@@ -12813,7 +12813,12 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         };
         nextSyntheticState += 1;
         for (const handler of (frame.catchHandlers || [])) {
-          const entry = { stateId: nextSyntheticState, handler };
+          const entry = {
+            stateId: nextSyntheticState,
+            handler,
+            continuationStateId: suspendPoint.stateId,
+            postCatchFinallyState: null
+          };
           nextSyntheticState += 1;
           route.catchStates.push(entry);
           syntheticCatchStates.push(entry);
@@ -12823,6 +12828,18 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
           nextSyntheticState += 1;
           route.finallyState = entry;
           syntheticFinallyStates.push(entry);
+        }
+        if (frame.finallyHandler) {
+          for (const catchState of route.catchStates) {
+            const entry = {
+              stateId: nextSyntheticState,
+              handler: frame.finallyHandler,
+              nextStateId: catchState.continuationStateId
+            };
+            nextSyntheticState += 1;
+            catchState.postCatchFinallyState = entry;
+            syntheticFinallyStates.push(entry);
+          }
         }
         syntheticExceptionRouteStates.push(route);
         return route;
@@ -12928,8 +12945,11 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
           switchBody += `${line}\n`;
         }
       }
-      switchBody += `      __async_complete((void*)__sm);\n`;
-      switchBody += `      __free((void*)__sm);\n`;
+      const catchContinuationState = entry.postCatchFinallyState
+        ? entry.postCatchFinallyState.stateId
+        : entry.continuationStateId;
+      switchBody += `      __sm->__state = ${catchContinuationState};\n`;
+      switchBody += `      ${structName}__resume(__sm);\n`;
       switchBody += `      return;\n`;
       switchBody += `    }\n`;
     }

@@ -5,7 +5,7 @@ Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
 
-- Full compiler test suite is green: **328/328 passing**.
+- Full compiler test suite is green: **329/329 passing**.
 - Ported MaiaCpp examples are green: runtime suite **22/22**, course suite **48/48**,
   and MaiaJS transpilation **22/22**.
 - `bash compiler/examples/validate_full_es8_dist.sh` validates the complete
@@ -39,8 +39,8 @@ failure in the validated pipeline:
   `npm run test:browser:async` verifies that an `await` resumes and the program
   returns `0` in the generated browser runner. The gate is implemented but the
   current console session ends Chrome before its observation window completes.
-- [ ] Extend async behavior-marker coverage to control flow and handled
-  `catch`/`finally` completion paths.
+- [ ] Extend async behavior-marker coverage to control flow beyond exception
+  routing.
 - [x] Materialize declaration targets for `await Promise.resolve(value)` in the
   resumed state and verify them through Node/WASM:
   `npm run test:async:await-result`.
@@ -66,8 +66,9 @@ failure in the validated pipeline:
   reaching an enclosing `catch`. Chained synthetic exception-frame states
   preserve `finally`-before-outer-`catch` ordering, verified by
   `npm run test:async:nested-rejection`.
-- [ ] Run a sibling `finally` after a local async `catch` has handled the
-  rejection, then continue with statements following the complete try form.
+- [x] Run a sibling `finally` after a local async `catch` has handled the
+  rejection, then continue with statements following the complete try form:
+  `npm run test:async:catch-finally`.
 - [ ] Extend handle lowering to object methods, nested properties and typed
   structured values.
 - [x] Preserve top-level local bindings in the async state structure and verify

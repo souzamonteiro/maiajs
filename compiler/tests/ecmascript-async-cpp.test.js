@@ -207,6 +207,17 @@ test('async C++ emission: nested finally continues into an outer catch frame', (
     'the outer exception frame must receive the rejection after the inner finally');
 });
 
+test('async C++ emission: a handled rejection runs its sibling finally before resuming', () => {
+  const cpp = runCompilerCpp('async function run() { try { await fetch(); } catch (err) { report(err); } finally { cleanup(); } afterCleanup(); }\n');
+
+  assert.match(cpp, /async catch handler[\s\S]*report\(err\);[\s\S]*__sm->__state = \d+;[\s\S]*__async_run__resume\(__sm\);/,
+    'the catch handler must continue instead of completing the machine');
+  assert.match(cpp, /async finally handler[\s\S]*cleanup\(\);[\s\S]*__sm->__state = 1;[\s\S]*__async_run__resume\(__sm\);/,
+    'the sibling finally must target the post-await continuation state');
+  assert.match(cpp, /case 1:[\s\S]*__afterCleanup\(\);/,
+    'the post-await continuation must contain statements after the complete try form');
+});
+
 test('async C++ emission: catch handler emits __exc_matches type routing', () => {
   const cpp = runCompilerCpp('async function run() { try { await fetch(); } catch (err) { } }\n');
 
