@@ -125,8 +125,8 @@ test('async C++ emission: rejected await resumes into its catch handler state', 
     'async function load() { try { await failLater(); } catch (err) { console.log("rejection caught"); } }\n'
   );
 
-  assert.match(cpp, /case 1:[\s\S]*if \(__exc_active\(\) && __exc_matches\(__exc_type\(\), 1\)\)/, 'resumed state must route an async rejection through exception matching');
-  assert.match(cpp, /case 3: \{ \/\* async catch handler \*\/[\s\S]*const char\* err = __async_handle_get_string\(__exc_data\(\)\);[\s\S]*__exc_clear\(\);[\s\S]*__console__log\("rejection caught"\);/, 'catch state must bind the rejection before clearing the exception');
+  assert.match(cpp, /case 1:[\s\S]*if \(__exc_active\(\)\)[\s\S]*async exception frame[\s\S]*__exc_matches\(__exc_type\(\), 1\)/, 'resumed state must route an async rejection through its exception frame');
+  assert.match(cpp, /async catch handler \*\/[\s\S]*const char\* err = __async_handle_get_string\(__exc_data\(\)\);[\s\S]*__exc_clear\(\);[\s\S]*__console__log\("rejection caught"\);/, 'catch state must bind the rejection before clearing the exception');
 });
 
 test('async C++ emission: multiple async functions each get their own struct', () => {
@@ -196,6 +196,15 @@ test('async C++ emission: nested try levels emit nested exception depth', () => 
 
   assert.match(cpp, /if \(__exc_active\(\)\)/, 'nested checkpoint must emit exception check');
   assert.match(cpp, /exception frame depth: 2/, 'must annotate nested try depth level');
+});
+
+test('async C++ emission: nested finally continues into an outer catch frame', () => {
+  const cpp = runCompilerCpp('async function run() { try { try { await fetch(); } finally { cleanup(); } } catch (err) { report(err); } }\n');
+
+  assert.match(cpp, /async finally handler[\s\S]*cleanup\(\);[\s\S]*__sm->__state = \d+;[\s\S]*__async_run__resume\(__sm\);/,
+    'the inner finally must resume exception routing instead of clearing the rejection');
+  assert.match(cpp, /async exception frame 1[\s\S]*catch handler for err/,
+    'the outer exception frame must receive the rejection after the inner finally');
 });
 
 test('async C++ emission: catch handler emits __exc_matches type routing', () => {

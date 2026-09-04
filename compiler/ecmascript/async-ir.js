@@ -351,6 +351,39 @@ function collectFinallyHandlersForAwait(awaitExpressionNode, functionBodyNode) {
   return handlers;
 }
 
+function collectExceptionFramesForAwait(awaitExpressionNode, functionBodyNode) {
+  if (!awaitExpressionNode || !functionBodyNode) { return []; }
+
+  let tryAncestors = [];
+  let found = false;
+  const walkForParents = (node, parents = []) => {
+    if (found || !node || typeof node !== 'object') { return; }
+    if (node === awaitExpressionNode) {
+      tryAncestors = parents.filter((parent) => parent && parent.kind === 'nonterminal' && parent.name === 'tryStatement');
+      found = true;
+      return;
+    }
+    for (const child of (node.children || [])) {
+      walkForParents(child, [...parents, node]);
+      if (found) { return; }
+    }
+  };
+
+  walkForParents(functionBodyNode);
+  return tryAncestors.reverse().map((tryNode) => {
+    const finallyNode = findChild(tryNode, 'finally');
+    let finallyHandler = null;
+    if (finallyNode && !containsNode(finallyNode, awaitExpressionNode)) {
+      finallyHandler = { kind: 'finally' };
+      Object.defineProperty(finallyHandler, 'finallyNode', { value: finallyNode, enumerable: false });
+    }
+    return {
+      catchHandlers: collectCatchHandlers(tryNode),
+      finallyHandler
+    };
+  });
+}
+
 /**
  * Extract parameter names from a formal parameter list nonterminal.
  * @param {Object|null} formalParameterListNode
@@ -467,13 +500,11 @@ function buildAsyncStateMachine(functionDeclarationNode, options = {}) {
       ? options.lowerAwaitOperand(awaitOperand)
       : null;
     const tryDepth = findTryDepth(awaitNode, functionBody);
-    const catchHandlerArrays = collectCatchHandlersForAwait(awaitNode, functionBody);
-    // Only the innermost try catches here. Propagation through enclosing
-    // finally/catch frames needs explicit continuation states in the emitter.
-    const catchHandlers = catchHandlerArrays.length > 0
-      ? catchHandlerArrays[catchHandlerArrays.length - 1]
-      : [];
-    const finallyHandlers = collectFinallyHandlersForAwait(awaitNode, functionBody);
+    const exceptionFrames = collectExceptionFramesForAwait(awaitNode, functionBody);
+    const catchHandlers = exceptionFrames.length > 0 ? exceptionFrames[0].catchHandlers : [];
+    const finallyHandlers = exceptionFrames
+      .filter((frame) => frame.finallyHandler)
+      .map((frame) => frame.finallyHandler);
     const finallyDepth = finallyHandlers.length;
 
     const suspendPoint = {
@@ -492,6 +523,7 @@ function buildAsyncStateMachine(functionDeclarationNode, options = {}) {
     Object.defineProperties(suspendPoint, {
       awaitNode: { value: awaitNode, enumerable: false },
       statementIndex: { value: statementIndex, enumerable: false },
+      exceptionFrames: { value: exceptionFrames, enumerable: false },
       resultBinding: { value: resultBinding, enumerable: true }
     });
     body.push(suspendPoint);

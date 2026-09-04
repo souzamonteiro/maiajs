@@ -12793,31 +12793,48 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
     const machinePlan = bridgePlanByFunctionName.get(machine.name) || null;
     const terminalState = machine.suspendPointCount + 1;
     let nextSyntheticState = terminalState + 1;
-    const catchStatesBySuspend = new Map();
     const syntheticCatchStates = [];
-    for (const suspendPoint of (machine.body || [])) {
-      const states = [];
-      for (const handler of ((suspendPoint && suspendPoint.catchHandlers) || [])) {
-        const stateId = nextSyntheticState;
-        nextSyntheticState += 1;
-        const entry = { stateId, handler };
-        states.push(entry);
-        syntheticCatchStates.push(entry);
-      }
-      catchStatesBySuspend.set(suspendPoint, states);
-    }
-    const finallyStatesBySuspend = new Map();
     const syntheticFinallyStates = [];
+    const syntheticExceptionRouteStates = [];
+    const exceptionRoutesBySuspend = new Map();
     for (const suspendPoint of (machine.body || [])) {
-      const states = [];
-      for (const handler of ((suspendPoint && suspendPoint.finallyHandlers) || [])) {
-        const stateId = nextSyntheticState;
+      const frames = (suspendPoint && suspendPoint.exceptionFrames) || [{
+        catchHandlers: (suspendPoint && suspendPoint.catchHandlers) || [],
+        finallyHandler: ((suspendPoint && suspendPoint.finallyHandlers) || [])[0] || null
+      }];
+      const routes = frames.map((frame, frameIndex) => {
+        const route = {
+          stateId: nextSyntheticState,
+          catchStates: [],
+          finallyState: null,
+          nextStateId: terminalState,
+          frameIndex,
+          frameDepth: frames.length - frameIndex
+        };
         nextSyntheticState += 1;
-        const entry = { stateId, handler };
-        states.push(entry);
-        syntheticFinallyStates.push(entry);
+        for (const handler of (frame.catchHandlers || [])) {
+          const entry = { stateId: nextSyntheticState, handler };
+          nextSyntheticState += 1;
+          route.catchStates.push(entry);
+          syntheticCatchStates.push(entry);
+        }
+        if (frame.finallyHandler) {
+          const entry = { stateId: nextSyntheticState, handler: frame.finallyHandler, nextStateId: terminalState };
+          nextSyntheticState += 1;
+          route.finallyState = entry;
+          syntheticFinallyStates.push(entry);
+        }
+        syntheticExceptionRouteStates.push(route);
+        return route;
+      });
+      for (let index = 0; index < routes.length; index += 1) {
+        const nextStateId = index + 1 < routes.length ? routes[index + 1].stateId : terminalState;
+        routes[index].nextStateId = nextStateId;
+        if (routes[index].finallyState) {
+          routes[index].finallyState.nextStateId = nextStateId;
+        }
       }
-      finallyStatesBySuspend.set(suspendPoint, states);
+      exceptionRoutesBySuspend.set(suspendPoint, routes);
     }
     const localFields = compileContext ? collectAsyncStateLocalFields(machine, compileContext) : [];
     const previousAsyncStateFields = compileContext ? compileContext.asyncStateLocalFields : null;
@@ -12852,25 +12869,10 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         ? lowerAsyncAwaitResultAssignment(previousSuspendPoint, compileContext)
         : null;
       switchBody += `    case ${stateIndex}: ${stateIndex === 0 ? '/* initial state */' : `/* resumed after await ${stateIndex} */`}\n`;
-      const resumeCatchStates = catchStatesBySuspend.get(previousSuspendPoint) || [];
-      const resumeFinallyStates = finallyStatesBySuspend.get(previousSuspendPoint) || [];
-      if (resumeCatchStates.length > 0 || resumeFinallyStates.length > 0) {
-        for (const entry of resumeCatchStates) {
-          switchBody += `      if (__exc_active() && __exc_matches(__exc_type(), ${entry.handler.typeCode})) {\n`;
-          switchBody += `        __sm->__state = ${entry.stateId};\n`;
-          switchBody += `        ${structName}__resume(__sm);\n`;
-          switchBody += `        return;\n`;
-          switchBody += `      }\n`;
-        }
-        for (const entry of resumeFinallyStates) {
-          switchBody += `      if (__exc_active()) {\n`;
-          switchBody += `        __sm->__state = ${entry.stateId};\n`;
-          switchBody += `        ${structName}__resume(__sm);\n`;
-          switchBody += `        return;\n`;
-          switchBody += `      }\n`;
-        }
+      const resumeRoutes = exceptionRoutesBySuspend.get(previousSuspendPoint) || [];
+      if (resumeRoutes.length > 0) {
         switchBody += `      if (__exc_active()) {\n`;
-        switchBody += `        __sm->__state = ${terminalState};\n`;
+        switchBody += `        __sm->__state = ${resumeRoutes[0].stateId};\n`;
         switchBody += `        ${structName}__resume(__sm);\n`;
         switchBody += `        return;\n`;
         switchBody += `      }\n`;
@@ -12894,10 +12896,6 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       const awaitedExprComment = awaitedExpr
         ? `: ${awaitedExpr}`
         : '';
-      const tryDepth = suspendPoint ? suspendPoint.tryDepth : 0;
-      const finallyDepth = suspendPoint ? suspendPoint.finallyDepth : 0;
-      const catchHandlers = (suspendPoint && suspendPoint.catchHandlers) || [];
-      const finallyHandlers = (suspendPoint && suspendPoint.finallyHandlers) || [];
       const globalScheduleState = machinePlan && Number.isInteger(machinePlan.scheduleStateStart)
         ? (machinePlan.scheduleStateStart + i - 1)
         : i;
@@ -12911,42 +12909,6 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       if (awaitedExpr) {
         switchBody += `      ${awaitedExpr};\n`;
       }
-      
-      if (tryDepth > 0) {
-        if (catchHandlers.length > 0) {
-          // Generate __exc_matches() type routing for each catch handler.
-          const catchStates = catchStatesBySuspend.get(suspendPoint) || [];
-          for (const entry of catchStates) {
-            switchBody += `      if (__exc_active() && __exc_matches(__exc_type(), ${entry.handler.typeCode})) {\n`;
-            switchBody += `        /* catch handler for ${entry.handler.paramName} (state ${entry.stateId}) */\n`;
-            switchBody += `        __sm->__state = ${entry.stateId};\n`;
-            switchBody += `        ${structName}__resume(__sm);\n`;
-            switchBody += `        return;\n`;
-            switchBody += `      }\n`;
-          }
-        }
-
-        if (finallyDepth > 0 && finallyHandlers.length > 0) {
-          // Route through finally handlers before outer propagation.
-          const finallyStates = finallyStatesBySuspend.get(suspendPoint) || [];
-          for (const entry of finallyStates) {
-            switchBody += `      if (__exc_active()) {\n`;
-            switchBody += `        /* finally handler transition (state ${entry.stateId}, depth ${finallyDepth}) */\n`;
-            switchBody += `        __sm->__state = ${entry.stateId};\n`;
-            switchBody += `        ${structName}__resume(__sm);\n`;
-            switchBody += `        return;\n`;
-            switchBody += `      }\n`;
-          }
-        }
-
-        switchBody += `      if (__exc_active()) {\n`;
-        switchBody += `        /* exception frame depth: ${tryDepth} - propagate to outer handler */\n`;
-        switchBody += `        __sm->__state = ${terminalState};\n`;
-        switchBody += `        ${structName}__resume(__sm);\n`;
-        switchBody += `        return;\n`;
-        switchBody += `      }\n`;
-      }
-      
       switchBody += `      __async_schedule((void*)__sm, ${globalScheduleState});\n`;
       switchBody += `      return;\n`;
     }
@@ -12971,6 +12933,30 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       switchBody += `      return;\n`;
       switchBody += `    }\n`;
     }
+    for (const route of syntheticExceptionRouteStates) {
+      switchBody += `    case ${route.stateId}: { /* async exception frame ${route.frameIndex} */\n`;
+      switchBody += `      /* exception frame depth: ${route.frameDepth} */\n`;
+      for (const entry of route.catchStates) {
+        switchBody += `      if (__exc_active() && __exc_matches(__exc_type(), ${entry.handler.typeCode})) {\n`;
+        switchBody += `        /* catch handler for ${entry.handler.paramName} (state ${entry.stateId}) */\n`;
+        switchBody += `        __sm->__state = ${entry.stateId};\n`;
+        switchBody += `        ${structName}__resume(__sm);\n`;
+        switchBody += `        return;\n`;
+        switchBody += `      }\n`;
+      }
+      if (route.finallyState) {
+        switchBody += `      if (__exc_active()) {\n`;
+        switchBody += `        /* finally handler transition (state ${route.finallyState.stateId}, frame ${route.frameIndex}) */\n`;
+        switchBody += `        __sm->__state = ${route.finallyState.stateId};\n`;
+        switchBody += `        ${structName}__resume(__sm);\n`;
+        switchBody += `        return;\n`;
+        switchBody += `      }\n`;
+      }
+      switchBody += `      __sm->__state = ${route.nextStateId};\n`;
+      switchBody += `      ${structName}__resume(__sm);\n`;
+      switchBody += `      return;\n`;
+      switchBody += `    }\n`;
+    }
     for (const entry of syntheticFinallyStates) {
       const finallyBlock = entry.handler.finallyNode
         ? findFirstNonterminal(entry.handler.finallyNode, 'block')
@@ -12985,9 +12971,8 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
           switchBody += `${line}\n`;
         }
       }
-      switchBody += `      __exc_clear();\n`;
-      switchBody += `      __async_complete((void*)__sm);\n`;
-      switchBody += `      __free((void*)__sm);\n`;
+      switchBody += `      __sm->__state = ${entry.nextStateId};\n`;
+      switchBody += `      ${structName}__resume(__sm);\n`;
       switchBody += `      return;\n`;
       switchBody += `    }\n`;
     }
