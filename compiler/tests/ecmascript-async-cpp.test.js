@@ -248,6 +248,17 @@ test('async C++ emission: await checkpoints call __async_schedule', () => {
   assert.ok(cpp.includes('__async_schedule((void*)__sm, 2);'), 'checkpoint 2 must schedule continuation');
 });
 
+test('async C++ emission: await in an if branch guards scheduling and lowers else', () => {
+  const cpp = runCompilerCpp('async function run() { let enabled = 0; if (enabled) { await fetch(); } else { fallback(); } afterBranch(); }\n');
+
+  assert.match(cpp, /if \(!\(__sm->__local_enabled\)\) \{[\s\S]*__fallback\(\);[\s\S]*__sm->__state = 1;[\s\S]*__async_run__resume\(__sm\);/,
+    'a false condition must lower the else branch and resume without scheduling the await');
+  assert.match(cpp, /if \(!\(__sm->__local_enabled\)\) \{[\s\S]*\}[\s\S]*__async_prepare_await\(\(void\*\)__sm, 1\);[\s\S]*__fetch\(\);/,
+    'the await preparation and host call must remain after the guard');
+  assert.match(cpp, /case 1:[\s\S]*__afterBranch\(\);/,
+    'the resumed state must retain statements after the if form');
+});
+
 test('async C++ emission: multiple machines use non-overlapping schedule IDs', () => {
   const cpp = runCompilerCpp('async function first() { await a(); await b(); }\nasync function second() { await c(); }\n');
 

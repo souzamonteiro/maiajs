@@ -12672,6 +12672,44 @@ function lowerAsyncStateStatements(machine, stateIndex, compileContext) {
   return { lines, suspendPoint: nextSuspend };
 }
 
+function findAsyncIfGuard(machine, suspendPoint) {
+  const awaitNode = suspendPoint && suspendPoint.awaitNode;
+  if (!awaitNode) { return null; }
+
+  for (const statementNode of (machine.statementNodes || [])) {
+    if (!nodeContainsTarget(statementNode, awaitNode)) { continue; }
+    const ifNode = (statementNode.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'ifStatement'
+    );
+    if (!ifNode) { continue; }
+
+    const branchStatements = (ifNode.children || []).filter(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'statement'
+    );
+    const consequent = branchStatements[0] || null;
+    const alternate = branchStatements[1] || null;
+    if (!consequent || !nodeContainsTarget(consequent, awaitNode)) { continue; }
+    if (findFirstNonterminal(alternate, 'awaitExpression')) { continue; }
+
+    let awaitCount = 0;
+    walk(ifNode, (node) => {
+      if (node && node.kind === 'nonterminal' && node.name === 'awaitExpression') {
+        awaitCount += 1;
+      }
+    });
+    if (awaitCount !== 1) { continue; }
+
+    const condition = (ifNode.children || []).find(
+      (child) => child && child.kind === 'nonterminal' && child.name === 'expression'
+    ) || null;
+    if (condition) {
+      return { condition, alternate };
+    }
+  }
+
+  return null;
+}
+
 function extractAsyncAwaitOperand(awaitNode) {
   return awaitNode && (awaitNode.children || []).find(
     (child) => child && child.kind === 'nonterminal'
@@ -12913,16 +12951,38 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       const awaitedExprComment = awaitedExpr
         ? `: ${awaitedExpr}`
         : '';
+      const ifGuard = findAsyncIfGuard(machine, suspendPoint);
       const globalScheduleState = machinePlan && Number.isInteger(machinePlan.scheduleStateStart)
         ? (machinePlan.scheduleStateStart + i - 1)
         : i;
       const usesDynamicTransport = awaitUsesDynamicRuntimeTransport(suspendPoint);
 
+      switchBody += `      /* await checkpoint ${i}${awaitedExprComment} */\n`;
+      if (ifGuard) {
+        const loweredCondition = lowerExpressionValue(ifGuard.condition, compileContext);
+        if (loweredCondition !== null) {
+          switchBody += `      if (!(${loweredCondition})) {\n`;
+          if (ifGuard.alternate) {
+            const alternateLines = lowerStatementNode(
+              ifGuard.alternate,
+              compileContext,
+              3,
+              { returnTypeCpp: machine.returnValueCppType }
+            );
+            for (const line of alternateLines) {
+              switchBody += `${line}\n`;
+            }
+          }
+          switchBody += `        __sm->__state = ${i};\n`;
+          switchBody += `        ${structName}__resume(__sm);\n`;
+          switchBody += `        return;\n`;
+          switchBody += `      }\n`;
+        }
+      }
       switchBody += `      __sm->__state = ${i};\n`;
       if (usesDynamicTransport) {
         switchBody += `      __async_prepare_await((void*)__sm, ${globalScheduleState});\n`;
       }
-      switchBody += `      /* await checkpoint ${i}${awaitedExprComment} */\n`;
       if (awaitedExpr) {
         switchBody += `      ${awaitedExpr};\n`;
       }

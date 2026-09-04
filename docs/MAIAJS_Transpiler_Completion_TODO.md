@@ -5,7 +5,7 @@ Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
 
-- Full compiler test suite is green: **329/329 passing**.
+- Full compiler test suite is green: **330/330 passing**.
 - Ported MaiaCpp examples are green: runtime suite **22/22**, course suite **48/48**,
   and MaiaJS transpilation **22/22**.
 - `bash compiler/examples/validate_full_es8_dist.sh` validates the complete
@@ -39,8 +39,12 @@ failure in the validated pipeline:
   `npm run test:browser:async` verifies that an `await` resumes and the program
   returns `0` in the generated browser runner. The gate is implemented but the
   current console session ends Chrome before its observation window completes.
-- [ ] Extend async behavior-marker coverage to control flow beyond exception
-  routing.
+- [x] Guard a single `await` in an `if` branch. A false condition executes the
+  `else` branch and continues without preparing or scheduling the await; a true
+  condition preserves normal async resumption. Verified by
+  `npm run test:async:if-guard`.
+- [ ] Extend async behavior-marker coverage to loops, multiple awaits in one
+  conditional form, and statements surrounding a nested await.
 - [x] Materialize declaration targets for `await Promise.resolve(value)` in the
   resumed state and verify them through Node/WASM:
   `npm run test:async:await-result`.
