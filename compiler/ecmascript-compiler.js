@@ -4518,6 +4518,13 @@ function lowerIdentifierValue(identifierValue, compileContext = null) {
     return '0';
   }
 
+  const asyncStateField = compileContext
+    && compileContext.asyncStateLocalFields
+    && compileContext.asyncStateLocalFields.get(identifierValue);
+  if (asyncStateField) {
+    return `__sm->${asyncStateField}`;
+  }
+
   return identifierValue;
 }
 
@@ -6278,7 +6285,7 @@ function lowerConsoleLogArgumentExpression(expressionNode, compileContext) {
   if (directIdentifierNode) {
     const identifierValue = findFirstIdentifierValue(directIdentifierNode);
     if (identifierValue && identifierValue !== 'arguments') {
-      return identifierValue;
+      return lowerIdentifierValue(identifierValue, compileContext);
     }
   }
 
@@ -7464,6 +7471,12 @@ function lowerIdentifierFromLeftHandSideExpression(node, compileContext = null) 
     );
     if (compileContext.strictLowering) {
       err('unsupported lowering: leftHandSideExpression identifier');
+    }
+  }
+  if (identifier && compileContext && compileContext.asyncStateLocalFields) {
+    const asyncStateField = compileContext.asyncStateLocalFields.get(identifier);
+    if (asyncStateField) {
+      return `__sm->${asyncStateField}`;
     }
   }
   return identifier || null;
@@ -10664,6 +10677,9 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
     }
 
     const initializerExpr = extractVariableDeclarationInitializer(variableDeclaration, compileContext);
+    const asyncStateField = compileContext
+      && compileContext.asyncStateLocalFields
+      && compileContext.asyncStateLocalFields.get(variableName);
     const topLevelFunctionExpression = isTopLevelStatement
       ? extractDirectFunctionExpressionInitializer(initializerExpr)
       : null;
@@ -10719,6 +10735,11 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
       ? 'int'
       : cppType;
     const initValue = loweredInit !== null ? loweredInit : defaultCppValue(inferredFromLoweredInit);
+
+    if (asyncStateField) {
+      lowered.push(`${indent}__sm->${asyncStateField} = ${initValue};`);
+      continue;
+    }
 
     const canEmitConstQualifier = inferredFromLoweredInit !== 'const char*'
       && !/\*$/.test(inferredFromLoweredInit.replace(/^void\*$/, ''));
@@ -12639,6 +12660,119 @@ function lowerAsyncStateStatements(machine, stateIndex, compileContext) {
   return { lines, suspendPoint: nextSuspend };
 }
 
+function extractAsyncAwaitOperand(awaitNode) {
+  return awaitNode && (awaitNode.children || []).find(
+    (child) => child && child.kind === 'nonterminal'
+  ) || null;
+}
+
+function extractAsyncPromiseResolveValueNode(suspendPoint) {
+  const operand = extractAsyncAwaitOperand(suspendPoint && suspendPoint.awaitNode);
+  const callExpression = operand ? extractDirectCallExpressionNode(operand) : null;
+  const { memberExprNode, argExprs } = extractCallExpressionMemberAndArgs(callExpression);
+  const pathSegments = memberExprNode ? extractPathFromMemberExpression(memberExprNode, null) : null;
+  if (!Array.isArray(pathSegments)
+    || pathSegments.length !== 2
+    || pathSegments[0] !== 'Promise'
+    || pathSegments[1] !== 'resolve') {
+    return null;
+  }
+  return argExprs[0] || null;
+}
+
+function collectAsyncStateLocalFields(machine, compileContext) {
+  const fields = [];
+  const bindings = new Set(machine.localBindings || []);
+  if (bindings.size === 0) {
+    return fields;
+  }
+
+  for (const statementNode of (machine.statementNodes || [])) {
+    const declarationNode = (statementNode.children || []).find(
+      (child) => child
+        && child.kind === 'nonterminal'
+        && (child.name === 'variableStatement' || child.name === 'letDeclaration' || child.name === 'constDeclaration')
+    );
+    const declarationList = declarationNode
+      ? (declarationNode.children || []).find(
+        (child) => child && child.kind === 'nonterminal' && child.name === 'variableDeclarationList'
+      )
+      : null;
+    for (const declaration of extractVariableDeclarations(declarationList)) {
+      const name = extractVariableDeclarationName(declaration);
+      if (!name || !bindings.has(name) || fields.some((field) => field.name === name)) {
+        continue;
+      }
+      const initializer = extractVariableDeclarationInitializer(declaration);
+      const awaitNode = initializer ? findFirstNonterminal(initializer, 'awaitExpression') : null;
+      const awaitedValueNode = awaitNode
+        ? extractAsyncPromiseResolveValueNode({ awaitNode })
+        : null;
+      fields.push({
+        name,
+        fieldName: `__local_${name}`,
+        cppType: awaitedValueNode
+          ? inferInitializerCppType(awaitedValueNode, compileContext)
+          : awaitNode
+            ? 'int'
+          : inferInitializerCppType(initializer, compileContext)
+      });
+    }
+  }
+
+  return fields;
+}
+
+function lowerAsyncAwaitedExpression(suspendPoint, compileContext) {
+  const operand = extractAsyncAwaitOperand(suspendPoint && suspendPoint.awaitNode);
+  return operand ? lowerExpressionValue(operand, compileContext) : suspendPoint.awaitedExpr;
+}
+
+function lowerAsyncAwaitResultAssignment(suspendPoint, compileContext) {
+  const binding = suspendPoint && suspendPoint.resultBinding;
+  if (!binding || binding.kind !== 'declaration' || !binding.name) {
+    return null;
+  }
+
+  const fieldName = compileContext
+    && compileContext.asyncStateLocalFields
+    && compileContext.asyncStateLocalFields.get(binding.name);
+  const valueNode = extractAsyncPromiseResolveValueNode(suspendPoint);
+  if (!fieldName) {
+    reportUnsupportedLowering(
+      compileContext,
+      'async-await-result-unlowerable',
+      `await result assignment for '${binding.name}' could not be associated with async state`
+    );
+    return null;
+  }
+
+  if (!valueNode) {
+    const fieldType = compileContext
+      && compileContext.asyncStateLocalFieldTypes
+      && compileContext.asyncStateLocalFieldTypes.get(binding.name);
+    if (fieldType === 'const char*' || fieldType === 'void*') {
+      reportUnsupportedLowering(
+        compileContext,
+        'async-await-result-unlowerable',
+        `await result assignment for '${binding.name}' requires a scalar runtime value; string and object transport are not available yet`
+      );
+      return null;
+    }
+    const takeResult = fieldType === 'double'
+      ? '__async_take_f64((void*)__sm)'
+      : '__async_take_i32((void*)__sm)';
+    return `      __sm->${fieldName} = ${takeResult};`;
+  }
+
+  const value = lowerExpressionValue(valueNode, compileContext);
+  return value === null ? null : `      __sm->${fieldName} = ${value};`;
+}
+
+function awaitUsesDynamicRuntimeTransport(suspendPoint) {
+  return !extractAsyncPromiseResolveValueNode(suspendPoint);
+}
+
 function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(), compileContext = null) {
   if (!machines || machines.length === 0) { return ''; }
 
@@ -12647,6 +12781,13 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
     const machinePlan = bridgePlanByFunctionName.get(machine.name) || null;
     const terminalState = machine.suspendPointCount + 1;
     let nextSyntheticState = terminalState + 1;
+    const localFields = compileContext ? collectAsyncStateLocalFields(machine, compileContext) : [];
+    const previousAsyncStateFields = compileContext ? compileContext.asyncStateLocalFields : null;
+    const previousAsyncStateFieldTypes = compileContext ? compileContext.asyncStateLocalFieldTypes : null;
+    if (compileContext) {
+      compileContext.asyncStateLocalFields = new Map(localFields.map((field) => [field.name, field.fieldName]));
+      compileContext.asyncStateLocalFieldTypes = new Map(localFields.map((field) => [field.name, field.cppType]));
+    }
 
     const paramFields = machine.params.length === 0
       ? '  // no parameters'
@@ -12659,7 +12800,13 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         ? lowerAsyncStateStatements(machine, stateIndex, compileContext)
         : { lines: [], suspendPoint: machine.body[stateIndex] || null };
       const suspendPoint = stateBody.suspendPoint;
+      const resumedAssignment = stateIndex > 0
+        ? lowerAsyncAwaitResultAssignment(machine.body[stateIndex - 1], compileContext)
+        : null;
       switchBody += `    case ${stateIndex}: ${stateIndex === 0 ? '/* initial state */' : `/* resumed after await ${stateIndex} */`}\n`;
+      if (resumedAssignment) {
+        switchBody += `${resumedAssignment}\n`;
+      }
       for (const line of stateBody.lines) {
         switchBody += `${line}\n`;
       }
@@ -12672,8 +12819,9 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       }
 
       const i = stateIndex + 1;
-      const awaitedExprComment = suspendPoint && suspendPoint.awaitedExpr
-        ? `: ${suspendPoint.awaitedExpr}`
+      const awaitedExpr = lowerAsyncAwaitedExpression(suspendPoint, compileContext);
+      const awaitedExprComment = awaitedExpr
+        ? `: ${awaitedExpr}`
         : '';
       const tryDepth = suspendPoint ? suspendPoint.tryDepth : 0;
       const finallyDepth = suspendPoint ? suspendPoint.finallyDepth : 0;
@@ -12682,10 +12830,15 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       const globalScheduleState = machinePlan && Number.isInteger(machinePlan.scheduleStateStart)
         ? (machinePlan.scheduleStateStart + i - 1)
         : i;
+      const usesDynamicTransport = awaitUsesDynamicRuntimeTransport(suspendPoint);
 
+      switchBody += `      __sm->__state = ${i};\n`;
+      if (usesDynamicTransport) {
+        switchBody += `      __async_prepare_await((void*)__sm, ${globalScheduleState});\n`;
+      }
       switchBody += `      /* await checkpoint ${i}${awaitedExprComment} */\n`;
-      if (suspendPoint.awaitedExpr) {
-        switchBody += `      ${suspendPoint.awaitedExpr};\n`;
+      if (awaitedExpr) {
+        switchBody += `      ${awaitedExpr};\n`;
       }
       
       if (tryDepth > 0) {
@@ -12723,7 +12876,6 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         switchBody += `      }\n`;
       }
       
-      switchBody += `      __sm->__state = ${i};\n`;
       switchBody += `      __async_schedule((void*)__sm, ${globalScheduleState});\n`;
       switchBody += `      return;\n`;
     }
@@ -12737,6 +12889,17 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       : machine.params.map((p) => `${p.cppType} ${p.name}`).join(', ');
     const paramAssignments = machine.params.map((p) => `  __sm->${p.name} = ${p.name};`);
     const paramLocals = machine.params.map((p) => `  ${p.cppType} ${p.name} = __sm->${p.name};`);
+    const localFieldLines = localFields.length === 0
+      ? ''
+      : localFields.map((field) => `  ${field.cppType} ${field.fieldName};`).join('\n');
+    const localFieldAssignments = localFields.map(
+      (field) => `  __sm->${field.fieldName} = ${defaultCppValue(field.cppType)};`
+    );
+
+    if (compileContext) {
+      compileContext.asyncStateLocalFields = previousAsyncStateFields;
+      compileContext.asyncStateLocalFieldTypes = previousAsyncStateFieldTypes;
+    }
 
     return [
       `/* async function ${machine.name} -> state machine */`,
@@ -12745,6 +12908,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       `  int __state;`,
       `  ${machine.returnValueCppType} __result;`,
       paramFields,
+      localFieldLines,
       `};`,
       ``,
       `static void ${structName}__resume(struct ${structName}* __sm) {`,
@@ -12764,6 +12928,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       `  __sm->__state = 0;`,
       `  __sm->__result = 0;`,
       paramAssignments.join('\n'),
+      localFieldAssignments.join('\n'),
       `  ${structName}__resume(__sm);`,
       `}`
     ].join('\n');
@@ -12776,6 +12941,9 @@ function emitAsyncSchedulerHookDeclsCpp(machines) {
   return [
     '/* async scheduler hooks (runtime-provided) */',
     'extern void __async_schedule(void* sm, int state_id);',
+    'extern void __async_prepare_await(void* sm, int state_id);',
+    'extern int __async_take_i32(void* sm);',
+    'extern double __async_take_f64(void* sm);',
     'extern void __async_complete(void* sm);',
     'extern void* __malloc(unsigned long size);',
     'extern void __free(void* ptr);'

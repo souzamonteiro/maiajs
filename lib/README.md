@@ -12,6 +12,8 @@ This directory contains WebAssembly (WAT/WASM) runtime modules that are included
 - **exception.wasm** — Exception + async scheduler runtime for async/await support
   - Exception ABI: `__exc_push`, `__exc_pop`, `__exc_active`, `__exc_type`, `__exc_data`, `__exc_throw`, `__exc_matches`, `__exc_clear`
   - Async scheduler hooks: `__async_schedule(void* sm, int state_id)`, `__async_complete(void* sm)`
+  - Dynamic scalar fulfillment ABI: `__async_prepare_await(void* sm, int state_id)`,
+    `__async_take_i32(void* sm)`, and `__async_take_f64(void* sm)`
   - Optional diagnostics: `__async_pending_count()`, `__async_last_state()`
 
 - **exception.js** — Optional wrapper helper to instantiate `exception.wasm` and build `env` imports

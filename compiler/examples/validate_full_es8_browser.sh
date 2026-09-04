@@ -4,14 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 SOURCE_JS="${BROWSER_SOURCE_JS:-$SCRIPT_DIR/full_es8_test.js}"
-WEBCPP_SH="$REPO_ROOT/maiacpp/bin/webcpp.sh"
 CHROME_BIN="${CHROME_BIN:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 REQUESTED_PORT="${BROWSER_PORT:-0}"
 APP_NAME="${BROWSER_APP_NAME:-full_es8_test}"
 RUN_WAIT_MS="${BROWSER_RUN_WAIT_MS:-12000}"
 VIRTUAL_TIME_MS="${BROWSER_VIRTUAL_TIME_MS:-20000}"
 
-for required in "$SOURCE_JS" "$WEBCPP_SH" "$CHROME_BIN"; do
+for required in "$SOURCE_JS" "$REPO_ROOT/bin/webjs.sh" "$CHROME_BIN"; do
   if [[ ! -e "$required" ]]; then
     echo "[validate-full-es8-browser] required file not found: $required" >&2
     exit 1
@@ -30,7 +29,11 @@ cleanup() {
     kill "$SERVER_PID" >/dev/null 2>&1 || true
     wait "$SERVER_PID" >/dev/null 2>&1 || true
   fi
-  rm -rf "$TMP_DIR"
+  if [[ "${KEEP_TMP:-0}" == "1" ]]; then
+    echo "[validate-full-es8-browser] keeping temp dir: $TMP_DIR" >&2
+  else
+    rm -rf "$TMP_DIR"
+  fi
 }
 trap cleanup EXIT
 
@@ -41,11 +44,9 @@ SERVER_LOG="$TMP_DIR/http.log"
 CHROME_LOG="$TMP_DIR/chrome.log"
 DOM_OUT="$TMP_DIR/browser-dom.html"
 
-echo "[validate-full-es8-browser] transpiling JS -> C++98"
-"$REPO_ROOT/bin/webjs.sh" --file "$SOURCE_JS" --cpp-out "$CPP_OUT" --no-webcpp
-
-echo "[validate-full-es8-browser] building browser dist"
-"$WEBCPP_SH" "$CPP_OUT" --dist --out-dir "$DIST_DIR" --name "$APP_NAME"
+echo "[validate-full-es8-browser] building browser dist through MaiaJS"
+"$REPO_ROOT/bin/webjs.sh" --file "$SOURCE_JS" --cpp-out "$CPP_OUT" \
+  --out-dir "$DIST_DIR" --name "$APP_NAME" --dist
 
 cat > "$HARNESS" <<HTML
 <!doctype html>

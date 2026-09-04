@@ -60,6 +60,28 @@ test('async IR emits correct suspend point count for awaited expressions', () =>
   assert.equal(machine.body[1].stateId, 2, 'second suspend point state ID must be 2');
 });
 
+test('async IR records top-level local bindings for state preservation', () => {
+  const tree = parseTree('async function run(value) { const marker = "ok"; let count = 1; await fetch(); }\n');
+  const ir = buildAsyncIR(tree);
+
+  assert.deepEqual(
+    ir.asyncFunctions[0].localBindings,
+    ['marker', 'count'],
+    'top-level locals must be available to the state-machine lowering pass'
+  );
+});
+
+test('async IR records the declaration that receives an awaited result', () => {
+  const tree = parseTree('async function run() { const value = await Promise.resolve(7); }\n');
+  const ir = buildAsyncIR(tree);
+
+  assert.deepEqual(
+    ir.asyncFunctions[0].body[0].resultBinding,
+    { kind: 'declaration', name: 'value' },
+    'await checkpoint must identify its declaration target'
+  );
+});
+
 test('async IR suspend points have null awaitedExpr before lowering', () => {
   const tree = parseTree('async function run() { await fetch(); }\n');
   const ir = buildAsyncIR(tree);

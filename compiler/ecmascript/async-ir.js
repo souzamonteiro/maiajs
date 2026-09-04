@@ -375,10 +375,58 @@ function collectFunctionBodyStatementNodes(functionBodyNode) {
     .filter(Boolean);
 }
 
+function collectAsyncLocalBindings(statementNodes, params) {
+  const names = [];
+  const seen = new Set((params || []).map((param) => param.name));
+
+  for (const statementNode of (statementNodes || [])) {
+    const declarationNode = (statementNode.children || []).find(
+      (child) => child
+        && child.kind === 'nonterminal'
+        && (child.name === 'variableStatement' || child.name === 'letDeclaration' || child.name === 'constDeclaration')
+    );
+    const declarationList = findChild(declarationNode, 'variableDeclarationList');
+    for (const declaration of (declarationList && declarationList.children || [])) {
+      if (!declaration || declaration.kind !== 'nonterminal' || declaration.name !== 'variableDeclaration') {
+        continue;
+      }
+      const name = firstIdentifierValue(findChild(declaration, 'bindingIdentifier'));
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        names.push(name);
+      }
+    }
+  }
+
+  return names;
+}
+
 function nodeContains(root, target) {
   if (!root || !target) { return false; }
   if (root === target) { return true; }
   return (root.children || []).some((child) => nodeContains(child, target));
+}
+
+function extractAwaitResultBinding(statementNode, awaitNode) {
+  const declarationNode = (statementNode && statementNode.children || []).find(
+    (child) => child
+      && child.kind === 'nonterminal'
+      && (child.name === 'variableStatement' || child.name === 'letDeclaration' || child.name === 'constDeclaration')
+  );
+  const declarationList = findChild(declarationNode, 'variableDeclarationList');
+  for (const declaration of (declarationList && declarationList.children || [])) {
+    if (!declaration || declaration.kind !== 'nonterminal' || declaration.name !== 'variableDeclaration') {
+      continue;
+    }
+    if (!nodeContains(declaration, awaitNode)) {
+      continue;
+    }
+    const name = firstIdentifierValue(findChild(declaration, 'bindingIdentifier'));
+    if (name) {
+      return { kind: 'declaration', name };
+    }
+  }
+  return null;
 }
 
 /**
@@ -403,6 +451,7 @@ function buildAsyncStateMachine(functionDeclarationNode, options = {}) {
   const awaitExpressions = collectAwaitExpressions(functionBody);
   const suspendPointCount = awaitExpressions.length;
   const statementNodes = collectFunctionBodyStatementNodes(functionBody);
+  const localBindings = collectAsyncLocalBindings(statementNodes, params);
 
   const body = [];
   for (let i = 0; i < suspendPointCount; i += 1) {
@@ -428,9 +477,13 @@ function buildAsyncStateMachine(functionDeclarationNode, options = {}) {
       finallyHandlers: finallyHandlers
     };
     const statementIndex = statementNodes.findIndex((statementNode) => nodeContains(statementNode, awaitNode));
+    const resultBinding = statementIndex >= 0
+      ? extractAwaitResultBinding(statementNodes[statementIndex], awaitNode)
+      : null;
     Object.defineProperties(suspendPoint, {
       awaitNode: { value: awaitNode, enumerable: false },
-      statementIndex: { value: statementIndex, enumerable: false }
+      statementIndex: { value: statementIndex, enumerable: false },
+      resultBinding: { value: resultBinding, enumerable: true }
     });
     body.push(suspendPoint);
   }
@@ -440,6 +493,7 @@ function buildAsyncStateMachine(functionDeclarationNode, options = {}) {
     name,
     params,
     returnValueCppType: 'int',
+    localBindings,
     body,
     suspendPointCount
   };

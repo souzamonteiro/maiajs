@@ -78,6 +78,38 @@ test('async C++ emission: struct includes parameter fields', () => {
   assert.match(cpp, /int data;/, 'struct must include data parameter field');
 });
 
+test('async C++ emission: locals are retained in the state machine across await', () => {
+  const cpp = runCompilerCpp(
+    'async function retain() { let value = 7; await Promise.resolve(0); value = value + 1; console.log(value); }\n'
+  );
+
+  assert.match(cpp, /double __local_value;/, 'async local must be stored in the state struct');
+  assert.match(cpp, /__sm->__local_value = 7;/, 'initial declaration must initialize the state field');
+  assert.match(cpp, /__sm->__local_value = __sm->__local_value \+ 1;/, 'resumed assignment must use the state field');
+  assert.match(cpp, /__console__log\(__sm->__local_value\);/, 'resumed read must use the state field');
+});
+
+test('async C++ emission: Promise.resolve result initializes its target after resume', () => {
+  const cpp = runCompilerCpp(
+    'async function load() { const marker = await Promise.resolve("await result retained"); console.log(marker); }\n'
+  );
+
+  assert.match(cpp, /const char\* __local_marker;/, 'await target must use the resolved value type');
+  assert.match(cpp, /case 0:[\s\S]*__Promise__resolve\("await result retained"\);/, 'initial state must await Promise.resolve');
+  assert.match(cpp, /case 1:[\s\S]*__sm->__local_marker = "await result retained";/, 'resumed state must materialize the resolved value');
+  assert.match(cpp, /__console__log\(__sm->__local_marker\);/, 'resumed code must consume the assigned value');
+});
+
+test('async C++ emission: dynamic await result uses the scalar runtime ABI', () => {
+  const cpp = runCompilerCpp(
+    'async function load() { const status = await getStatus(); console.log(status); }\n'
+  );
+
+  assert.match(cpp, /__async_prepare_await\(\(void\*\)__sm, 1\);/, 'dynamic await must register its runtime context before the host call');
+  assert.match(cpp, /case 1:[\s\S]*__sm->__local_status = __async_take_i32\(\(void\*\)__sm\);/, 'resumed state must read the fulfilled scalar');
+  assert.match(cpp, /extern int __async_take_i32\(void\* sm\);/, 'generated C++ must declare the scalar runtime ABI');
+});
+
 test('async C++ emission: multiple async functions each get their own struct', () => {
   const cpp = runCompilerCpp('async function a() {}\nasync function b() {}\n');
 

@@ -1,6 +1,6 @@
 # MaiaJS Transpiler Completion Strategy and TODO
 
-Last updated: 2026-09-02
+Last updated: 2026-09-03
 Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
@@ -35,9 +35,27 @@ failure in the validated pipeline:
   MaiaCpp, MaiaC/WebC, and the Node/browser scheduler bridges. Linear async
   bodies now run before and after `await` rather than emitting a passive
   skeleton.
-- [ ] Extend async behavior-marker coverage to control flow, locals retained
-  across `await`, awaited result assignment, rejection routing, and concurrent
-  invocations.
+- [ ] Run the dedicated Chrome-headless smoke gate for the linear async baseline:
+  `npm run test:browser:async` verifies that an `await` resumes and the program
+  returns `0` in the generated browser runner. The gate is implemented but the
+  current console session ends Chrome before its observation window completes.
+- [ ] Extend async behavior-marker coverage to control flow, rejection routing,
+  and concurrent invocations.
+- [x] Materialize declaration targets for `await Promise.resolve(value)` in the
+  resumed state and verify them through Node/WASM:
+  `npm run test:async:await-result`.
+- [x] Define and validate the scalar scheduler ABI for dynamic promise
+  fulfillment: `__async_prepare_await(sm, state)`, `__async_take_i32(sm)`,
+  and `__async_take_f64(sm)`. The WebC adapter retains thenables returned by
+  `void` host imports, queues their resolution by state-machine pointer, and
+  resumes `const value = await dynamicPromise()` through the public pipeline:
+  `npm run test:async:dynamic-value`.
+- [ ] Extend the dynamic promise ABI with linear-memory codecs for strings and
+  structured objects, then route promise rejections through the exception ABI.
+- [x] Preserve top-level local bindings in the async state structure and verify
+  their resumed reads through the public Node/WASM distribution path:
+  `npm run test:async:locals`.
+- [ ] Run the equivalent browser gate: `npm run test:browser:async-locals`.
 - [x] Exercise the generated browser runner in Chrome headless as a separate
   gate via `npm run test:browser:es8`; it generates a temporary ES8 dist,
   clicks the runner's `Run` control, and validates behavior markers.

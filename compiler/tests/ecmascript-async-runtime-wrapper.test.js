@@ -150,3 +150,27 @@ test('async runtime wrapper lazy-binds bridge via resolver and caches by sm poin
 
   runtime.scheduler.unregisterResumeHandler(901);
 });
+
+test('async runtime transports a scalar resolved by a host promise', async () => {
+  const events = [];
+  const runtime = await instantiateExceptionRuntime({
+    wasmBytes: loadRuntimeWasmBytes(),
+    autoDrain: false,
+    onSchedule: (event) => events.push(event)
+  });
+  const imports = {
+    __delayedValue: () => Promise.resolve(42),
+    ...runtime.env
+  };
+
+  runtime.attachPromiseImports(imports);
+  imports.__async_prepare_await(123, 7);
+  assert.equal(imports.__delayedValue(), 0, 'a promise import must yield the WASM scalar placeholder');
+  imports.__async_schedule(123, 7);
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(runtime.scheduler.drain(), 1, 'resolved promise must schedule exactly one resume event');
+  assert.deepEqual(events, [{ smPtr: 123, stateId: 7, valueTag: 1, value: 42 }]);
+  assert.equal(imports.__async_take_value_tag(123), 1, 'resolved scalar must expose its value tag');
+  assert.equal(imports.__async_take_i32(123), 42, 'resolved scalar must be readable by resumed WASM code');
+});
