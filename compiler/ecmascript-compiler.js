@@ -12755,10 +12755,18 @@ function findAsyncWhileGuard(machine, suspendPoint) {
     const statements = block ? (block.children || []).filter((child) => child && child.kind === 'nonterminal' && child.name === 'statement') : [];
     const awaitStatements = statements.filter((statement) => findFirstNonterminal(statement, 'awaitExpression'));
     const awaitIndex = awaitStatements.findIndex((statement) => nodeContainsTarget(statement, awaitNode));
-    if (!condition || awaitStatements.length !== 1 || awaitIndex !== 0) continue;
+    if (!condition || awaitIndex < 0) continue;
     const statementIndex = statements.findIndex((statement) => nodeContainsTarget(statement, awaitNode));
     if (statementIndex < 0) continue;
-    return { condition, preAwaitStatements: statements.slice(0, statementIndex), postAwaitStatements: statements.slice(statementIndex + 1) };
+    const previousStatementIndex = awaitIndex === 0
+      ? -1
+      : statements.findIndex((statement) => statement === awaitStatements[awaitIndex - 1]);
+    return {
+      condition,
+      isLastAwait: awaitIndex === awaitStatements.length - 1,
+      preAwaitStatements: statements.slice(previousStatementIndex + 1, statementIndex),
+      postAwaitStatements: awaitIndex === awaitStatements.length - 1 ? statements.slice(statementIndex + 1) : []
+    };
   }
   return null;
 }
@@ -12998,7 +13006,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         ? lowerAsyncAwaitResultAssignment(previousSuspendPoint, compileContext)
         : null;
       switchBody += `    case ${stateIndex}: ${stateIndex === 0 ? '/* initial state */' : `/* resumed after await ${stateIndex} */`}\n`;
-      if (previousWhileGuard) {
+      if (previousWhileGuard && previousWhileGuard.isLastAwait) {
         switchBody += `      if (__sm->__loop == 1) {\n`;
         for (const statement of previousWhileGuard.postAwaitStatements) {
           for (const line of lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
