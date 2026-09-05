@@ -1,6 +1,6 @@
 # MaiaJS Transpiler Completion Strategy and TODO
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
@@ -35,10 +35,10 @@ failure in the validated pipeline:
   MaiaCpp, MaiaC/WebC, and the Node/browser scheduler bridges. Linear async
   bodies now run before and after `await` rather than emitting a passive
   skeleton.
-- [ ] Run the dedicated Chrome-headless smoke gate for the linear async baseline:
-  `npm run test:browser:async` verifies that an `await` resumes and the program
-  returns `0` in the generated browser runner. The gate is implemented but the
-  current console session ends Chrome before its observation window completes.
+- [ ] Repair and run the dedicated Chrome-headless smoke gate for the linear
+  async baseline: `npm run test:browser:async` currently reaches the generated
+  runner but remains at `Running...` in the iframe harness before its observation
+  callback fires. Node/WASM behavior is already validated independently.
 - [x] Lower a single `await` in an `if` branch together with surrounding branch
   statements. A false condition executes the `else` branch and continues
   without preparing or scheduling the await; a true condition executes branch
@@ -79,8 +79,9 @@ failure in the validated pipeline:
 - [x] Run a sibling `finally` after a local async `catch` has handled the
   rejection, then continue with statements following the complete try form:
   `npm run test:async:catch-finally`.
-- [ ] Extend handle lowering to object methods, nested properties and typed
-  structured values.
+- [ ] Extend handle lowering to object methods and typed structured values.
+  Nested scalar properties are covered by the dynamic-handle ABI; the remaining
+  work needs explicit value-type selection rather than assuming `int`.
 - [x] Preserve top-level local bindings in the async state structure and verify
   their resumed reads through the public Node/WASM distribution path:
   `npm run test:async:locals`.
@@ -284,6 +285,8 @@ For parser/grammar changes only:
 - [x] No JS-only tokens leak into generated C++ for supported subset.
 - [x] Full suite green and fixtures green.
 - [x] Dist Node path validated by behavior markers (not only exit code).
-- [x] Browser runner behavior-marker gate passes in Chrome headless.
+- [ ] Browser runner behavior-marker gate passes in Chrome headless. The current
+  iframe-based harness hangs at `Running...`; retain the Node/WASM behavior gate
+  as the reliable acceptance signal until the browser harness is repaired.
 - [x] Unsupported items explicitly diagnosed and documented as out of scope.
 - [ ] Ecosystem synchronization protocol followed for any parser-generator-impacting changes.

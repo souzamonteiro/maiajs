@@ -14,9 +14,10 @@ This directory contains WebAssembly (WAT/WASM) runtime modules that are included
   - Async scheduler hooks: `__async_schedule(void* sm, int state_id)`, `__async_complete(void* sm)`
   - Dynamic scalar fulfillment ABI: `__async_prepare_await(void* sm, int state_id)`,
     `__async_take_i32(void* sm)`, and `__async_take_f64(void* sm)`
-  - Dynamic handle ABI: `__async_handle_get_i32(handle, key)` for a one-level
-    scalar object property and `__async_handle_get_string(handle)` for a UTF-8
-    string copied into application linear memory
+  - Dynamic handle ABI: `__async_handle_get_i32(handle, key)` for scalar object
+    properties, `__async_handle_get_handle(handle, key)` for nested object
+    traversal, and `__async_handle_get_string(handle)` for a UTF-8 string
+    copied into application linear memory
   - Rejected dynamic promises activate the exception ABI with generic type `1`;
     async state machines route a matching rejection into a synthetic `catch` state
   - Optional diagnostics: `__async_pending_count()`, `__async_last_state()`
