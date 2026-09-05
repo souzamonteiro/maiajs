@@ -24,10 +24,15 @@ fi
 
 TMP_DIR="$(mktemp -d /tmp/validate-full-es8-browser.XXXXXX)"
 SERVER_PID=""
+CHROME_PID=""
 cleanup() {
   if [[ -n "$SERVER_PID" ]]; then
     kill "$SERVER_PID" >/dev/null 2>&1 || true
     wait "$SERVER_PID" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$CHROME_PID" ]]; then
+    kill "$CHROME_PID" >/dev/null 2>&1 || true
+    wait "$CHROME_PID" >/dev/null 2>&1 || true
   fi
   if [[ "${KEEP_TMP:-0}" == "1" ]]; then
     echo "[validate-full-es8-browser] keeping temp dir: $TMP_DIR" >&2
@@ -39,7 +44,6 @@ trap cleanup EXIT
 
 CPP_OUT="$TMP_DIR/$APP_NAME.cpp"
 DIST_DIR="$TMP_DIR/dist"
-HARNESS="$DIST_DIR/browser-headless-harness.html"
 SERVER_LOG="$TMP_DIR/http.log"
 CHROME_LOG="$TMP_DIR/chrome.log"
 DOM_OUT="$TMP_DIR/browser-dom.html"
@@ -47,25 +51,6 @@ DOM_OUT="$TMP_DIR/browser-dom.html"
 echo "[validate-full-es8-browser] building browser dist through MaiaJS"
 "$REPO_ROOT/bin/webjs.sh" --file "$SOURCE_JS" --cpp-out "$CPP_OUT" \
   --out-dir "$DIST_DIR" --name "$APP_NAME" --dist
-
-cat > "$HARNESS" <<HTML
-<!doctype html>
-<meta charset="utf-8">
-<iframe id="runner" src="./browser-runner.html?app=$APP_NAME"></iframe>
-<pre id="result">waiting</pre>
-<script>
-  const frame = document.getElementById('runner');
-  frame.addEventListener('load', () => setTimeout(() => {
-    const runnerDocument = frame.contentDocument;
-    runnerDocument.getElementById('run').click();
-    setTimeout(() => {
-      document.getElementById('result').textContent =
-        runnerDocument.getElementById('status').textContent + '\n' +
-        runnerDocument.getElementById('output').textContent;
-    }, $RUN_WAIT_MS);
-  }, 0));
-</script>
-HTML
 
 echo "[validate-full-es8-browser] serving temporary dist"
 python3 -u -m http.server "$REQUESTED_PORT" --directory "$DIST_DIR" >"$SERVER_LOG" 2>&1 &
@@ -87,24 +72,43 @@ if [[ -z "$PORT" ]]; then
   cat "$SERVER_LOG" >&2 || true
   exit 1
 fi
-if ! curl --fail --silent --show-error "http://127.0.0.1:$PORT/browser-headless-harness.html" >/dev/null; then
+if ! curl --fail --silent --show-error "http://127.0.0.1:$PORT/browser-runner.html" >/dev/null; then
   cat "$SERVER_LOG" >&2 || true
   exit 1
 fi
 
 echo "[validate-full-es8-browser] running Chrome headless"
-if ! "$CHROME_BIN" \
+"$CHROME_BIN" \
   --headless=new \
   --disable-gpu \
   --disable-background-networking \
   --no-first-run \
   --no-default-browser-check \
   --user-data-dir="$TMP_DIR/chrome-profile" \
-  --virtual-time-budget="$VIRTUAL_TIME_MS" \
-  --dump-dom \
-  "http://127.0.0.1:$PORT/browser-headless-harness.html" \
-  >"$DOM_OUT" 2>"$CHROME_LOG"; then
-  echo "[validate-full-es8-browser] Chrome headless failed." >&2
+  --remote-debugging-port=0 \
+  about:blank > /dev/null 2>"$CHROME_LOG" &
+CHROME_PID="$!"
+
+CDP_BASE_URL=""
+for _ in {1..50}; do
+  CDP_WS_URL="$(sed -n 's/DevTools listening on \(ws:\/\/[^ ]*\).*/\1/p' "$CHROME_LOG" | tail -n 1)"
+  if [[ -n "$CDP_WS_URL" ]]; then
+    CDP_BASE_URL="${CDP_WS_URL/ws:\/\//http:\/\/}"
+    CDP_BASE_URL="${CDP_BASE_URL%%/devtools/*}"
+    break
+  fi
+  sleep 0.1
+done
+if [[ -z "$CDP_BASE_URL" ]]; then
+  echo "[validate-full-es8-browser] Chrome did not expose DevTools." >&2
+  cat "$CHROME_LOG" >&2 || true
+  exit 1
+fi
+
+if ! node "$SCRIPT_DIR/validate_browser_runner_cdp.js" \
+  "$CDP_BASE_URL" "http://127.0.0.1:$PORT/browser-runner.html?app=$APP_NAME" "$RUN_WAIT_MS" \
+  >"$DOM_OUT" 2>>"$CHROME_LOG"; then
+  echo "[validate-full-es8-browser] Chrome runner probe failed." >&2
   cat "$CHROME_LOG" >&2 || true
   exit 1
 fi

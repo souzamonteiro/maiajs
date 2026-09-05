@@ -35,10 +35,10 @@ failure in the validated pipeline:
   MaiaCpp, MaiaC/WebC, and the Node/browser scheduler bridges. Linear async
   bodies now run before and after `await` rather than emitting a passive
   skeleton.
-- [ ] Repair and run the dedicated Chrome-headless smoke gate for the linear
-  async baseline: `npm run test:browser:async` currently reaches the generated
-  runner but remains at `Running...` in the iframe harness before its observation
-  callback fires. Node/WASM behavior is already validated independently.
+- [x] Run the dedicated Chrome-headless smoke gate for the linear async
+  baseline: `npm run test:browser:async` controls the real generated runner
+  through Chrome DevTools Protocol and verifies that `await` resumes and the
+  program returns `0`.
 - [x] Lower a single `await` in an `if` branch together with surrounding branch
   statements. A false condition executes the `else` branch and continues
   without preparing or scheduling the await; a true condition executes branch
@@ -85,7 +85,7 @@ failure in the validated pipeline:
 - [x] Preserve top-level local bindings in the async state structure and verify
   their resumed reads through the public Node/WASM distribution path:
   `npm run test:async:locals`.
-- [ ] Run the equivalent browser gate: `npm run test:browser:async-locals`.
+- [x] Run the equivalent browser gate: `npm run test:browser:async-locals`.
 - [x] Exercise the generated browser runner in Chrome headless as a separate
   gate via `npm run test:browser:es8`; it generates a temporary ES8 dist,
   clicks the runner's `Run` control, and validates behavior markers.
@@ -285,8 +285,8 @@ For parser/grammar changes only:
 - [x] No JS-only tokens leak into generated C++ for supported subset.
 - [x] Full suite green and fixtures green.
 - [x] Dist Node path validated by behavior markers (not only exit code).
-- [ ] Browser runner behavior-marker gate passes in Chrome headless. The current
-  iframe-based harness hangs at `Running...`; retain the Node/WASM behavior gate
-  as the reliable acceptance signal until the browser harness is repaired.
+- [x] Browser runner behavior-marker gates pass in Chrome headless. The gate
+  uses Chrome DevTools Protocol to observe the real runner rather than relying
+  on an iframe timer and `--dump-dom` virtual time.
 - [x] Unsupported items explicitly diagnosed and documented as out of scope.
 - [ ] Ecosystem synchronization protocol followed for any parser-generator-impacting changes.
