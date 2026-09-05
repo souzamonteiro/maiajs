@@ -280,6 +280,13 @@ test('async C++ emission: if branch keeps its marker through sequential awaits',
     'the final resume must clear the marker after its branch-local statements');
 });
 
+test('async C++ emission: while body returns to its await checkpoint after resume', () => {
+  const cpp = runCompilerCpp('async function repeat() { let count = 0; while (count < 2) { await tick(); count = count + 1; } console.log("done"); }\n');
+  assert.match(cpp, /int __loop;/, 'state machine must retain loop progress');
+  assert.match(cpp, /if \(!\(__sm->__local_count < 2\)\)[\s\S]*__sm->__loop = 0/, 'checkpoint must exit when the loop condition becomes false');
+  assert.match(cpp, /if \(__sm->__loop == 1\)[\s\S]*__sm->__local_count = __sm->__local_count \+ 1;[\s\S]*__sm->__state = 0/, 'resumption must run the loop tail and return to its condition');
+});
+
 test('async C++ emission: multiple machines use non-overlapping schedule IDs', () => {
   const cpp = runCompilerCpp('async function first() { await a(); await b(); }\nasync function second() { await c(); }\n');
 

@@ -48,7 +48,9 @@ failure in the validated pipeline:
   checkpoints without duplicating interstitial statements; the alternate branch
   skips all of those checkpoints. Covered by `npm run test:async:if-guard`.
 - [ ] Extend async behavior-marker coverage to loops and nested conditional
-  forms containing independently selected awaits.
+  forms containing independently selected awaits. A single-`await` `while`
+  body with preserved locals is validated by `npm run test:async:while-loop`;
+  multiple awaits, `break`/`continue`, and nested forms remain pending.
 - [x] Materialize declaration targets for `await Promise.resolve(value)` in the
   resumed state and verify them through Node/WASM:
   `npm run test:async:await-result`.
