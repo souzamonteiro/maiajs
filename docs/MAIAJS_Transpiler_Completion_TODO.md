@@ -59,9 +59,11 @@ failure in the validated pipeline:
   resumes `const value = await dynamicPromise()` through the public pipeline:
   `npm run test:async:dynamic-value`.
 - [x] Extend the dynamic promise ABI with opaque handles for strings and host
-  objects. Direct string output and one-level scalar property reads are lowered
-  through `__async_handle_get_string` and `__async_handle_get_i32`, verified by
-  `npm run test:async:dynamic-value` with `{ status: 201 }` and a string.
+  objects. Direct string output plus scalar reads through one or more object
+  properties are lowered through `__async_handle_get_string`,
+  `__async_handle_get_handle`, and `__async_handle_get_i32`, verified by
+  `npm run test:async:dynamic-value` with `{ status: 201, meta: { status: 202 } }`
+  and a string.
 - [x] Route a rejected dynamic promise through the exception ABI and execute a
   simple async `catch` body in a synthetic state, including the error-value
   binding. The public Node/WASM gate is `npm run test:async:rejection`.

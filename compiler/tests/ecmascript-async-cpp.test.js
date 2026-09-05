@@ -112,11 +112,13 @@ test('async C++ emission: dynamic await result uses the scalar runtime ABI', () 
 
 test('async C++ emission: dynamic await handles lower string and object reads through the runtime ABI', () => {
   const cpp = runCompilerCpp(
-    'async function load() { const response = await getResponse(); if (response.status === 201) { console.log("ok"); } const message = await getMessage(); console.log(message); }\n'
+    'async function load() { const response = await getResponse(); if (response.status === 201) { console.log("ok"); } if (response.meta.status === 202) { console.log("nested"); } const message = await getMessage(); console.log(message); }\n'
   );
 
   assert.match(cpp, /__async_handle_get_i32\(__sm->__local_response, \(const char\*\)"status"\)/, 'object property must read from the dynamic handle');
+  assert.match(cpp, /__async_handle_get_i32\(__async_handle_get_handle\(__sm->__local_response, \(const char\*\)"meta"\), \(const char\*\)"status"\)/, 'nested object property must retain and read through an intermediate handle');
   assert.match(cpp, /__console__log\(__async_handle_get_string\(__sm->__local_message\)\);/, 'string handle must convert to C string for console output');
+  assert.match(cpp, /extern int __async_handle_get_handle\(int handle, const char\* key\);/, 'generated C++ must declare the nested-handle ABI');
   assert.match(cpp, /extern const char\* __async_handle_get_string\(int handle\);/, 'generated C++ must declare the string handle ABI');
 });
 

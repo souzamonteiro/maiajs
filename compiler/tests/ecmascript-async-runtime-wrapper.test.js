@@ -184,7 +184,7 @@ test('async runtime transports string and object promise values through handles'
     getMemory: () => memory
   });
   const imports = {
-    __getResponse: () => Promise.resolve({ status: 201 }),
+    __getResponse: () => Promise.resolve({ status: 201, meta: { status: 202 } }),
     __getMessage: () => Promise.resolve('async handle text'),
     __malloc: (size) => {
       const ptr = nextPtr;
@@ -193,7 +193,9 @@ test('async runtime transports string and object promise values through handles'
     },
     ...runtime.env
   };
-  new TextEncoder().encodeInto('status\0', new Uint8Array(memory.buffer).subarray(16));
+  const bytes = new Uint8Array(memory.buffer);
+  new TextEncoder().encodeInto('status\0', bytes.subarray(16));
+  new TextEncoder().encodeInto('meta\0', bytes.subarray(32));
 
   runtime.attachPromiseImports(imports);
   imports.__async_prepare_await(200, 1);
@@ -208,8 +210,10 @@ test('async runtime transports string and object promise values through handles'
   const responseHandle = imports.__async_take_i32(200);
   const messageHandle = imports.__async_take_i32(201);
   assert.equal(imports.__async_handle_get_i32(responseHandle, 16), 201, 'object property must be readable through its handle');
+  const metaHandle = imports.__async_handle_get_handle(responseHandle, 32);
+  assert.notEqual(metaHandle, 0, 'nested object property must retain an opaque handle');
+  assert.equal(imports.__async_handle_get_i32(metaHandle, 16), 202, 'nested object scalar must be readable through its retained handle');
   const stringPtr = imports.__async_handle_get_string(messageHandle);
-  const bytes = new Uint8Array(memory.buffer);
   const end = bytes.indexOf(0, stringPtr);
   assert.equal(new TextDecoder().decode(bytes.subarray(stringPtr, end)), 'async handle text');
 });

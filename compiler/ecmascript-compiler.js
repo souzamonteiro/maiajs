@@ -8393,8 +8393,12 @@ function lowerExpressionValue(node, compileContext) {
         const dynamicHandleField = compileContext
           && compileContext.asyncStateDynamicHandleFields
           && compileContext.asyncStateDynamicHandleFields.get(segments[0]);
-        if (dynamicHandleField && segments.length === 2) {
-          return `__async_handle_get_i32(__sm->${dynamicHandleField}, (const char*)"${segments[1]}")`;
+        if (dynamicHandleField && segments.length >= 2) {
+          let handleExpression = `__sm->${dynamicHandleField}`;
+          for (let index = 1; index < segments.length - 1; index += 1) {
+            handleExpression = `__async_handle_get_handle(${handleExpression}, (const char*)"${segments[index]}")`;
+          }
+          return `__async_handle_get_i32(${handleExpression}, (const char*)"${segments[segments.length - 1]}")`;
         }
         const staticResolved = resolveStaticMemberAccessExpression(segments, node, compileContext);
         if (staticResolved !== null) {
@@ -13217,6 +13221,7 @@ function emitAsyncSchedulerHookDeclsCpp(machines) {
     'extern double __async_take_f64(void* sm);',
     'extern int __async_handle_get_i32(int handle, const char* key);',
     'extern double __async_handle_get_f64(int handle, const char* key);',
+    'extern int __async_handle_get_handle(int handle, const char* key);',
     'extern const char* __async_handle_get_string(int handle);',
     'extern int __async_handle_length(int handle);',
     'extern void __async_complete(void* sm);',
