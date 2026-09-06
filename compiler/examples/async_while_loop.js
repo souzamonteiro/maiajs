@@ -1,10 +1,13 @@
 async function repeat() {
   let count = 0;
   while (count < 2) {
-    console.log('async while tick');
-    await tick();
-    console.log('async while second tick');
-    await tickAgain();
+    if (count === 0) {
+      console.log('async while true branch');
+      await tick();
+      console.log('async while true branch resumed');
+    } else {
+      console.log('async while false branch');
+    }
     count = count + 1;
   }
   console.log('async while done');

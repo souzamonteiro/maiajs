@@ -293,6 +293,11 @@ test('async C++ emission: while body retains an iteration through sequential awa
   assert.match(cpp, /case 2:[\s\S]*__sm->__local_count = __sm->__local_count \+ 1;[\s\S]*__sm->__state = 0/, 'last resume must run the loop tail before restarting its condition');
 });
 
+test('async C++ emission: if branch inside while resumes before the loop tail', () => {
+  const cpp = runCompilerCpp('async function repeat() { let count = 0; while (count < 2) { if (count === 0) { await tick(); afterAwait(); } else { alternate(); } count = count + 1; } }\n');
+  assert.match(cpp, /case 1:[\s\S]*if \(__sm->__branch == 1\)[\s\S]*__afterAwait\(\);[\s\S]*__sm->__local_count = __sm->__local_count \+ 1;/, 'branch continuation must run before the enclosing loop tail');
+});
+
 test('async C++ emission: multiple machines use non-overlapping schedule IDs', () => {
   const cpp = runCompilerCpp('async function first() { await a(); await b(); }\nasync function second() { await c(); }\n');
 

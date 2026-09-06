@@ -12682,9 +12682,7 @@ function findAsyncIfGuard(machine, suspendPoint) {
 
   for (const statementNode of (machine.statementNodes || [])) {
     if (!nodeContainsTarget(statementNode, awaitNode)) { continue; }
-    const ifNode = (statementNode.children || []).find(
-      (child) => child && child.kind === 'nonterminal' && child.name === 'ifStatement'
-    );
+    const ifNode = findFirstNonterminal(statementNode, 'ifStatement');
     if (!ifNode) { continue; }
 
     const branchStatements = (ifNode.children || []).filter(
@@ -13006,13 +13004,6 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         ? lowerAsyncAwaitResultAssignment(previousSuspendPoint, compileContext)
         : null;
       switchBody += `    case ${stateIndex}: ${stateIndex === 0 ? '/* initial state */' : `/* resumed after await ${stateIndex} */`}\n`;
-      if (previousWhileGuard && previousWhileGuard.isLastAwait) {
-        switchBody += `      if (__sm->__loop == 1) {\n`;
-        for (const statement of previousWhileGuard.postAwaitStatements) {
-          for (const line of lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
-        }
-        switchBody += `        __sm->__loop = 2;\n        __sm->__state = 0;\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
-      }
       const resumeRoutes = exceptionRoutesBySuspend.get(previousSuspendPoint) || [];
       if (resumeRoutes.length > 0) {
         switchBody += `      if (__exc_active()) {\n`;
@@ -13046,6 +13037,13 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         switchBody += `      }\n`;
       } else if (!previousIfGuard && resumedAssignment) {
         switchBody += `${resumedAssignment}\n`;
+      }
+      if (previousWhileGuard && previousWhileGuard.isLastAwait) {
+        switchBody += `      if (__sm->__loop == 1) {\n`;
+        for (const statement of previousWhileGuard.postAwaitStatements) {
+          for (const line of lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
+        }
+        switchBody += `        __sm->__loop = 2;\n        __sm->__state = 0;\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
       }
       const initializingWhile = stateIndex === 0 && whileGuardsBySuspend.has(suspendPoint);
       if (initializingWhile) switchBody += `      if (__sm->__loop == 0) {\n`;
