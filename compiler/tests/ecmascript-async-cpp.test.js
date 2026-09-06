@@ -298,6 +298,15 @@ test('async C++ emission: if branch inside while resumes before the loop tail', 
   assert.match(cpp, /case 1:[\s\S]*if \(__sm->__branch == 1\)[\s\S]*__afterAwait\(\);[\s\S]*__sm->__local_count = __sm->__local_count \+ 1;/, 'branch continuation must run before the enclosing loop tail');
 });
 
+test('async C++ emission: if and else awaits inside while retain their own loop continuation', () => {
+  const cpp = runCompilerCpp('async function repeat() { let count = 0; while (count < 2) { if (count === 0) { await first(); afterFirst(); } else { await second(); afterSecond(); } count = count + 1; } }\n');
+
+  assert.match(cpp, /__sm->__branch = 1;[\s\S]*__first\(\);/, 'the consequent await must select its branch marker');
+  assert.match(cpp, /__sm->__branch = 2;[\s\S]*__second\(\);/, 'the alternate await must select its distinct branch marker');
+  assert.match(cpp, /case 1:[\s\S]*__sm->__loop == 1 && __sm->__branch == 1[\s\S]*await checkpoint 2:/, 'the first resume must not advance the loop after selecting the alternate branch');
+  assert.match(cpp, /case 2:[\s\S]*if \(__sm->__branch == 2\)[\s\S]*__afterSecond\(\);[\s\S]*__sm->__loop == 1 && __sm->__branch == 2[\s\S]*__sm->__local_count = __sm->__local_count \+ 1;/, 'the alternate resume must run its branch continuation and then the loop tail');
+});
+
 test('async C++ emission: break after await exits a while through state routing', () => {
   const cpp = runCompilerCpp('async function repeat() { while (1) { await tick(); break; } afterLoop(); }\n');
   assert.match(cpp, /__sm->__loop = 0;[\s\S]*__sm->__state = 1;[\s\S]*__afterLoop\(\);/, 'break must resume the post-loop continuation');

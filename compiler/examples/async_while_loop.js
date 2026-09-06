@@ -7,6 +7,8 @@ async function repeat() {
       console.log('async while true branch resumed');
     } else {
       console.log('async while false branch');
+      await elseTick();
+      console.log('async while false branch resumed');
     }
     count = count + 1;
   }

@@ -13029,7 +13029,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       }
       if (previousIfGuard && (previousIfGuard.isLastAwait || resumedAssignment || previousIfGuard.postAwaitStatements.length > 0)) {
         switchBody += `      if (__sm->__branch == ${previousIfGuard.branchMarker}) {\n`;
-        if (previousIfGuard.isLastAwait) {
+        if (previousIfGuard.isLastAwait && !previousWhileGuard) {
           switchBody += `        __sm->__branch = 0;\n`;
         }
         if (resumedAssignment) {
@@ -13051,11 +13051,17 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         switchBody += `${resumedAssignment}\n`;
       }
       if (previousWhileGuard && previousWhileGuard.isLastAwait) {
-        switchBody += `      if (__sm->__loop == 1) {\n`;
+        const branchRequirement = previousIfGuard
+          ? ` && __sm->__branch == ${previousIfGuard.branchMarker}`
+          : '';
+        switchBody += `      if (__sm->__loop == 1${branchRequirement}) {\n`;
         const tailControl = getAsyncLoopTailControl(previousWhileGuard.postAwaitStatements);
         const tailStatements = tailControl ? previousWhileGuard.postAwaitStatements.slice(0, -1) : previousWhileGuard.postAwaitStatements;
         for (const statement of tailStatements) {
           for (const line of lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
+        }
+        if (previousIfGuard) {
+          switchBody += `        __sm->__branch = 0;\n`;
         }
         if (tailControl === 'break') {
           switchBody += `        __sm->__loop = 0;\n        __sm->__state = ${stateIndex};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
