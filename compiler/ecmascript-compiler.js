@@ -12690,11 +12690,12 @@ function findAsyncIfGuard(machine, suspendPoint) {
     );
     const consequent = branchStatements[0] || null;
     const alternate = branchStatements[1] || null;
-    if (!consequent || !nodeContainsTarget(consequent, awaitNode)) { continue; }
-    if (findFirstNonterminal(alternate, 'awaitExpression')) { continue; }
+    const inConsequent = consequent && nodeContainsTarget(consequent, awaitNode);
+    const activeBranch = inConsequent ? consequent : alternate;
+    if (!activeBranch || !nodeContainsTarget(activeBranch, awaitNode)) { continue; }
 
     const awaitNodes = [];
-    walk(consequent, (node) => {
+    walk(activeBranch, (node) => {
       if (node && node.kind === 'nonterminal' && node.name === 'awaitExpression') {
         awaitNodes.push(node);
       }
@@ -12706,7 +12707,7 @@ function findAsyncIfGuard(machine, suspendPoint) {
       (child) => child && child.kind === 'nonterminal' && child.name === 'expression'
     ) || null;
     if (condition) {
-      const block = findFirstNonterminal(consequent, 'block');
+      const block = findFirstNonterminal(activeBranch, 'block');
       const consequentStatements = block
         ? (block.children || []).filter((child) => child && child.kind === 'nonterminal' && child.name === 'statement')
         : [consequent];
@@ -12726,6 +12727,8 @@ function findAsyncIfGuard(machine, suspendPoint) {
       return {
         condition,
         alternate,
+        branchKind: inConsequent ? 'consequent' : 'alternate',
+        alternateHasAwait: !!findFirstNonterminal(alternate, 'awaitExpression'),
         ifNode,
         isFirstAwait: awaitIndex === 0,
         isLastAwait: awaitIndex + 1 === awaitNodes.length,
@@ -12965,13 +12968,14 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
     for (const suspendPoint of (machine.body || [])) {
       const guard = findAsyncIfGuard(machine, suspendPoint);
       if (guard) {
-        let marker = ifBranchMarkersByNode.get(guard.ifNode);
-        if (!marker) {
-          marker = nextIfBranchMarker;
-          nextIfBranchMarker += 1;
-          ifBranchMarkersByNode.set(guard.ifNode, marker);
+        let markers = ifBranchMarkersByNode.get(guard.ifNode);
+        if (!markers) {
+          markers = { consequent: nextIfBranchMarker, alternate: nextIfBranchMarker + 1 };
+          nextIfBranchMarker += 2;
+          ifBranchMarkersByNode.set(guard.ifNode, markers);
         }
-        guard.branchMarker = marker;
+        guard.branchMarker = markers[guard.branchKind];
+        guard.otherBranchMarker = markers[guard.branchKind === 'consequent' ? 'alternate' : 'consequent'];
         ifGuardsBySuspend.set(suspendPoint, guard);
       }
       const whileGuard = findAsyncWhileGuard(machine, suspendPoint);
@@ -13095,11 +13099,13 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         switchBody += `      __sm->__loop = 1;\n`;
       }
       if (ifGuard) {
-        if (ifGuard.isFirstAwait) {
+        if (ifGuard.isFirstAwait && ifGuard.branchKind === 'consequent') {
           const loweredCondition = lowerExpressionValue(ifGuard.condition, compileContext);
           if (loweredCondition !== null) {
             switchBody += `      if (!(${loweredCondition})) {\n`;
-            if (ifGuard.alternate) {
+            if (ifGuard.alternateHasAwait) {
+              switchBody += `        __sm->__branch = ${ifGuard.otherBranchMarker};\n`;
+            } else if (ifGuard.alternate) {
               const alternateLines = lowerStatementNode(
                 ifGuard.alternate,
                 compileContext,
