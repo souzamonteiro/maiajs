@@ -287,6 +287,16 @@ test('async C++ emission: while body returns to its await checkpoint after resum
   assert.match(cpp, /if \(__sm->__loop == 1\)[\s\S]*__sm->__local_count = __sm->__local_count \+ 1;[\s\S]*__sm->__state = 0/, 'resumption must run the loop tail and return to its condition');
 });
 
+test('async C++ emission: for body initializes, increments, and rechecks around await', () => {
+  const cpp = runCompilerCpp('async function repeat() { for (let index = 0; index < 2; index++) { await tick(); afterAwait(); } afterLoop(); }\n');
+
+  assert.match(cpp, /double __local_index;/, 'the lexical for binding must be retained in the state machine');
+  assert.match(cpp, /if \(__sm->__loop == 0\) \{[\s\S]*__sm->__local_index = 0;/, 'the initializer must run only for the first iteration');
+  assert.match(cpp, /if \(__sm->__loop == 2\) \{[\s\S]*__sm->__local_index\+\+;/, 'the resumed loop must perform its increment before rechecking the condition');
+  assert.match(cpp, /if \(!\(__sm->__local_index < 2\)\)[\s\S]*__sm->__loop = 3;/, 'the condition must exit into the post-loop continuation');
+  assert.match(cpp, /case 1:[\s\S]*__afterAwait\(\);[\s\S]*__sm->__loop = 2;[\s\S]*__sm->__state = 0;/, 'the resumed body must complete before returning to the for header');
+});
+
 test('async C++ emission: while body retains an iteration through sequential awaits', () => {
   const cpp = runCompilerCpp('async function repeat() { let count = 0; while (count < 2) { await first(); between(); await second(); count = count + 1; } }\n');
   assert.match(cpp, /case 1:[\s\S]*__between\(\);[\s\S]*__second\(\);/, 'first resume must reach the second await in the same iteration');

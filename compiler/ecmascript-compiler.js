@@ -12772,6 +12772,48 @@ function findAsyncWhileGuard(machine, suspendPoint) {
   return null;
 }
 
+function findAsyncForGuard(machine, suspendPoint) {
+  const awaitNode = suspendPoint && suspendPoint.awaitNode;
+  if (!awaitNode) return null;
+  for (const statementNode of (machine.statementNodes || [])) {
+    if (!nodeContainsTarget(statementNode, awaitNode)) continue;
+    const loop = findFirstNonterminal(statementNode, 'iterationStatement');
+    if (!loop || !(loop.children || []).some((child) => child && child.kind === 'terminal' && child.token === 'TOKEN_for')) continue;
+    const body = (loop.children || []).find((child) => child && child.kind === 'nonterminal' && child.name === 'statement');
+    const block = body && findFirstNonterminal(body, 'block');
+    const statements = block ? (block.children || []).filter((child) => child && child.kind === 'nonterminal' && child.name === 'statement') : [];
+    const awaitStatements = statements.filter((statement) => findFirstNonterminal(statement, 'awaitExpression'));
+    const awaitIndex = awaitStatements.findIndex((statement) => nodeContainsTarget(statement, awaitNode));
+    if (awaitIndex < 0) continue;
+
+    const lexicalDeclaration = (loop.children || []).find((child) => child && child.kind === 'nonterminal' && child.name === 'lexicalDeclaration');
+    const lexicalBinding = lexicalDeclaration && findFirstNonterminal(lexicalDeclaration, 'lexicalBinding');
+    const bindingIdentifier = lexicalBinding && findFirstNonterminal(lexicalBinding, 'bindingIdentifier');
+    const initializer = lexicalBinding && findFirstNonterminal(lexicalBinding, 'initializer');
+    const initializerExpression = initializer && findFirstNonterminal(initializer, 'assignmentExpression');
+    const variableName = bindingIdentifier && findFirstIdentifierValue(bindingIdentifier);
+    const expressions = (loop.children || []).filter((child) => child && child.kind === 'nonterminal' && child.name === 'expression');
+    const condition = expressions[0] || null;
+    const increment = expressions[1] || null;
+    const statementIndex = statements.findIndex((statement) => nodeContainsTarget(statement, awaitNode));
+    if (!variableName || !initializerExpression || !condition || !increment || statementIndex < 0) continue;
+    const previousStatementIndex = awaitIndex === 0
+      ? -1
+      : statements.findIndex((statement) => statement === awaitStatements[awaitIndex - 1]);
+
+    return {
+      variableName,
+      initializerExpression,
+      condition,
+      increment,
+      isLastAwait: awaitIndex === awaitStatements.length - 1,
+      preAwaitStatements: statements.slice(previousStatementIndex + 1, statementIndex),
+      postAwaitStatements: awaitIndex === awaitStatements.length - 1 ? statements.slice(statementIndex + 1) : []
+    };
+  }
+  return null;
+}
+
 function getAsyncLoopTailControl(statements) {
   const last = statements && statements[statements.length - 1];
   if (!last) return null;
@@ -12803,9 +12845,6 @@ function extractAsyncPromiseResolveValueNode(suspendPoint) {
 function collectAsyncStateLocalFields(machine, compileContext) {
   const fields = [];
   const bindings = new Set(machine.localBindings || []);
-  if (bindings.size === 0) {
-    return fields;
-  }
 
   for (const statementNode of (machine.statementNodes || [])) {
     const declarationNode = (statementNode.children || []).find(
@@ -12838,6 +12877,20 @@ function collectAsyncStateLocalFields(machine, compileContext) {
           : inferInitializerCppType(initializer, compileContext)
       });
     }
+
+    walk(statementNode, (node) => {
+      if (!node || node.kind !== 'nonterminal' || node.name !== 'lexicalBinding') return;
+      const bindingIdentifier = findFirstNonterminal(node, 'bindingIdentifier');
+      const initializer = findFirstNonterminal(node, 'initializer');
+      const name = bindingIdentifier && findFirstIdentifierValue(bindingIdentifier);
+      const initializerExpression = initializer && findFirstNonterminal(initializer, 'assignmentExpression');
+      if (!name || !initializerExpression || fields.some((field) => field.name === name)) return;
+      fields.push({
+        name,
+        fieldName: `__local_${name}`,
+        cppType: inferInitializerCppType(initializerExpression, compileContext)
+      });
+    });
   }
 
   return fields;
@@ -12963,6 +13016,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
     }
     const ifGuardsBySuspend = new Map();
     const whileGuardsBySuspend = new Map();
+    const forGuardsBySuspend = new Map();
     const ifBranchMarkersByNode = new Map();
     let nextIfBranchMarker = 1;
     for (const suspendPoint of (machine.body || [])) {
@@ -12980,6 +13034,8 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       }
       const whileGuard = findAsyncWhileGuard(machine, suspendPoint);
       if (whileGuard) whileGuardsBySuspend.set(suspendPoint, whileGuard);
+      const forGuard = findAsyncForGuard(machine, suspendPoint);
+      if (forGuard) forGuardsBySuspend.set(suspendPoint, forGuard);
     }
     const localFields = compileContext ? collectAsyncStateLocalFields(machine, compileContext) : [];
     const previousAsyncStateFields = compileContext ? compileContext.asyncStateLocalFields : null;
@@ -13012,6 +13068,8 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       const previousSuspendPoint = stateIndex > 0 ? machine.body[stateIndex - 1] : null;
       const previousIfGuard = ifGuardsBySuspend.get(previousSuspendPoint) || null;
       const previousWhileGuard = whileGuardsBySuspend.get(previousSuspendPoint) || null;
+      const previousForGuard = forGuardsBySuspend.get(previousSuspendPoint) || null;
+      const previousLoopGuard = previousWhileGuard || previousForGuard;
       const resumedAssignment = stateIndex > 0
         ? lowerAsyncAwaitResultAssignment(previousSuspendPoint, compileContext)
         : null;
@@ -13029,7 +13087,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       }
       if (previousIfGuard && (previousIfGuard.isLastAwait || resumedAssignment || previousIfGuard.postAwaitStatements.length > 0)) {
         switchBody += `      if (__sm->__branch == ${previousIfGuard.branchMarker}) {\n`;
-        if (previousIfGuard.isLastAwait && !previousWhileGuard) {
+        if (previousIfGuard.isLastAwait && !previousLoopGuard) {
           switchBody += `        __sm->__branch = 0;\n`;
         }
         if (resumedAssignment) {
@@ -13050,13 +13108,13 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       } else if (!previousIfGuard && resumedAssignment) {
         switchBody += `${resumedAssignment}\n`;
       }
-      if (previousWhileGuard && previousWhileGuard.isLastAwait) {
+      if (previousLoopGuard && previousLoopGuard.isLastAwait) {
         const branchRequirement = previousIfGuard
           ? ` && __sm->__branch == ${previousIfGuard.branchMarker}`
           : '';
         switchBody += `      if (__sm->__loop == 1${branchRequirement}) {\n`;
-        const tailControl = getAsyncLoopTailControl(previousWhileGuard.postAwaitStatements);
-        const tailStatements = tailControl ? previousWhileGuard.postAwaitStatements.slice(0, -1) : previousWhileGuard.postAwaitStatements;
+        const tailControl = getAsyncLoopTailControl(previousLoopGuard.postAwaitStatements);
+        const tailStatements = tailControl ? previousLoopGuard.postAwaitStatements.slice(0, -1) : previousLoopGuard.postAwaitStatements;
         for (const statement of tailStatements) {
           for (const line of lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
         }
@@ -13069,12 +13127,12 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
           switchBody += `        __sm->__loop = 2;\n        __sm->__state = 0;\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
         }
       }
-      const initializingWhile = stateIndex === 0 && whileGuardsBySuspend.has(suspendPoint);
-      if (initializingWhile) switchBody += `      if (__sm->__loop == 0) {\n`;
+      const initializingLoop = stateIndex === 0 && (whileGuardsBySuspend.has(suspendPoint) || forGuardsBySuspend.has(suspendPoint));
+      if (initializingLoop) switchBody += `      if (__sm->__loop == 0) {\n`;
       for (const line of stateBody.lines) {
         switchBody += `${line}\n`;
       }
-      if (initializingWhile) switchBody += `      }\n`;
+      if (initializingLoop) switchBody += `      }\n`;
 
       if (!suspendPoint) {
         switchBody += `      __async_complete((void*)__sm);\n`;
@@ -13090,6 +13148,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         : '';
       const ifGuard = ifGuardsBySuspend.get(suspendPoint) || null;
       const whileGuard = whileGuardsBySuspend.get(suspendPoint) || null;
+      const forGuard = forGuardsBySuspend.get(suspendPoint) || null;
       const globalScheduleState = machinePlan && Number.isInteger(machinePlan.scheduleStateStart)
         ? (machinePlan.scheduleStateStart + i - 1)
         : i;
@@ -13100,6 +13159,19 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         const loweredCondition = lowerExpressionValue(whileGuard.condition, compileContext);
         switchBody += `      if (!(${loweredCondition})) {\n        __sm->__loop = 0;\n        __sm->__state = ${i};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
         for (const statement of whileGuard.preAwaitStatements) {
+          for (const line of lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
+        }
+        switchBody += `      __sm->__loop = 1;\n`;
+      }
+      if (forGuard) {
+        const localField = `__sm->__local_${forGuard.variableName}`;
+        const loweredInitializer = lowerExpressionValue(forGuard.initializerExpression, compileContext);
+        const loweredCondition = lowerExpressionValue(forGuard.condition, compileContext);
+        const loweredIncrement = lowerExpressionValue(forGuard.increment, compileContext);
+        switchBody += `      if (__sm->__loop == 0) {\n        ${localField} = ${loweredInitializer};\n      }\n`;
+        switchBody += `      if (__sm->__loop == 2) {\n        ${loweredIncrement};\n      }\n`;
+        switchBody += `      if (!(${loweredCondition})) {\n        __sm->__loop = 3;\n        __sm->__state = ${i};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+        for (const statement of forGuard.preAwaitStatements) {
           for (const line of lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
         }
         switchBody += `      __sm->__loop = 1;\n`;
