@@ -55,7 +55,9 @@ failure in the validated pipeline:
   `npm run test:async:for-loop`. `for` loops also cover selected awaits in
   both `if` branches plus `break` and `continue` after an await through the
   dedicated Node/WASM gates. Nested `if` statements now associate each await
-  with its innermost condition; nested loops remain pending.
+  with its innermost condition. Nested loops remain pending because they need
+  independent per-loop progress fields and parent-loop continuation routing;
+  they must not reuse the single-loop state as a special-case workaround.
 - [x] Materialize declaration targets for `await Promise.resolve(value)` in the
   resumed state and verify them through Node/WASM:
   `npm run test:async:await-result`.
