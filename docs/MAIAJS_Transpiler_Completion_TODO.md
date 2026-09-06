@@ -58,6 +58,17 @@ failure in the validated pipeline:
   with its innermost condition. Nested loops remain pending because they need
   independent per-loop progress fields and parent-loop continuation routing;
   they must not reuse the single-loop state as a special-case workaround.
+
+### Nested async loops implementation sequence
+
+- [ ] Build the enclosing-loop chain for every await, ordered from outermost
+  to innermost, and keep its identity in the async IR.
+- [ ] Replace the single `__loop` progress slot with one generated progress
+  field per enclosing loop; preserve existing single-loop output and gates.
+- [ ] Lower entry, condition, tail, and exit routing for each loop level so an
+  inner exit resumes the parent tail rather than the function continuation.
+- [ ] Add Node/WASM gates for `for` containing `while`, `while` containing
+  `for`, and nested `break`/`continue`; then run `npm run test:full`.
 - [x] Materialize declaration targets for `await Promise.resolve(value)` in the
   resumed state and verify them through Node/WASM:
   `npm run test:async:await-result`.
