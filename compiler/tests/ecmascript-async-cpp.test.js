@@ -317,6 +317,29 @@ test('async C++ emission: if and else awaits inside while retain their own loop 
   assert.match(cpp, /case 2:[\s\S]*if \(__sm->__branch == 2\)[\s\S]*__afterSecond\(\);[\s\S]*__sm->__loop == 1 && __sm->__branch == 2[\s\S]*__sm->__local_count = __sm->__local_count \+ 1;/, 'the alternate resume must run its branch continuation and then the loop tail');
 });
 
+test('async C++ emission: if and else awaits inside for retain their own loop continuation', () => {
+  const cpp = runCompilerCpp('async function repeat() { for (let index = 0; index < 2; index++) { if (index === 0) { await first(); afterFirst(); } else { await second(); afterSecond(); } } }\n');
+
+  assert.match(cpp, /__sm->__branch = 1;[\s\S]*__first\(\);/, 'the consequent await must select its branch marker');
+  assert.match(cpp, /__sm->__branch = 2;[\s\S]*__second\(\);/, 'the alternate await must select its distinct branch marker');
+  assert.match(cpp, /case 1:[\s\S]*__sm->__loop == 1 && __sm->__branch == 1[\s\S]*await checkpoint 2:/, 'the first resume must wait for the alternate branch instead of incrementing');
+  assert.match(cpp, /case 2:[\s\S]*if \(__sm->__branch == 2\)[\s\S]*__afterSecond\(\);[\s\S]*__sm->__loop == 1 && __sm->__branch == 2[\s\S]*__sm->__loop = 2;[\s\S]*__sm->__state = 0;/, 'the alternate resume must complete before returning to the for increment');
+});
+
+test('async C++ emission: break after await exits a for through state routing', () => {
+  const cpp = runCompilerCpp('async function stop() { for (let index = 0; index < 3; index++) { await tick(); break; } afterLoop(); }\n');
+
+  assert.match(cpp, /case 1:[\s\S]*if \(__sm->__loop == 1\)[\s\S]*__sm->__loop = 0;[\s\S]*__sm->__state = 1;[\s\S]*__async_stop__resume\(__sm\);/, 'the resumed break must route directly to the post-loop state');
+  assert.match(cpp, /case 1:[\s\S]*__afterLoop\(\);/, 'the post-loop continuation must run after the async break');
+});
+
+test('async C++ emission: continue after await returns to a for increment', () => {
+  const cpp = runCompilerCpp('async function repeat() { for (let index = 0; index < 2; index++) { await tick(); continue; } afterLoop(); }\n');
+
+  assert.match(cpp, /case 1:[\s\S]*if \(__sm->__loop == 1\)[\s\S]*__sm->__loop = 2;[\s\S]*__sm->__state = 0;[\s\S]*__async_repeat__resume\(__sm\);/, 'the resumed continue must return through the for increment state');
+  assert.match(cpp, /if \(__sm->__loop == 2\) \{[\s\S]*__sm->__local_index\+\+;/, 'the next initial state must perform the increment after continue');
+});
+
 test('async C++ emission: break after await exits a while through state routing', () => {
   const cpp = runCompilerCpp('async function repeat() { while (1) { await tick(); break; } afterLoop(); }\n');
   assert.match(cpp, /__sm->__loop = 0;[\s\S]*__sm->__state = 1;[\s\S]*__afterLoop\(\);/, 'break must resume the post-loop continuation');
