@@ -5,7 +5,7 @@ Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
 
-- Full compiler test suite is green: **342/342 passing**.
+- Full compiler test suite is green: **343/343 passing**.
 - Ported MaiaCpp examples are green: runtime suite **22/22**, course suite **48/48**,
   and MaiaJS transpilation **22/22**.
 - `bash compiler/examples/validate_full_es8_dist.sh` validates the complete
@@ -61,7 +61,7 @@ failure in the validated pipeline:
 
 ### Nested async loops implementation sequence
 
-- [ ] Build the enclosing-loop chain for every await, ordered from outermost
+- [x] Build the enclosing-loop chain for every await, ordered from outermost
   to innermost, and keep its identity in the async IR.
 - [ ] Replace the single `__loop` progress slot with one generated progress
   field per enclosing loop; preserve existing single-loop output and gates.

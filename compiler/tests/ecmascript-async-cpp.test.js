@@ -177,6 +177,11 @@ test('async IR JSON assigns non-overlapping schedule state ranges across machine
   assert.equal(ir.asyncRuntime.resumeBridges[1].scheduleStateEnd, 3, 'second machine range must include its single suspend point');
 });
 
+test('async IR records enclosing loop chain for nested awaits', () => {
+  const ir = runCompilerIR('async function repeat() { for (let outer = 0; outer < 2; outer++) { while (outer < 1) { await tick(); } } }\n');
+  assert.deepEqual(ir.asyncIR.asyncFunctions[0].body[0].loopChain, [{ kind: 'for' }, { kind: 'while' }], 'the await must retain its outer-to-inner loop ancestry');
+});
+
 test('async C++ emission: await outside try has no exception checks', () => {
   const cpp = runCompilerCpp('async function load() { await fetch(); }\n');
 

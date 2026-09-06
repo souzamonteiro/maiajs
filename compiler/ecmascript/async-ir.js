@@ -446,6 +446,23 @@ function nodeContains(root, target) {
   return (root.children || []).some((child) => nodeContains(child, target));
 }
 
+function collectEnclosingLoopChain(target, root) {
+  const chain = [];
+  function visit(node, activeLoops) {
+    if (!node || !nodeContains(node, target)) return false;
+    const isLoop = node.kind === 'nonterminal' && node.name === 'iterationStatement';
+    const loopToken = isLoop && (node.children || []).find((child) => child && child.kind === 'terminal' && (child.value === 'for' || child.value === 'while'));
+    const nextLoops = loopToken ? activeLoops.concat([{ kind: loopToken.value }]) : activeLoops;
+    if (node === target) {
+      chain.push(...nextLoops);
+      return true;
+    }
+    return (node.children || []).some((child) => visit(child, nextLoops));
+  }
+  visit(root, []);
+  return chain;
+}
+
 function extractAwaitResultBinding(statementNode, awaitNode) {
   const declarationNode = (statementNode && statementNode.children || []).find(
     (child) => child
@@ -514,7 +531,8 @@ function buildAsyncStateMachine(functionDeclarationNode, options = {}) {
       tryDepth: tryDepth,
       catchHandlers: catchHandlers,
       finallyDepth: finallyDepth,
-      finallyHandlers: finallyHandlers
+      finallyHandlers: finallyHandlers,
+      loopChain: collectEnclosingLoopChain(awaitNode, functionBody)
     };
     const statementIndex = statementNodes.findIndex((statementNode) => nodeContains(statementNode, awaitNode));
     const resultBinding = statementIndex >= 0
