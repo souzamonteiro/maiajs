@@ -12682,61 +12682,68 @@ function findAsyncIfGuard(machine, suspendPoint) {
 
   for (const statementNode of (machine.statementNodes || [])) {
     if (!nodeContainsTarget(statementNode, awaitNode)) { continue; }
-    const ifNode = findFirstNonterminal(statementNode, 'ifStatement');
-    if (!ifNode) { continue; }
-
-    const branchStatements = (ifNode.children || []).filter(
-      (child) => child && child.kind === 'nonterminal' && child.name === 'statement'
-    );
-    const consequent = branchStatements[0] || null;
-    const alternate = branchStatements[1] || null;
-    const inConsequent = consequent && nodeContainsTarget(consequent, awaitNode);
-    const activeBranch = inConsequent ? consequent : alternate;
-    if (!activeBranch || !nodeContainsTarget(activeBranch, awaitNode)) { continue; }
-
-    const awaitNodes = [];
-    walk(activeBranch, (node) => {
-      if (node && node.kind === 'nonterminal' && node.name === 'awaitExpression') {
-        awaitNodes.push(node);
+    const ifNodes = [];
+    walk(statementNode, (node) => {
+      if (node && node.kind === 'nonterminal' && node.name === 'ifStatement') {
+        ifNodes.push(node);
       }
     });
-    const awaitIndex = awaitNodes.indexOf(awaitNode);
-    if (awaitIndex < 0) { continue; }
 
-    const condition = (ifNode.children || []).find(
-      (child) => child && child.kind === 'nonterminal' && child.name === 'expression'
-    ) || null;
-    if (condition) {
-      const block = findFirstNonterminal(activeBranch, 'block');
-      const consequentStatements = block
-        ? (block.children || []).filter((child) => child && child.kind === 'nonterminal' && child.name === 'statement')
-        : [consequent];
-      const awaitStatementIndex = consequentStatements.findIndex(
-        (statement) => nodeContainsTarget(statement, awaitNode)
+    for (let ifIndex = ifNodes.length - 1; ifIndex >= 0; ifIndex -= 1) {
+      const ifNode = ifNodes[ifIndex];
+      const branchStatements = (ifNode.children || []).filter(
+        (child) => child && child.kind === 'nonterminal' && child.name === 'statement'
       );
-      if (awaitStatementIndex < 0) { continue; }
-      const previousAwaitStatementIndex = awaitIndex === 0
-        ? -1
-        : consequentStatements.findIndex((statement) => nodeContainsTarget(statement, awaitNodes[awaitIndex - 1]));
-      const nextAwaitStatementIndex = awaitIndex + 1 < awaitNodes.length
-        ? consequentStatements.findIndex((statement) => nodeContainsTarget(statement, awaitNodes[awaitIndex + 1]))
-        : consequentStatements.length;
-      if (previousAwaitStatementIndex >= awaitStatementIndex || nextAwaitStatementIndex <= awaitStatementIndex) {
-        continue;
+      const consequent = branchStatements[0] || null;
+      const alternate = branchStatements[1] || null;
+      const inConsequent = consequent && nodeContainsTarget(consequent, awaitNode);
+      const activeBranch = inConsequent ? consequent : alternate;
+      if (!activeBranch || !nodeContainsTarget(activeBranch, awaitNode)) { continue; }
+
+      const awaitNodes = [];
+      walk(activeBranch, (node) => {
+        if (node && node.kind === 'nonterminal' && node.name === 'awaitExpression') {
+          awaitNodes.push(node);
+        }
+      });
+      const awaitIndex = awaitNodes.indexOf(awaitNode);
+      if (awaitIndex < 0) { continue; }
+
+      const condition = (ifNode.children || []).find(
+        (child) => child && child.kind === 'nonterminal' && child.name === 'expression'
+      ) || null;
+      if (condition) {
+        const block = findFirstNonterminal(activeBranch, 'block');
+        const consequentStatements = block
+          ? (block.children || []).filter((child) => child && child.kind === 'nonterminal' && child.name === 'statement')
+          : [consequent];
+        const awaitStatementIndex = consequentStatements.findIndex(
+          (statement) => nodeContainsTarget(statement, awaitNode)
+        );
+        if (awaitStatementIndex < 0) { continue; }
+        const previousAwaitStatementIndex = awaitIndex === 0
+          ? -1
+          : consequentStatements.findIndex((statement) => nodeContainsTarget(statement, awaitNodes[awaitIndex - 1]));
+        const nextAwaitStatementIndex = awaitIndex + 1 < awaitNodes.length
+          ? consequentStatements.findIndex((statement) => nodeContainsTarget(statement, awaitNodes[awaitIndex + 1]))
+          : consequentStatements.length;
+        if (previousAwaitStatementIndex >= awaitStatementIndex || nextAwaitStatementIndex <= awaitStatementIndex) {
+          continue;
+        }
+        return {
+          condition,
+          alternate,
+          branchKind: inConsequent ? 'consequent' : 'alternate',
+          alternateHasAwait: !!findFirstNonterminal(alternate, 'awaitExpression'),
+          ifNode,
+          isFirstAwait: awaitIndex === 0,
+          isLastAwait: awaitIndex + 1 === awaitNodes.length,
+          preAwaitStatements: consequentStatements.slice(previousAwaitStatementIndex + 1, awaitStatementIndex),
+          postAwaitStatements: awaitIndex + 1 === awaitNodes.length
+            ? consequentStatements.slice(awaitStatementIndex + 1, nextAwaitStatementIndex)
+            : []
+        };
       }
-      return {
-        condition,
-        alternate,
-        branchKind: inConsequent ? 'consequent' : 'alternate',
-        alternateHasAwait: !!findFirstNonterminal(alternate, 'awaitExpression'),
-        ifNode,
-        isFirstAwait: awaitIndex === 0,
-        isLastAwait: awaitIndex + 1 === awaitNodes.length,
-        preAwaitStatements: consequentStatements.slice(previousAwaitStatementIndex + 1, awaitStatementIndex),
-        postAwaitStatements: awaitIndex + 1 === awaitNodes.length
-          ? consequentStatements.slice(awaitStatementIndex + 1, nextAwaitStatementIndex)
-          : []
-      };
     }
   }
 

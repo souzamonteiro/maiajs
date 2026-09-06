@@ -5,7 +5,7 @@ Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
 
-- Full compiler test suite is green: **341/341 passing**.
+- Full compiler test suite is green: **342/342 passing**.
 - Ported MaiaCpp examples are green: runtime suite **22/22**, course suite **48/48**,
   and MaiaJS transpilation **22/22**.
 - `bash compiler/examples/validate_full_es8_dist.sh` validates the complete
@@ -54,7 +54,8 @@ failure in the validated pipeline:
   initializer, condition, increment, and direct body await are now covered by
   `npm run test:async:for-loop`. `for` loops also cover selected awaits in
   both `if` branches plus `break` and `continue` after an await through the
-  dedicated Node/WASM gates; deeper nesting remains pending.
+  dedicated Node/WASM gates. Nested `if` statements now associate each await
+  with its innermost condition; nested loops remain pending.
 - [x] Materialize declaration targets for `await Promise.resolve(value)` in the
   resumed state and verify them through Node/WASM:
   `npm run test:async:await-result`.

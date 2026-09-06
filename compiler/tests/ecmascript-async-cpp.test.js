@@ -280,6 +280,14 @@ test('async C++ emission: if branch keeps its marker through sequential awaits',
     'the final resume must clear the marker after its branch-local statements');
 });
 
+test('async C++ emission: nested if selects the innermost awaited branch', () => {
+  const cpp = runCompilerCpp('async function choose() { if (true) { if (false) { await first(); afterFirst(); } else { await second(); afterSecond(); } } afterOuter(); }\n');
+
+  assert.match(cpp, /await checkpoint 1:[\s\S]*if \(!\(0\)\) \{[\s\S]*__sm->__branch = 2;[\s\S]*__sm->__state = 1;/, 'the inner false condition must select the alternate branch before the first await');
+  assert.match(cpp, /case 1:[\s\S]*await checkpoint 2:[\s\S]*if \(__sm->__branch != 2\)/, 'the first continuation must skip directly to the selected inner await');
+  assert.match(cpp, /case 2:[\s\S]*if \(__sm->__branch == 2\)[\s\S]*__afterSecond\(\);[\s\S]*__afterOuter\(\);/, 'the selected inner branch must resume before the outer continuation');
+});
+
 test('async C++ emission: while body returns to its await checkpoint after resume', () => {
   const cpp = runCompilerCpp('async function repeat() { let count = 0; while (count < 2) { await tick(); count = count + 1; } console.log("done"); }\n');
   assert.match(cpp, /int __loop;/, 'state machine must retain loop progress');

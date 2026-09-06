@@ -39,6 +39,7 @@
     "test:async:for-if-else": "bash compiler/examples/validate_async_for_if_else_dist.sh",
     "test:async:for-break": "bash compiler/examples/validate_async_for_break_dist.sh",
     "test:async:for-continue": "bash compiler/examples/validate_async_for_continue_dist.sh",
+    "test:async:nested-if": "bash compiler/examples/validate_async_nested_if_dist.sh",
     "test:async:while-break": "bash compiler/examples/validate_async_while_break_dist.sh",
     "test:async:while-continue": "bash compiler/examples/validate_async_while_continue_dist.sh",
     "test:async:if-else-await": "bash compiler/examples/validate_async_if_else_await_dist.sh",
