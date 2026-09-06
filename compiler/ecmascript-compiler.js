@@ -12769,6 +12769,14 @@ function findAsyncWhileGuard(machine, suspendPoint) {
   return null;
 }
 
+function getAsyncLoopTailControl(statements) {
+  const last = statements && statements[statements.length - 1];
+  if (!last) return null;
+  if ((last.children || []).some((child) => child && child.kind === 'nonterminal' && child.name === 'breakStatement')) return 'break';
+  if ((last.children || []).some((child) => child && child.kind === 'nonterminal' && child.name === 'continueStatement')) return 'continue';
+  return null;
+}
+
 function extractAsyncAwaitOperand(awaitNode) {
   return awaitNode && (awaitNode.children || []).find(
     (child) => child && child.kind === 'nonterminal'
@@ -13040,10 +13048,16 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       }
       if (previousWhileGuard && previousWhileGuard.isLastAwait) {
         switchBody += `      if (__sm->__loop == 1) {\n`;
-        for (const statement of previousWhileGuard.postAwaitStatements) {
+        const tailControl = getAsyncLoopTailControl(previousWhileGuard.postAwaitStatements);
+        const tailStatements = tailControl ? previousWhileGuard.postAwaitStatements.slice(0, -1) : previousWhileGuard.postAwaitStatements;
+        for (const statement of tailStatements) {
           for (const line of lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
         }
-        switchBody += `        __sm->__loop = 2;\n        __sm->__state = 0;\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+        if (tailControl === 'break') {
+          switchBody += `        __sm->__loop = 0;\n        __sm->__state = ${stateIndex};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+        } else {
+          switchBody += `        __sm->__loop = 2;\n        __sm->__state = 0;\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+        }
       }
       const initializingWhile = stateIndex === 0 && whileGuardsBySuspend.has(suspendPoint);
       if (initializingWhile) switchBody += `      if (__sm->__loop == 0) {\n`;

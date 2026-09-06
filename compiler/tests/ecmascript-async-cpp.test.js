@@ -298,6 +298,12 @@ test('async C++ emission: if branch inside while resumes before the loop tail', 
   assert.match(cpp, /case 1:[\s\S]*if \(__sm->__branch == 1\)[\s\S]*__afterAwait\(\);[\s\S]*__sm->__local_count = __sm->__local_count \+ 1;/, 'branch continuation must run before the enclosing loop tail');
 });
 
+test('async C++ emission: break after await exits a while through state routing', () => {
+  const cpp = runCompilerCpp('async function repeat() { while (1) { await tick(); break; } afterLoop(); }\n');
+  assert.match(cpp, /__sm->__loop = 0;[\s\S]*__sm->__state = 1;[\s\S]*__afterLoop\(\);/, 'break must resume the post-loop continuation');
+  assert.doesNotMatch(cpp, /case 1:[\s\S]*\bbreak;/, 'resumed state must not emit a raw break outside a C++ loop');
+});
+
 test('async C++ emission: multiple machines use non-overlapping schedule IDs', () => {
   const cpp = runCompilerCpp('async function first() { await a(); await b(); }\nasync function second() { await c(); }\n');
 

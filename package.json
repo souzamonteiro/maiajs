@@ -35,6 +35,8 @@
     "test:async:await-result": "bash compiler/examples/validate_async_await_result_dist.sh",
     "test:async:dynamic-value": "bash compiler/examples/validate_async_dynamic_value_dist.sh",
     "test:async:while-loop": "bash compiler/examples/validate_async_while_loop_dist.sh",
+    "test:async:while-break": "bash compiler/examples/validate_async_while_break_dist.sh",
+    "test:async:while-continue": "bash compiler/examples/validate_async_while_continue_dist.sh",
     "test:async:rejection": "bash compiler/examples/validate_async_rejection_dist.sh",
     "test:async:rejection-finally": "bash compiler/examples/validate_async_rejection_finally_dist.sh",
     "test:async:nested-rejection": "bash compiler/examples/validate_async_nested_rejection_dist.sh",
