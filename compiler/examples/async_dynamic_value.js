@@ -6,6 +6,9 @@ async function useDynamicValues() {
   if (response.meta.status === 202) {
     console.log('async dynamic nested object retained');
   }
+  if (response.score === 3.5) {
+    console.log('async dynamic fractional object retained');
+  }
   const message = await getMessage();
   console.log(message);
 }

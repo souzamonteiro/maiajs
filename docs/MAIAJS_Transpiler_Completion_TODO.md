@@ -110,9 +110,10 @@ failure in the validated pipeline:
 - [x] Run a sibling `finally` after a local async `catch` has handled the
   rejection, then continue with statements following the complete try form:
   `npm run test:async:catch-finally`.
-- [ ] Extend handle lowering to object methods and typed structured values.
-  Nested scalar properties are covered by the dynamic-handle ABI; the remaining
-  work needs explicit value-type selection rather than assuming `int`.
+- [~] Extend handle lowering to object methods and typed structured values.
+  Nested scalar properties are covered by the dynamic-handle ABI, including
+  `double` selection for properties compared with fractional numeric literals;
+  object-method invocation and richer contextual type selection remain.
 - [x] Preserve top-level local bindings in the async state structure and verify
   their resumed reads through the public Node/WASM distribution path:
   `npm run test:async:locals`.

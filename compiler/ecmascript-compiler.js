@@ -7968,6 +7968,30 @@ function lowerUnaryExpressionValue(node, compileContext) {
   return null;
 }
 
+function isFractionalNumericExpression(node) {
+  const text = flattenNodeText(node, 64);
+  return /^[+-]?(?:\d+\.\d*|\d*\.\d+)(?:[eE][+-]?\d+)?$/.test(text);
+}
+
+function isDynamicHandleMemberExpression(node, compileContext) {
+  if (!compileContext || !compileContext.asyncStateDynamicHandleFields) return false;
+  const memberNode = node && node.name === 'memberExpression'
+    ? node
+    : findFirstNonterminal(node, 'memberExpression');
+  const segments = memberNode ? extractPathFromMemberExpression(memberNode, null) : null;
+  return !!(segments && segments.length >= 2 && compileContext.asyncStateDynamicHandleFields.has(segments[0]));
+}
+
+function lowerDynamicHandleMemberAsF64(node, compileContext) {
+  const previousType = compileContext.dynamicHandleNumericType;
+  compileContext.dynamicHandleNumericType = 'f64';
+  try {
+    return lowerExpressionValue(node, compileContext);
+  } finally {
+    compileContext.dynamicHandleNumericType = previousType;
+  }
+}
+
 function lowerInfixExpressionValue(node, compileContext) {
   if (!node || node.kind !== 'nonterminal' || !INFIX_EXPRESSION_NODES.has(node.name)) {
     reportUnsupportedLowering(
@@ -8153,6 +8177,19 @@ function lowerInfixExpressionValue(node, compileContext) {
       err(`unsupported lowering: infix expression normalization for ${node.name}`);
     }
     return null;
+  }
+
+  if (parts.length === 3 && ['==', '!=', '<', '<=', '>', '>='].includes(parts[1])) {
+    for (const [dynamicIndex, otherIndex] of [[0, 1], [1, 0]]) {
+      if (!isFractionalNumericExpression(operandNodes[otherIndex])
+        || !isDynamicHandleMemberExpression(operandNodes[dynamicIndex], compileContext)) {
+        continue;
+      }
+      const loweredF64 = lowerDynamicHandleMemberAsF64(operandNodes[dynamicIndex], compileContext);
+      if (loweredF64 !== null) {
+        parts[dynamicIndex * 2] = loweredF64;
+      }
+    }
   }
 
   if (parts.length === 3 && (parts[1] === '||' || parts[1] === '&&') && compileContext) {
@@ -8398,7 +8435,10 @@ function lowerExpressionValue(node, compileContext) {
           for (let index = 1; index < segments.length - 1; index += 1) {
             handleExpression = `__async_handle_get_handle(${handleExpression}, (const char*)"${segments[index]}")`;
           }
-          return `__async_handle_get_i32(${handleExpression}, (const char*)"${segments[segments.length - 1]}")`;
+          const getter = compileContext.dynamicHandleNumericType === 'f64'
+            ? '__async_handle_get_f64'
+            : '__async_handle_get_i32';
+          return `${getter}(${handleExpression}, (const char*)"${segments[segments.length - 1]}")`;
         }
         const staticResolved = resolveStaticMemberAccessExpression(segments, node, compileContext);
         if (staticResolved !== null) {
