@@ -8002,8 +8002,23 @@ function lowerDynamicHandleMemberAsF64(node, compileContext) {
   }
 }
 
+function getCallExpressionTrailingPropertyName(node) {
+  const callNode = node && node.name === 'callExpression'
+    ? node
+    : findFirstNonterminal(node, 'callExpression');
+  if (!callNode) return null;
+  const children = callNode.children || [];
+  const argsIndex = children.findIndex((child) => child && child.kind === 'nonterminal' && child.name === 'arguments');
+  if (argsIndex < 0 || !children[argsIndex + 1]
+    || children[argsIndex + 1].kind !== 'terminal' || children[argsIndex + 1].value !== '.') {
+    return null;
+  }
+  return findFirstIdentifierValue(children[argsIndex + 2]);
+}
+
 function isDynamicHandleMethodCall(node, compileContext) {
-  return getDynamicHandleMethodCallInfo(node, compileContext) !== null;
+  return getCallExpressionTrailingPropertyName(node) === null
+    && getDynamicHandleMethodCallInfo(node, compileContext) !== null;
 }
 
 function lowerDynamicHandleMethodAsNumeric(node, compileContext, numericType) {
@@ -9789,6 +9804,10 @@ function lowerCallExpressionValue(node, compileContext) {
   const argExprs = argListNode ? collectArgumentExpressions(argListNode) : [];
   const dynamicMethodCall = tryLowerDynamicHandleMethodCall(node, compileContext);
   if (dynamicMethodCall !== null) {
+    const trailingPropertyName = getCallExpressionTrailingPropertyName(node);
+    if (trailingPropertyName) {
+      return `__async_handle_get_i32(${dynamicMethodCall}, (const char*)"${trailingPropertyName}")`;
+    }
     return dynamicMethodCall;
   }
   if (pathLabel === 'Array.prototype.slice.call'

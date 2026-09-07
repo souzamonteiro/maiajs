@@ -123,9 +123,10 @@ failure in the validated pipeline:
   `int` or `double` contextually; strict equality with strings checks the
   runtime value type rather than coercing it. This is covered by
   `npm run test:async:dynamic-value`. Object results can be bound to an
-  async-state local and then accessed through dynamic properties. Direct
-  call/property chains such as `response.makeMeta().status`, richer contextual
-  type selection, and aggregate argument values remain.
+  async-state local and then accessed through dynamic properties; direct
+  call/property chains such as `response.makeMeta().status` are also lowered
+  through the returned handle. Richer contextual type selection and aggregate
+  argument values remain.
 - [x] Preserve top-level local bindings in the async state structure and verify
   their resumed reads through the public Node/WASM distribution path:
   `npm run test:async:locals`.

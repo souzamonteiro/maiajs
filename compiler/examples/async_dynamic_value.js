@@ -6,8 +6,7 @@ async function useDynamicValues() {
   if (response.meta.status === 202) {
     console.log('async dynamic nested object retained');
   }
-  const methodMeta = response.makeMeta();
-  if (methodMeta.status === 202) {
+  if (response.makeMeta().status === 202) {
     console.log('async dynamic method object retained');
   }
   if (response.score === 3.5) {
