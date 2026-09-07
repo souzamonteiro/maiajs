@@ -186,6 +186,8 @@ test('async C++ emission: nested loop ancestry allocates progress fields per dep
   const cpp = runCompilerCpp('async function repeat() { for (let outer = 0; outer < 2; outer++) { while (outer < 1) { await tick(); } } }\n');
   assert.match(cpp, /int __loop_progress_0;[\s\S]*int __loop_progress_1;/, 'nested loop machines must reserve one progress field per loop depth');
   assert.match(cpp, /__sm->__loop_progress_0 = 0;[\s\S]*__sm->__loop_progress_1 = 0;/, 'all progress fields must start in their entry phase');
+  assert.match(cpp, /if \(__sm->__loop_progress_0 == 0\) \{[\s\S]*__sm->__local_outer = 0;/, 'the outer for header must use depth zero');
+  assert.match(cpp, /if \(!\(__sm->__local_outer < 1\)\)[\s\S]*__sm->__loop_progress_1 = 0;/, 'the inner while header must use its own progress depth');
 });
 
 test('async C++ emission: await outside try has no exception checks', () => {

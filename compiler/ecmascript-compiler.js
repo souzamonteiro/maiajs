@@ -12750,13 +12750,38 @@ function findAsyncIfGuard(machine, suspendPoint) {
   return null;
 }
 
-function findAsyncWhileGuard(machine, suspendPoint) {
-  const awaitNode = suspendPoint && suspendPoint.awaitNode;
-  if (!awaitNode) return null;
+function getAsyncLoopKind(loop) {
+  const loopToken = (loop && loop.children || []).find(
+    (child) => child && child.kind === 'terminal' && (child.value === 'for' || child.value === 'while')
+  );
+  return loopToken ? loopToken.value : null;
+}
+
+function findEnclosingAsyncLoopNodes(machine, awaitNode) {
+  const loops = [];
   for (const statementNode of (machine.statementNodes || [])) {
     if (!nodeContainsTarget(statementNode, awaitNode)) continue;
-    const loop = findFirstNonterminal(statementNode, 'iterationStatement');
-    if (!loop || !(loop.children || []).some((child) => child && child.kind === 'terminal' && child.value === 'while')) continue;
+    walk(statementNode, (node) => {
+      if (
+        node
+        && node.kind === 'nonterminal'
+        && node.name === 'iterationStatement'
+        && nodeContainsTarget(node, awaitNode)
+        && getAsyncLoopKind(node)
+      ) {
+        loops.push(node);
+      }
+    });
+  }
+  return loops;
+}
+
+function findAsyncWhileGuard(machine, suspendPoint, selectedLoop = null) {
+  const awaitNode = suspendPoint && suspendPoint.awaitNode;
+  if (!awaitNode) return null;
+  const loops = selectedLoop ? [selectedLoop] : findEnclosingAsyncLoopNodes(machine, awaitNode);
+  for (const loop of loops) {
+    if (getAsyncLoopKind(loop) !== 'while') continue;
     const condition = (loop.children || []).find((child) => child && child.kind === 'nonterminal' && child.name === 'expression');
     const body = (loop.children || []).find((child) => child && child.kind === 'nonterminal' && child.name === 'statement');
     const block = body && findFirstNonterminal(body, 'block');
@@ -12779,13 +12804,12 @@ function findAsyncWhileGuard(machine, suspendPoint) {
   return null;
 }
 
-function findAsyncForGuard(machine, suspendPoint) {
+function findAsyncForGuard(machine, suspendPoint, selectedLoop = null) {
   const awaitNode = suspendPoint && suspendPoint.awaitNode;
   if (!awaitNode) return null;
-  for (const statementNode of (machine.statementNodes || [])) {
-    if (!nodeContainsTarget(statementNode, awaitNode)) continue;
-    const loop = findFirstNonterminal(statementNode, 'iterationStatement');
-    if (!loop || !(loop.children || []).some((child) => child && child.kind === 'terminal' && child.token === 'TOKEN_for')) continue;
+  const loops = selectedLoop ? [selectedLoop] : findEnclosingAsyncLoopNodes(machine, awaitNode);
+  for (const loop of loops) {
+    if (getAsyncLoopKind(loop) !== 'for') continue;
     const body = (loop.children || []).find((child) => child && child.kind === 'nonterminal' && child.name === 'statement');
     const block = body && findFirstNonterminal(body, 'block');
     const statements = block ? (block.children || []).filter((child) => child && child.kind === 'nonterminal' && child.name === 'statement') : [];
@@ -12819,6 +12843,20 @@ function findAsyncForGuard(machine, suspendPoint) {
     };
   }
   return null;
+}
+
+function findAsyncLoopGuards(machine, suspendPoint) {
+  const awaitNode = suspendPoint && suspendPoint.awaitNode;
+  if (!awaitNode) return [];
+  return findEnclosingAsyncLoopNodes(machine, awaitNode)
+    .map((loop, depth) => {
+      const kind = getAsyncLoopKind(loop);
+      const guard = kind === 'while'
+        ? findAsyncWhileGuard(machine, suspendPoint, loop)
+        : findAsyncForGuard(machine, suspendPoint, loop);
+      return guard ? { ...guard, kind, depth } : null;
+    })
+    .filter(Boolean);
 }
 
 function getAsyncLoopTailControl(statements) {
@@ -12886,6 +12924,17 @@ function collectAsyncStateLocalFields(machine, compileContext) {
     }
 
     walk(statementNode, (node) => {
+      if (node && node.kind === 'nonterminal' && node.name === 'variableDeclaration') {
+        const name = extractVariableDeclarationName(node);
+        if (!name || fields.some((field) => field.name === name)) return;
+        const initializer = extractVariableDeclarationInitializer(node);
+        fields.push({
+          name,
+          fieldName: `__local_${name}`,
+          cppType: inferInitializerCppType(initializer, compileContext)
+        });
+        return;
+      }
       if (!node || node.kind !== 'nonterminal' || node.name !== 'lexicalBinding') return;
       const bindingIdentifier = findFirstNonterminal(node, 'bindingIdentifier');
       const initializer = findFirstNonterminal(node, 'initializer');
@@ -13022,8 +13071,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       exceptionRoutesBySuspend.set(suspendPoint, routes);
     }
     const ifGuardsBySuspend = new Map();
-    const whileGuardsBySuspend = new Map();
-    const forGuardsBySuspend = new Map();
+    const loopGuardsBySuspend = new Map();
     const ifBranchMarkersByNode = new Map();
     let nextIfBranchMarker = 1;
     for (const suspendPoint of (machine.body || [])) {
@@ -13039,10 +13087,8 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         guard.otherBranchMarker = markers[guard.branchKind === 'consequent' ? 'alternate' : 'consequent'];
         ifGuardsBySuspend.set(suspendPoint, guard);
       }
-      const whileGuard = findAsyncWhileGuard(machine, suspendPoint);
-      if (whileGuard) whileGuardsBySuspend.set(suspendPoint, whileGuard);
-      const forGuard = findAsyncForGuard(machine, suspendPoint);
-      if (forGuard) forGuardsBySuspend.set(suspendPoint, forGuard);
+      const loopGuards = findAsyncLoopGuards(machine, suspendPoint);
+      if (loopGuards.length > 0) loopGuardsBySuspend.set(suspendPoint, loopGuards);
     }
     const localFields = compileContext ? collectAsyncStateLocalFields(machine, compileContext) : [];
     const previousAsyncStateFields = compileContext ? compileContext.asyncStateLocalFields : null;
@@ -13074,15 +13120,15 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       const suspendPoint = stateBody.suspendPoint;
       const previousSuspendPoint = stateIndex > 0 ? machine.body[stateIndex - 1] : null;
       const previousIfGuard = ifGuardsBySuspend.get(previousSuspendPoint) || null;
-      const previousWhileGuard = whileGuardsBySuspend.get(previousSuspendPoint) || null;
-      const previousForGuard = forGuardsBySuspend.get(previousSuspendPoint) || null;
-      const previousLoopGuard = previousWhileGuard || previousForGuard;
+      const previousLoopGuards = loopGuardsBySuspend.get(previousSuspendPoint) || [];
+      const previousLoopGuard = previousLoopGuards[previousLoopGuards.length - 1] || null;
+      const loopGuards = loopGuardsBySuspend.get(suspendPoint) || [];
       const resumedAssignment = stateIndex > 0
         ? lowerAsyncAwaitResultAssignment(previousSuspendPoint, compileContext)
         : null;
-      // Depth zero is the active loop for the existing single-loop lowering.
-      // Nested-loop routing will select the appropriate depth explicitly.
-      const activeLoopProgress = '__sm->__loop_progress_0';
+      const previousLoopProgress = previousLoopGuard
+        ? `__sm->__loop_progress_${previousLoopGuard.depth}`
+        : null;
       switchBody += `    case ${stateIndex}: ${stateIndex === 0 ? '/* initial state */' : `/* resumed after await ${stateIndex} */`}\n`;
       const resumeRoutes = exceptionRoutesBySuspend.get(previousSuspendPoint) || [];
       if (resumeRoutes.length > 0) {
@@ -13122,7 +13168,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         const branchRequirement = previousIfGuard
           ? ` && __sm->__branch == ${previousIfGuard.branchMarker}`
           : '';
-        switchBody += `      if (${activeLoopProgress} == 1${branchRequirement}) {\n`;
+        switchBody += `      if (${previousLoopProgress} == 1${branchRequirement}) {\n`;
         const tailControl = getAsyncLoopTailControl(previousLoopGuard.postAwaitStatements);
         const tailStatements = tailControl ? previousLoopGuard.postAwaitStatements.slice(0, -1) : previousLoopGuard.postAwaitStatements;
         for (const statement of tailStatements) {
@@ -13132,13 +13178,16 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
           switchBody += `        __sm->__branch = 0;\n`;
         }
         if (tailControl === 'break') {
-          switchBody += `        ${activeLoopProgress} = 0;\n        __sm->__state = ${stateIndex};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+          switchBody += `        ${previousLoopProgress} = 0;\n        __sm->__state = ${stateIndex};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
         } else {
-          switchBody += `        ${activeLoopProgress} = 2;\n        __sm->__state = 0;\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+          switchBody += `        ${previousLoopProgress} = 2;\n        __sm->__state = 0;\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
         }
       }
-      const initializingLoop = stateIndex === 0 && (whileGuardsBySuspend.has(suspendPoint) || forGuardsBySuspend.has(suspendPoint));
-      if (initializingLoop) switchBody += `      if (${activeLoopProgress} == 0) {\n`;
+      const initializingLoop = stateIndex === 0 && loopGuards.length > 0;
+      const entryLoopProgress = loopGuards.length > 0
+        ? `__sm->__loop_progress_${loopGuards[0].depth}`
+        : null;
+      if (initializingLoop) switchBody += `      if (${entryLoopProgress} == 0) {\n`;
       for (const line of stateBody.lines) {
         switchBody += `${line}\n`;
       }
@@ -13157,34 +13206,58 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         ? `: ${awaitedExpr}`
         : '';
       const ifGuard = ifGuardsBySuspend.get(suspendPoint) || null;
-      const whileGuard = whileGuardsBySuspend.get(suspendPoint) || null;
-      const forGuard = forGuardsBySuspend.get(suspendPoint) || null;
       const globalScheduleState = machinePlan && Number.isInteger(machinePlan.scheduleStateStart)
         ? (machinePlan.scheduleStateStart + i - 1)
         : i;
       const usesDynamicTransport = awaitUsesDynamicRuntimeTransport(suspendPoint);
 
       switchBody += `      /* await checkpoint ${i}${awaitedExprComment} */\n`;
-      if (whileGuard) {
-        const loweredCondition = lowerExpressionValue(whileGuard.condition, compileContext);
-        switchBody += `      if (!(${loweredCondition})) {\n        ${activeLoopProgress} = 0;\n        __sm->__state = ${i};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
-        for (const statement of whileGuard.preAwaitStatements) {
-          for (const line of lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
+      for (const [loopIndex, loopGuard] of loopGuards.entries()) {
+        const activeLoopProgress = `__sm->__loop_progress_${loopGuard.depth}`;
+        const parentLoopGuard = loopGuards[loopIndex - 1] || null;
+        const appendLoopExitRoute = () => {
+          if (!parentLoopGuard) {
+            const exitProgress = loopGuard.kind === 'for' ? 3 : 0;
+            switchBody += `        ${activeLoopProgress} = ${exitProgress};\n        __sm->__state = ${i};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+            return;
+          }
+          switchBody += `        ${activeLoopProgress} = 0;\n`;
+          for (const descendantGuard of loopGuards.slice(loopIndex + 1)) {
+            switchBody += `        __sm->__loop_progress_${descendantGuard.depth} = 0;\n`;
+          }
+          for (const statement of parentLoopGuard.postAwaitStatements) {
+            for (const line of lowerStatementNode(statement, compileContext, 4, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
+          }
+          switchBody += `        __sm->__loop_progress_${parentLoopGuard.depth} = 2;\n        __sm->__state = 0;\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+        };
+        if (loopGuard.kind === 'while') {
+          const loweredCondition = lowerExpressionValue(loopGuard.condition, compileContext);
+          switchBody += `      if (!(${loweredCondition})) {\n`;
+          appendLoopExitRoute();
+          const childLoopGuard = loopGuards[loopIndex + 1] || null;
+          if (childLoopGuard) switchBody += `      if (__sm->__loop_progress_${childLoopGuard.depth} == 0) {\n`;
+          for (const statement of loopGuard.preAwaitStatements) {
+            for (const line of lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
+          }
+          if (childLoopGuard) switchBody += `      }\n`;
+          switchBody += `      ${activeLoopProgress} = 1;\n`;
+        } else {
+          const localField = `__sm->__local_${loopGuard.variableName}`;
+          const loweredInitializer = lowerExpressionValue(loopGuard.initializerExpression, compileContext);
+          const loweredCondition = lowerExpressionValue(loopGuard.condition, compileContext);
+          const loweredIncrement = lowerExpressionValue(loopGuard.increment, compileContext);
+          switchBody += `      if (${activeLoopProgress} == 0) {\n        ${localField} = ${loweredInitializer};\n      }\n`;
+          switchBody += `      if (${activeLoopProgress} == 2) {\n        ${loweredIncrement};\n      }\n`;
+          switchBody += `      if (!(${loweredCondition})) {\n`;
+          appendLoopExitRoute();
+          const childLoopGuard = loopGuards[loopIndex + 1] || null;
+          if (childLoopGuard) switchBody += `      if (__sm->__loop_progress_${childLoopGuard.depth} == 0) {\n`;
+          for (const statement of loopGuard.preAwaitStatements) {
+            for (const line of lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
+          }
+          if (childLoopGuard) switchBody += `      }\n`;
+          switchBody += `      ${activeLoopProgress} = 1;\n`;
         }
-        switchBody += `      ${activeLoopProgress} = 1;\n`;
-      }
-      if (forGuard) {
-        const localField = `__sm->__local_${forGuard.variableName}`;
-        const loweredInitializer = lowerExpressionValue(forGuard.initializerExpression, compileContext);
-        const loweredCondition = lowerExpressionValue(forGuard.condition, compileContext);
-        const loweredIncrement = lowerExpressionValue(forGuard.increment, compileContext);
-        switchBody += `      if (${activeLoopProgress} == 0) {\n        ${localField} = ${loweredInitializer};\n      }\n`;
-        switchBody += `      if (${activeLoopProgress} == 2) {\n        ${loweredIncrement};\n      }\n`;
-        switchBody += `      if (!(${loweredCondition})) {\n        ${activeLoopProgress} = 3;\n        __sm->__state = ${i};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
-        for (const statement of forGuard.preAwaitStatements) {
-          for (const line of lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
-        }
-        switchBody += `      ${activeLoopProgress} = 1;\n`;
       }
       if (ifGuard) {
         if (ifGuard.isFirstAwait && ifGuard.branchKind === 'consequent') {
