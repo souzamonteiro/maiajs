@@ -13322,6 +13322,18 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
     const localFieldAssignments = localFields.map(
       (field) => `  __sm->${field.fieldName} = ${defaultCppValue(field.cppType)};`
     );
+    const loopProgressDepth = Math.max(
+      0,
+      ...(machine.body || []).map((suspendPoint) => (suspendPoint.loopChain || []).length)
+    );
+    const loopProgressFieldLines = Array.from(
+      { length: loopProgressDepth },
+      (_, depth) => `  int __loop_progress_${depth};`
+    ).join('\n');
+    const loopProgressAssignments = Array.from(
+      { length: loopProgressDepth },
+      (_, depth) => `  __sm->__loop_progress_${depth} = 0;`
+    );
 
     if (compileContext) {
       compileContext.asyncStateLocalFields = previousAsyncStateFields;
@@ -13336,6 +13348,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       `  int __state;`,
       `  int __branch;`,
       `  int __loop;`,
+      loopProgressFieldLines,
       `  ${machine.returnValueCppType} __result;`,
       paramFields,
       localFieldLines,
@@ -13358,6 +13371,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       `  __sm->__state = 0;`,
       `  __sm->__branch = 0;`,
       `  __sm->__loop = 0;`,
+      loopProgressAssignments.join('\n'),
       `  __sm->__result = 0;`,
       paramAssignments.join('\n'),
       localFieldAssignments.join('\n'),

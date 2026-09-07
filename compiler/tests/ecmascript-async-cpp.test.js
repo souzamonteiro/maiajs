@@ -182,6 +182,12 @@ test('async IR records enclosing loop chain for nested awaits', () => {
   assert.deepEqual(ir.asyncIR.asyncFunctions[0].body[0].loopChain, [{ kind: 'for' }, { kind: 'while' }], 'the await must retain its outer-to-inner loop ancestry');
 });
 
+test('async C++ emission: nested loop ancestry allocates progress fields per depth', () => {
+  const cpp = runCompilerCpp('async function repeat() { for (let outer = 0; outer < 2; outer++) { while (outer < 1) { await tick(); } } }\n');
+  assert.match(cpp, /int __loop_progress_0;[\s\S]*int __loop_progress_1;/, 'nested loop machines must reserve one progress field per loop depth');
+  assert.match(cpp, /__sm->__loop_progress_0 = 0;[\s\S]*__sm->__loop_progress_1 = 0;/, 'all progress fields must start in their entry phase');
+});
+
 test('async C++ emission: await outside try has no exception checks', () => {
   const cpp = runCompilerCpp('async function load() { await fetch(); }\n');
 
