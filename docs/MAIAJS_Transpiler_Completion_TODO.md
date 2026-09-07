@@ -67,12 +67,12 @@ failure in the validated pipeline:
   the legacy single-loop slot until multinível routing is complete. Existing
   single-loop entry, condition, tail, `break`, and `continue` routing now use
   `__loop_progress_0`, verified through the Node/WASM `while` and `for` gates.
-- [~] Lower entry, condition, tail, and exit routing for each loop level so an
+- [x] Lower entry, condition, tail, and exit routing for each loop level so an
   inner exit resumes the parent tail rather than the function continuation.
-  The canonical `for` containing `while` case now uses independent progress
+  The canonical `for` containing `while` case uses independent progress
   fields, preserves the inner local through `await`, and returns through the
   parent increment path.
-- [~] Add Node/WASM gates for `for` containing `while`, `while` containing
+- [x] Add Node/WASM gates for `for` containing `while`, `while` containing
   `for`, and nested `break`/`continue`; `for` containing `while` and `while`
   containing `for` are covered by `npm run test:async:nested-for-while` and
   `npm run test:async:nested-while-for`. An inner post-`await` `break` is
