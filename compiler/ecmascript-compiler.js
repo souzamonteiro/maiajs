@@ -13080,6 +13080,9 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       const resumedAssignment = stateIndex > 0
         ? lowerAsyncAwaitResultAssignment(previousSuspendPoint, compileContext)
         : null;
+      // Depth zero is the active loop for the existing single-loop lowering.
+      // Nested-loop routing will select the appropriate depth explicitly.
+      const activeLoopProgress = '__sm->__loop_progress_0';
       switchBody += `    case ${stateIndex}: ${stateIndex === 0 ? '/* initial state */' : `/* resumed after await ${stateIndex} */`}\n`;
       const resumeRoutes = exceptionRoutesBySuspend.get(previousSuspendPoint) || [];
       if (resumeRoutes.length > 0) {
@@ -13119,7 +13122,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
         const branchRequirement = previousIfGuard
           ? ` && __sm->__branch == ${previousIfGuard.branchMarker}`
           : '';
-        switchBody += `      if (__sm->__loop == 1${branchRequirement}) {\n`;
+        switchBody += `      if (${activeLoopProgress} == 1${branchRequirement}) {\n`;
         const tailControl = getAsyncLoopTailControl(previousLoopGuard.postAwaitStatements);
         const tailStatements = tailControl ? previousLoopGuard.postAwaitStatements.slice(0, -1) : previousLoopGuard.postAwaitStatements;
         for (const statement of tailStatements) {
@@ -13129,13 +13132,13 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
           switchBody += `        __sm->__branch = 0;\n`;
         }
         if (tailControl === 'break') {
-          switchBody += `        __sm->__loop = 0;\n        __sm->__state = ${stateIndex};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+          switchBody += `        ${activeLoopProgress} = 0;\n        __sm->__state = ${stateIndex};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
         } else {
-          switchBody += `        __sm->__loop = 2;\n        __sm->__state = 0;\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+          switchBody += `        ${activeLoopProgress} = 2;\n        __sm->__state = 0;\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
         }
       }
       const initializingLoop = stateIndex === 0 && (whileGuardsBySuspend.has(suspendPoint) || forGuardsBySuspend.has(suspendPoint));
-      if (initializingLoop) switchBody += `      if (__sm->__loop == 0) {\n`;
+      if (initializingLoop) switchBody += `      if (${activeLoopProgress} == 0) {\n`;
       for (const line of stateBody.lines) {
         switchBody += `${line}\n`;
       }
@@ -13164,24 +13167,24 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       switchBody += `      /* await checkpoint ${i}${awaitedExprComment} */\n`;
       if (whileGuard) {
         const loweredCondition = lowerExpressionValue(whileGuard.condition, compileContext);
-        switchBody += `      if (!(${loweredCondition})) {\n        __sm->__loop = 0;\n        __sm->__state = ${i};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+        switchBody += `      if (!(${loweredCondition})) {\n        ${activeLoopProgress} = 0;\n        __sm->__state = ${i};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
         for (const statement of whileGuard.preAwaitStatements) {
           for (const line of lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
         }
-        switchBody += `      __sm->__loop = 1;\n`;
+        switchBody += `      ${activeLoopProgress} = 1;\n`;
       }
       if (forGuard) {
         const localField = `__sm->__local_${forGuard.variableName}`;
         const loweredInitializer = lowerExpressionValue(forGuard.initializerExpression, compileContext);
         const loweredCondition = lowerExpressionValue(forGuard.condition, compileContext);
         const loweredIncrement = lowerExpressionValue(forGuard.increment, compileContext);
-        switchBody += `      if (__sm->__loop == 0) {\n        ${localField} = ${loweredInitializer};\n      }\n`;
-        switchBody += `      if (__sm->__loop == 2) {\n        ${loweredIncrement};\n      }\n`;
-        switchBody += `      if (!(${loweredCondition})) {\n        __sm->__loop = 3;\n        __sm->__state = ${i};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+        switchBody += `      if (${activeLoopProgress} == 0) {\n        ${localField} = ${loweredInitializer};\n      }\n`;
+        switchBody += `      if (${activeLoopProgress} == 2) {\n        ${loweredIncrement};\n      }\n`;
+        switchBody += `      if (!(${loweredCondition})) {\n        ${activeLoopProgress} = 3;\n        __sm->__state = ${i};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
         for (const statement of forGuard.preAwaitStatements) {
           for (const line of lowerStatementNode(statement, compileContext, 3, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
         }
-        switchBody += `      __sm->__loop = 1;\n`;
+        switchBody += `      ${activeLoopProgress} = 1;\n`;
       }
       if (ifGuard) {
         if (ifGuard.isFirstAwait && ifGuard.branchKind === 'consequent') {

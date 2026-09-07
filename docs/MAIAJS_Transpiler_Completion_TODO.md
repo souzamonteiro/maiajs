@@ -64,8 +64,9 @@ failure in the validated pipeline:
 - [x] Build the enclosing-loop chain for every await, ordered from outermost
   to innermost, and keep its identity in the async IR.
 - [~] Reserve one generated progress field per enclosing loop while retaining
-  the legacy single-loop slot until multinível routing is complete; preserve
-  existing single-loop output and gates.
+  the legacy single-loop slot until multinível routing is complete. Existing
+  single-loop entry, condition, tail, `break`, and `continue` routing now use
+  `__loop_progress_0`, verified through the Node/WASM `while` and `for` gates.
 - [ ] Lower entry, condition, tail, and exit routing for each loop level so an
   inner exit resumes the parent tail rather than the function continuation.
 - [ ] Add Node/WASM gates for `for` containing `while`, `while` containing
