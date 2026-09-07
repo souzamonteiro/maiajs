@@ -6288,9 +6288,14 @@ function lowerRequiredExpressionValue(expressionNode, compileContext, code, deta
 function lowerConsoleLogArgumentExpression(expressionNode, compileContext) {
   if (isDynamicHandleMethodPropertyCall(expressionNode, compileContext)) {
     const dynamicMethodCall = tryLowerDynamicHandleMethodCall(expressionNode, compileContext);
-    const propertyName = getCallExpressionTrailingPropertyName(expressionNode);
-    if (dynamicMethodCall !== null && propertyName) {
-      return `__async_handle_get_property_string(${dynamicMethodCall}, (const char*)"${propertyName}")`;
+    const propertyNames = getCallExpressionTrailingPropertyNames(expressionNode);
+    if (dynamicMethodCall !== null && propertyNames.length > 0) {
+      let propertyReceiver = dynamicMethodCall;
+      for (let index = 0; index < propertyNames.length - 1; index += 1) {
+        propertyReceiver = `__async_handle_get_handle(${propertyReceiver}, (const char*)"${propertyNames[index]}")`;
+      }
+      const finalPropertyName = propertyNames[propertyNames.length - 1];
+      return `__async_handle_get_property_string(${propertyReceiver}, (const char*)"${finalPropertyName}")`;
     }
   }
 
