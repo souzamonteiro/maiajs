@@ -6281,6 +6281,11 @@ function lowerRequiredExpressionValue(expressionNode, compileContext, code, deta
 }
 
 function lowerConsoleLogArgumentExpression(expressionNode, compileContext) {
+  const dynamicMethodCall = tryLowerDynamicHandleMethodCall(expressionNode, compileContext);
+  if (dynamicMethodCall !== null) {
+    return `__async_handle_get_string(${dynamicMethodCall})`;
+  }
+
   const directIdentifierNode = unwrapDirectIdentifierExpression(expressionNode);
   if (directIdentifierNode) {
     const identifierValue = findFirstIdentifierValue(directIdentifierNode);
@@ -7992,6 +7997,34 @@ function lowerDynamicHandleMemberAsF64(node, compileContext) {
   }
 }
 
+function tryLowerDynamicHandleMethodCall(node, compileContext) {
+  if (!compileContext || !compileContext.asyncStateDynamicHandleFields) return null;
+
+  const callNode = node && node.name === 'callExpression'
+    ? node
+    : findFirstNonterminal(node, 'callExpression');
+  if (!callNode) return null;
+
+  const memberExprNode = extractOutermostCallMemberExpression(callNode);
+  const argsNode = findFirstNonterminal(callNode, 'arguments');
+  if (!memberExprNode || !argsNode) return null;
+
+  const argListNode = findFirstNonterminal(argsNode, 'argumentList');
+  if (argListNode && collectArgumentExpressions(argListNode).length > 0) return null;
+
+  const segments = extractPathFromMemberExpression(memberExprNode, null);
+  if (!segments || segments.length < 2) return null;
+
+  const dynamicHandleField = compileContext.asyncStateDynamicHandleFields.get(segments[0]);
+  if (!dynamicHandleField) return null;
+
+  let handleExpression = `__sm->${dynamicHandleField}`;
+  for (let index = 1; index < segments.length - 1; index += 1) {
+    handleExpression = `__async_handle_get_handle(${handleExpression}, (const char*)"${segments[index]}")`;
+  }
+  return `__async_handle_call0(${handleExpression}, (const char*)"${segments[segments.length - 1]}")`;
+}
+
 function lowerInfixExpressionValue(node, compileContext) {
   if (!node || node.kind !== 'nonterminal' || !INFIX_EXPRESSION_NODES.has(node.name)) {
     reportUnsupportedLowering(
@@ -9598,6 +9631,10 @@ function lowerCallExpressionValue(node, compileContext) {
     argListNode = findFirstNonterminal(argsNode, 'argumentList');
   }
   const argExprs = argListNode ? collectArgumentExpressions(argListNode) : [];
+  const dynamicMethodCall = tryLowerDynamicHandleMethodCall(node, compileContext);
+  if (dynamicMethodCall !== null) {
+    return dynamicMethodCall;
+  }
   if (pathLabel === 'Array.prototype.slice.call'
     && argExprs.length >= 1
     && argExprs[0]
@@ -13518,6 +13555,7 @@ function emitAsyncSchedulerHookDeclsCpp(machines) {
     'extern int __async_handle_get_i32(int handle, const char* key);',
     'extern double __async_handle_get_f64(int handle, const char* key);',
     'extern int __async_handle_get_handle(int handle, const char* key);',
+    'extern int __async_handle_call0(int handle, const char* key);',
     'extern const char* __async_handle_get_string(int handle);',
     'extern int __async_handle_length(int handle);',
     'extern void __async_complete(void* sm);',

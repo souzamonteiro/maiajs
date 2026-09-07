@@ -184,7 +184,11 @@ test('async runtime transports string and object promise values through handles'
     getMemory: () => memory
   });
   const imports = {
-    __getResponse: () => Promise.resolve({ status: 201, meta: { status: 202 } }),
+    __getResponse: () => Promise.resolve({
+      status: 201,
+      meta: { status: 202 },
+      describe() { return `status ${this.status}`; }
+    }),
     __getMessage: () => Promise.resolve('async handle text'),
     __malloc: (size) => {
       const ptr = nextPtr;
@@ -213,6 +217,11 @@ test('async runtime transports string and object promise values through handles'
   const metaHandle = imports.__async_handle_get_handle(responseHandle, 32);
   assert.notEqual(metaHandle, 0, 'nested object property must retain an opaque handle');
   assert.equal(imports.__async_handle_get_i32(metaHandle, 16), 202, 'nested object scalar must be readable through its retained handle');
+  new TextEncoder().encodeInto('describe\0', bytes.subarray(48));
+  const descriptionHandle = imports.__async_handle_call0(responseHandle, 48);
+  const descriptionPtr = imports.__async_handle_get_string(descriptionHandle);
+  const descriptionEnd = bytes.indexOf(0, descriptionPtr);
+  assert.equal(new TextDecoder().decode(bytes.subarray(descriptionPtr, descriptionEnd)), 'status 201', 'method calls must preserve the host object receiver');
   const stringPtr = imports.__async_handle_get_string(messageHandle);
   const end = bytes.indexOf(0, stringPtr);
   assert.equal(new TextDecoder().decode(bytes.subarray(stringPtr, end)), 'async handle text');
