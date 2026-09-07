@@ -189,7 +189,8 @@ test('async runtime transports string and object promise values through handles'
       meta: { status: 202 },
       describe(prefix) { return `${prefix}${this.status}`; },
       scale(value) { return this.status * value; },
-      combine(prefix, meta, scale) { return `${prefix}${meta.status * scale}`; }
+      combine(prefix, meta, scale) { return `${prefix}${meta.status * scale}`; },
+      count(a, b) { return a + b; }
     }),
     __getMessage: () => Promise.resolve('async handle text'),
     __malloc: (size) => {
@@ -239,6 +240,12 @@ test('async runtime transports string and object promise values through handles'
   const combinedPtr = imports.__async_handle_get_string(combinedHandle);
   const combinedEnd = bytes.indexOf(0, combinedPtr);
   assert.equal(new TextDecoder().decode(bytes.subarray(combinedPtr, combinedEnd)), 'meta: 505', 'multiple arguments must preserve string, handle, and fractional values in order');
+  new TextEncoder().encodeInto('count\0', bytes.subarray(128));
+  imports.__async_handle_arg_i32(2);
+  imports.__async_handle_arg_i32(3);
+  const countHandle = imports.__async_handle_callN(responseHandle, 128, 2);
+  assert.equal(imports.__async_handle_to_i32(countHandle), 5, 'integer method results must be readable without exposing host handles');
+  assert.equal(imports.__async_handle_to_f64(scaledHandle), 502.5, 'fractional method results must be readable without exposing host handles');
   const stringPtr = imports.__async_handle_get_string(messageHandle);
   const end = bytes.indexOf(0, stringPtr);
   assert.equal(new TextDecoder().decode(bytes.subarray(stringPtr, end)), 'async handle text');

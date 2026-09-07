@@ -7997,6 +7997,20 @@ function lowerDynamicHandleMemberAsF64(node, compileContext) {
   }
 }
 
+function isDynamicHandleMethodCall(node, compileContext) {
+  return getDynamicHandleMethodCallInfo(node, compileContext) !== null;
+}
+
+function lowerDynamicHandleMethodAsNumeric(node, compileContext, numericType) {
+  const previousType = compileContext.dynamicHandleMethodResultType;
+  compileContext.dynamicHandleMethodResultType = numericType;
+  try {
+    return lowerExpressionValue(node, compileContext);
+  } finally {
+    compileContext.dynamicHandleMethodResultType = previousType;
+  }
+}
+
 function getDynamicHandleMethodCallInfo(node, compileContext) {
   if (!compileContext || !compileContext.asyncStateDynamicHandleFields) return null;
 
@@ -8055,51 +8069,62 @@ function tryLowerDynamicHandleMethodCall(node, compileContext) {
   if (!info) return null;
 
   const prefix = `${info.handleExpression}, (const char*)"${info.methodName}"`;
+  let loweredCall = null;
   if (info.argExprs.length === 0) {
-    return `__async_handle_call0(${prefix})`;
+    loweredCall = `__async_handle_call0(${prefix})`;
   }
 
-  if (info.argExprs.length === 1) {
+  if (!loweredCall && info.argExprs.length === 1) {
     const argumentNode = info.argExprs[0];
     const loweredArgument = lowerExpressionValue(argumentNode, compileContext);
     if (loweredArgument === null) return null;
     if (inferExprType(argumentNode, compileContext) === 'string') {
-      return `__async_handle_call1_string(${prefix}, (const char*)(${loweredArgument}))`;
+      loweredCall = `__async_handle_call1_string(${prefix}, (const char*)(${loweredArgument}))`;
     }
-    if (isFractionalNumericExpression(argumentNode)) {
-      return `__async_handle_call1_f64(${prefix}, ${loweredArgument})`;
+    if (!loweredCall && isFractionalNumericExpression(argumentNode)) {
+      loweredCall = `__async_handle_call1_f64(${prefix}, ${loweredArgument})`;
     }
-    if (inferExprType(argumentNode, compileContext) === 'number'
-      || inferExprType(argumentNode, compileContext) === 'bool') {
-      return `__async_handle_call1_i32(${prefix}, ${loweredArgument})`;
+    if (!loweredCall && (inferExprType(argumentNode, compileContext) === 'number'
+      || inferExprType(argumentNode, compileContext) === 'bool')) {
+      loweredCall = `__async_handle_call1_i32(${prefix}, ${loweredArgument})`;
     }
   }
 
-  const stagedArguments = [];
-  for (const argumentNode of info.argExprs) {
-    const dynamicHandleArgument = tryLowerDynamicHandleArgument(argumentNode, compileContext);
-    if (dynamicHandleArgument !== null) {
-      stagedArguments.push(`__async_handle_arg_handle(${dynamicHandleArgument})`);
-      continue;
+  if (!loweredCall) {
+    const stagedArguments = [];
+    for (const argumentNode of info.argExprs) {
+      const dynamicHandleArgument = tryLowerDynamicHandleArgument(argumentNode, compileContext);
+      if (dynamicHandleArgument !== null) {
+        stagedArguments.push(`__async_handle_arg_handle(${dynamicHandleArgument})`);
+        continue;
+      }
+      const loweredArgument = lowerExpressionValue(argumentNode, compileContext);
+      if (loweredArgument === null) return null;
+      if (inferExprType(argumentNode, compileContext) === 'string') {
+        stagedArguments.push(`__async_handle_arg_string((const char*)(${loweredArgument}))`);
+        continue;
+      }
+      if (isFractionalNumericExpression(argumentNode)) {
+        stagedArguments.push(`__async_handle_arg_f64(${loweredArgument})`);
+        continue;
+      }
+      if (inferExprType(argumentNode, compileContext) === 'number'
+        || inferExprType(argumentNode, compileContext) === 'bool') {
+        stagedArguments.push(`__async_handle_arg_i32(${loweredArgument})`);
+        continue;
+      }
+      return null;
     }
-    const loweredArgument = lowerExpressionValue(argumentNode, compileContext);
-    if (loweredArgument === null) return null;
-    if (inferExprType(argumentNode, compileContext) === 'string') {
-      stagedArguments.push(`__async_handle_arg_string((const char*)(${loweredArgument}))`);
-      continue;
-    }
-    if (isFractionalNumericExpression(argumentNode)) {
-      stagedArguments.push(`__async_handle_arg_f64(${loweredArgument})`);
-      continue;
-    }
-    if (inferExprType(argumentNode, compileContext) === 'number'
-      || inferExprType(argumentNode, compileContext) === 'bool') {
-      stagedArguments.push(`__async_handle_arg_i32(${loweredArgument})`);
-      continue;
-    }
-    return null;
+    loweredCall = `(${stagedArguments.join(', ')}, __async_handle_callN(${prefix}, ${info.argExprs.length}))`;
   }
-  return `(${stagedArguments.join(', ')}, __async_handle_callN(${prefix}, ${info.argExprs.length}))`;
+
+  if (compileContext.dynamicHandleMethodResultType === 'f64') {
+    return `__async_handle_to_f64(${loweredCall})`;
+  }
+  if (compileContext.dynamicHandleMethodResultType === 'i32') {
+    return `__async_handle_to_i32(${loweredCall})`;
+  }
+  return loweredCall;
 }
 
 function lowerInfixExpressionValue(node, compileContext) {
@@ -8296,6 +8321,28 @@ function lowerInfixExpressionValue(node, compileContext) {
         continue;
       }
       const loweredF64 = lowerDynamicHandleMemberAsF64(operandNodes[dynamicIndex], compileContext);
+      if (loweredF64 !== null) {
+        parts[dynamicIndex * 2] = loweredF64;
+      }
+    }
+    for (const [dynamicIndex, otherIndex] of [[0, 1], [1, 0]]) {
+      if (!isDynamicHandleMethodCall(operandNodes[dynamicIndex], compileContext)) continue;
+      const numericType = isFractionalNumericExpression(operandNodes[otherIndex]) ? 'f64' : 'i32';
+      const loweredNumeric = lowerDynamicHandleMethodAsNumeric(operandNodes[dynamicIndex], compileContext, numericType);
+      if (loweredNumeric !== null) {
+        parts[dynamicIndex * 2] = loweredNumeric;
+      }
+    }
+  }
+
+  if (parts.length === 3 && ['+', '-', '*', '/', '%'].includes(parts[1])) {
+    for (const dynamicIndex of [0, 1]) {
+      const otherIndex = dynamicIndex === 0 ? 1 : 0;
+      if (!isDynamicHandleMethodCall(operandNodes[dynamicIndex], compileContext)
+        || !isFractionalNumericExpression(operandNodes[otherIndex])) {
+        continue;
+      }
+      const loweredF64 = lowerDynamicHandleMethodAsNumeric(operandNodes[dynamicIndex], compileContext, 'f64');
       if (loweredF64 !== null) {
         parts[dynamicIndex * 2] = loweredF64;
       }
@@ -13670,6 +13717,8 @@ function emitAsyncSchedulerHookDeclsCpp(machines) {
     'extern int __async_handle_arg_string(const char* value);',
     'extern int __async_handle_arg_handle(int value);',
     'extern int __async_handle_callN(int handle, const char* key, int count);',
+    'extern int __async_handle_to_i32(int handle);',
+    'extern double __async_handle_to_f64(int handle);',
     'extern const char* __async_handle_get_string(int handle);',
     'extern int __async_handle_length(int handle);',
     'extern void __async_complete(void* sm);',

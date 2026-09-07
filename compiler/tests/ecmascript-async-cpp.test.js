@@ -112,7 +112,7 @@ test('async C++ emission: dynamic await result uses the scalar runtime ABI', () 
 
 test('async C++ emission: dynamic await handles lower string and object reads through the runtime ABI', () => {
   const cpp = runCompilerCpp(
-    'async function load() { const response = await getResponse(); if (response.status === 201) { console.log("ok"); } if (response.meta.status === 202) { console.log("nested"); } if (response.score === 3.5) { console.log("fractional"); } const description = response.describe("status: "); const combined = response.combine("meta: ", response.meta, 2.5); console.log(description); console.log(combined); console.log(response.scale(2.5)); const message = await getMessage(); console.log(message); }\n'
+    'async function load() { const response = await getResponse(); if (response.status === 201) { console.log("ok"); } if (response.meta.status === 202) { console.log("nested"); } if (response.score === 3.5) { console.log("fractional"); } if (response.scale(2.5) === 502.5) { console.log("method fractional"); } if (response.count(2, 3) === 5) { console.log("method integer"); } const description = response.describe("status: "); const combined = response.combine("meta: ", response.meta, 2.5); console.log(description); console.log(combined); console.log(response.scale(2.5)); const message = await getMessage(); console.log(message); }\n'
   );
 
   assert.match(cpp, /__async_handle_get_i32\(__sm->__local_response, \(const char\*\)"status"\)/, 'object property must read from the dynamic handle');
@@ -123,12 +123,15 @@ test('async C++ emission: dynamic await handles lower string and object reads th
   assert.match(cpp, /__sm->__local_combined = \(__async_handle_arg_string\(\(const char\*\)\("meta: "\)\), __async_handle_arg_handle\(__async_handle_get_handle\(__sm->__local_response, \(const char\*\)"meta"\)\), __async_handle_arg_f64\(2\.5\), __async_handle_callN\(__sm->__local_response, \(const char\*\)"combine", 3\)\);/, 'multiple dynamic method arguments must preserve scalar and handle values in order');
   assert.match(cpp, /__console__log\(__async_handle_get_string\(__sm->__local_combined\)\);/, 'a multiple-argument dynamic method result must remain available through its binding');
   assert.match(cpp, /__console__log\(__async_handle_get_string\(__async_handle_call1_f64\(__sm->__local_response, \(const char\*\)"scale", 2\.5\)\)\);/, 'fractional dynamic method arguments must preserve their value');
+  assert.match(cpp, /__async_handle_to_f64\(__async_handle_call1_f64\(__sm->__local_response, \(const char\*\)"scale", 2\.5\)\) == 502\.5/, 'fractional method results must convert to double in a numeric comparison');
+  assert.match(cpp, /__async_handle_to_i32\(\(__async_handle_arg_i32\(2\), __async_handle_arg_i32\(3\), __async_handle_callN\(__sm->__local_response, \(const char\*\)"count", 2\)\)\) == 5/, 'integer method results must convert to int in a numeric comparison');
   assert.match(cpp, /__console__log\(__async_handle_get_string\(__sm->__local_message\)\);/, 'string handle must convert to C string for console output');
   assert.match(cpp, /extern int __async_handle_get_handle\(int handle, const char\* key\);/, 'generated C++ must declare the nested-handle ABI');
   assert.match(cpp, /extern const char\* __async_handle_get_string\(int handle\);/, 'generated C++ must declare the string handle ABI');
   assert.match(cpp, /extern int __async_handle_call0\(int handle, const char\* key\);/, 'generated C++ must declare the dynamic method ABI');
   assert.match(cpp, /extern int __async_handle_call1_string\(int handle, const char\* key, const char\* value\);/, 'generated C++ must declare the string method-argument ABI');
   assert.match(cpp, /extern int __async_handle_callN\(int handle, const char\* key, int count\);/, 'generated C++ must declare the variadic method ABI');
+  assert.match(cpp, /extern double __async_handle_to_f64\(int handle\);/, 'generated C++ must declare numeric method-result conversion');
 });
 
 test('async C++ emission: rejected await resumes into its catch handler state', () => {

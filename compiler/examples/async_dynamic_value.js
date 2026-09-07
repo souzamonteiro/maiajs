@@ -11,6 +11,12 @@ async function useDynamicValues() {
   }
   const description = response.describe('dynamic status: ');
   const combined = response.combine('dynamic meta: ', response.meta, 2.5);
+  if (response.scale(2.5) === 502.5) {
+    console.log('async dynamic fractional method result retained');
+  }
+  if (response.count(2, 3) === 5) {
+    console.log('async dynamic integer method result retained');
+  }
   console.log(description);
   console.log(combined);
   console.log(response.scale(2.5));

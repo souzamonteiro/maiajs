@@ -118,8 +118,10 @@ failure in the validated pipeline:
   `__async_handle_call0`, typed `__async_handle_call1_*` hooks, and a tagged
   variadic staging ABI. The variadic form supports multiple arguments and
   dynamic-handle arguments such as `response.meta`; opaque results can be
-  bound to later async-state locals and consumed as strings. This is covered
-  by `npm run test:async:dynamic-value`. Richer contextual type selection and
+  bound to later async-state locals and consumed as strings. Comparisons and
+  arithmetic with numeric literals now convert dynamic method results to
+  `int` or `double` contextually. This is covered by
+  `npm run test:async:dynamic-value`. Richer contextual type selection and
   aggregate argument values remain.
 - [x] Preserve top-level local bindings in the async state structure and verify
   their resumed reads through the public Node/WASM distribution path:
