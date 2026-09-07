@@ -10,7 +10,9 @@ async function useDynamicValues() {
     console.log('async dynamic fractional object retained');
   }
   const description = response.describe('dynamic status: ');
+  const combined = response.combine('dynamic meta: ', response.meta, 2.5);
   console.log(description);
+  console.log(combined);
   console.log(response.scale(2.5));
   const message = await getMessage();
   console.log(message);

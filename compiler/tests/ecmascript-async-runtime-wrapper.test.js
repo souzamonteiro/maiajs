@@ -188,7 +188,8 @@ test('async runtime transports string and object promise values through handles'
       status: 201,
       meta: { status: 202 },
       describe(prefix) { return `${prefix}${this.status}`; },
-      scale(value) { return this.status * value; }
+      scale(value) { return this.status * value; },
+      combine(prefix, meta, scale) { return `${prefix}${meta.status * scale}`; }
     }),
     __getMessage: () => Promise.resolve('async handle text'),
     __malloc: (size) => {
@@ -229,6 +230,15 @@ test('async runtime transports string and object promise values through handles'
   const scaledPtr = imports.__async_handle_get_string(scaledHandle);
   const scaledEnd = bytes.indexOf(0, scaledPtr);
   assert.equal(new TextDecoder().decode(bytes.subarray(scaledPtr, scaledEnd)), '502.5', 'fractional method arguments must reach the host method');
+  new TextEncoder().encodeInto('combine\0', bytes.subarray(96));
+  new TextEncoder().encodeInto('meta: \0', bytes.subarray(112));
+  imports.__async_handle_arg_string(112);
+  imports.__async_handle_arg_handle(metaHandle);
+  imports.__async_handle_arg_f64(2.5);
+  const combinedHandle = imports.__async_handle_callN(responseHandle, 96, 3);
+  const combinedPtr = imports.__async_handle_get_string(combinedHandle);
+  const combinedEnd = bytes.indexOf(0, combinedPtr);
+  assert.equal(new TextDecoder().decode(bytes.subarray(combinedPtr, combinedEnd)), 'meta: 505', 'multiple arguments must preserve string, handle, and fractional values in order');
   const stringPtr = imports.__async_handle_get_string(messageHandle);
   const end = bytes.indexOf(0, stringPtr);
   assert.equal(new TextDecoder().decode(bytes.subarray(stringPtr, end)), 'async handle text');

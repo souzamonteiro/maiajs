@@ -11,12 +11,13 @@ trap 'rm -rf "$TMP_DIR"' EXIT
   --out-dir "$TMP_DIR/dist" \
   --name async_dynamic_value
 
-OUTPUT="$(node -e "globalThis.getResponse = () => Promise.resolve({ status: 201, meta: { status: 202 }, score: 3.5, describe(prefix) { return prefix + this.status; }, scale(value) { return this.status * value; } }); globalThis.getMessage = () => Promise.resolve('async dynamic string retained'); require(process.argv[1]);" "$TMP_DIR/dist/node-runner.js" 2>&1)"
+OUTPUT="$(node -e "globalThis.getResponse = () => Promise.resolve({ status: 201, meta: { status: 202 }, score: 3.5, describe(prefix) { return prefix + this.status; }, combine(prefix, meta, scale) { return prefix + (meta.status * scale); }, scale(value) { return this.status * value; } }); globalThis.getMessage = () => Promise.resolve('async dynamic string retained'); require(process.argv[1]);" "$TMP_DIR/dist/node-runner.js" 2>&1)"
 printf '%s\n' "$OUTPUT"
 grep -Fq 'async dynamic object retained' <<<"$OUTPUT"
 grep -Fq 'async dynamic nested object retained' <<<"$OUTPUT"
 grep -Fq 'async dynamic fractional object retained' <<<"$OUTPUT"
 grep -Fq 'dynamic status: 201' <<<"$OUTPUT"
+grep -Fq 'dynamic meta: 505' <<<"$OUTPUT"
 grep -Fq '502.5' <<<"$OUTPUT"
 grep -Fq 'async dynamic string retained' <<<"$OUTPUT"
 echo '[async-dynamic-value] dynamic promise nested object and string reached resumed states'

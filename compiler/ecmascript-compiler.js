@@ -8026,6 +8026,30 @@ function getDynamicHandleMethodCallInfo(node, compileContext) {
   };
 }
 
+function tryLowerDynamicHandleArgument(node, compileContext) {
+  if (!compileContext || !compileContext.asyncStateDynamicHandleFields) return null;
+
+  const directIdentifier = unwrapDirectIdentifierExpression(node);
+  const directName = directIdentifier ? findFirstIdentifierValue(directIdentifier) : null;
+  if (directName && compileContext.asyncStateDynamicHandleFields.has(directName)) {
+    return `__sm->${compileContext.asyncStateDynamicHandleFields.get(directName)}`;
+  }
+
+  const memberNode = node && node.name === 'memberExpression'
+    ? node
+    : findFirstNonterminal(node, 'memberExpression');
+  const segments = memberNode ? extractPathFromMemberExpression(memberNode, null) : null;
+  if (!segments || segments.length < 2) return null;
+  const dynamicHandleField = compileContext.asyncStateDynamicHandleFields.get(segments[0]);
+  if (!dynamicHandleField) return null;
+
+  let handleExpression = `__sm->${dynamicHandleField}`;
+  for (let index = 1; index < segments.length; index += 1) {
+    handleExpression = `__async_handle_get_handle(${handleExpression}, (const char*)"${segments[index]}")`;
+  }
+  return handleExpression;
+}
+
 function tryLowerDynamicHandleMethodCall(node, compileContext) {
   const info = getDynamicHandleMethodCallInfo(node, compileContext);
   if (!info) return null;
@@ -8034,22 +8058,48 @@ function tryLowerDynamicHandleMethodCall(node, compileContext) {
   if (info.argExprs.length === 0) {
     return `__async_handle_call0(${prefix})`;
   }
-  if (info.argExprs.length !== 1) return null;
 
-  const argumentNode = info.argExprs[0];
-  const loweredArgument = lowerExpressionValue(argumentNode, compileContext);
-  if (loweredArgument === null) return null;
-  if (inferExprType(argumentNode, compileContext) === 'string') {
-    return `__async_handle_call1_string(${prefix}, (const char*)(${loweredArgument}))`;
+  if (info.argExprs.length === 1) {
+    const argumentNode = info.argExprs[0];
+    const loweredArgument = lowerExpressionValue(argumentNode, compileContext);
+    if (loweredArgument === null) return null;
+    if (inferExprType(argumentNode, compileContext) === 'string') {
+      return `__async_handle_call1_string(${prefix}, (const char*)(${loweredArgument}))`;
+    }
+    if (isFractionalNumericExpression(argumentNode)) {
+      return `__async_handle_call1_f64(${prefix}, ${loweredArgument})`;
+    }
+    if (inferExprType(argumentNode, compileContext) === 'number'
+      || inferExprType(argumentNode, compileContext) === 'bool') {
+      return `__async_handle_call1_i32(${prefix}, ${loweredArgument})`;
+    }
   }
-  if (isFractionalNumericExpression(argumentNode)) {
-    return `__async_handle_call1_f64(${prefix}, ${loweredArgument})`;
+
+  const stagedArguments = [];
+  for (const argumentNode of info.argExprs) {
+    const dynamicHandleArgument = tryLowerDynamicHandleArgument(argumentNode, compileContext);
+    if (dynamicHandleArgument !== null) {
+      stagedArguments.push(`__async_handle_arg_handle(${dynamicHandleArgument})`);
+      continue;
+    }
+    const loweredArgument = lowerExpressionValue(argumentNode, compileContext);
+    if (loweredArgument === null) return null;
+    if (inferExprType(argumentNode, compileContext) === 'string') {
+      stagedArguments.push(`__async_handle_arg_string((const char*)(${loweredArgument}))`);
+      continue;
+    }
+    if (isFractionalNumericExpression(argumentNode)) {
+      stagedArguments.push(`__async_handle_arg_f64(${loweredArgument})`);
+      continue;
+    }
+    if (inferExprType(argumentNode, compileContext) === 'number'
+      || inferExprType(argumentNode, compileContext) === 'bool') {
+      stagedArguments.push(`__async_handle_arg_i32(${loweredArgument})`);
+      continue;
+    }
+    return null;
   }
-  if (inferExprType(argumentNode, compileContext) === 'number'
-    || inferExprType(argumentNode, compileContext) === 'bool') {
-    return `__async_handle_call1_i32(${prefix}, ${loweredArgument})`;
-  }
-  return null;
+  return `(${stagedArguments.join(', ')}, __async_handle_callN(${prefix}, ${info.argExprs.length}))`;
 }
 
 function lowerInfixExpressionValue(node, compileContext) {
@@ -13615,6 +13665,11 @@ function emitAsyncSchedulerHookDeclsCpp(machines) {
     'extern int __async_handle_call1_i32(int handle, const char* key, int value);',
     'extern int __async_handle_call1_f64(int handle, const char* key, double value);',
     'extern int __async_handle_call1_string(int handle, const char* key, const char* value);',
+    'extern int __async_handle_arg_i32(int value);',
+    'extern int __async_handle_arg_f64(double value);',
+    'extern int __async_handle_arg_string(const char* value);',
+    'extern int __async_handle_arg_handle(int value);',
+    'extern int __async_handle_callN(int handle, const char* key, int count);',
     'extern const char* __async_handle_get_string(int handle);',
     'extern int __async_handle_length(int handle);',
     'extern void __async_complete(void* sm);',
