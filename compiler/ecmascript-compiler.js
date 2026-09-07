@@ -8021,6 +8021,21 @@ function isDynamicHandleMethodCall(node, compileContext) {
     && getDynamicHandleMethodCallInfo(node, compileContext) !== null;
 }
 
+function isDynamicHandleMethodPropertyCall(node, compileContext) {
+  return getCallExpressionTrailingPropertyName(node) !== null
+    && getDynamicHandleMethodCallInfo(node, compileContext) !== null;
+}
+
+function lowerDynamicHandleMethodPropertyAsF64(node, compileContext) {
+  const previousType = compileContext.dynamicHandleNumericType;
+  compileContext.dynamicHandleNumericType = 'f64';
+  try {
+    return lowerExpressionValue(node, compileContext);
+  } finally {
+    compileContext.dynamicHandleNumericType = previousType;
+  }
+}
+
 function lowerDynamicHandleMethodAsNumeric(node, compileContext, numericType) {
   const previousType = compileContext.dynamicHandleMethodResultType;
   compileContext.dynamicHandleMethodResultType = numericType;
@@ -8374,6 +8389,16 @@ function lowerInfixExpressionValue(node, compileContext) {
       const loweredNumeric = lowerDynamicHandleMethodAsNumeric(operandNodes[dynamicIndex], compileContext, numericType);
       if (loweredNumeric !== null) {
         parts[dynamicIndex * 2] = loweredNumeric;
+      }
+    }
+    for (const [dynamicIndex, otherIndex] of [[0, 1], [1, 0]]) {
+      if (!isFractionalNumericExpression(operandNodes[otherIndex])
+        || !isDynamicHandleMethodPropertyCall(operandNodes[dynamicIndex], compileContext)) {
+        continue;
+      }
+      const loweredF64 = lowerDynamicHandleMethodPropertyAsF64(operandNodes[dynamicIndex], compileContext);
+      if (loweredF64 !== null) {
+        parts[dynamicIndex * 2] = loweredF64;
       }
     }
   }
@@ -9806,7 +9831,10 @@ function lowerCallExpressionValue(node, compileContext) {
   if (dynamicMethodCall !== null) {
     const trailingPropertyName = getCallExpressionTrailingPropertyName(node);
     if (trailingPropertyName) {
-      return `__async_handle_get_i32(${dynamicMethodCall}, (const char*)"${trailingPropertyName}")`;
+      const getter = compileContext.dynamicHandleNumericType === 'f64'
+        ? '__async_handle_get_f64'
+        : '__async_handle_get_i32';
+      return `${getter}(${dynamicMethodCall}, (const char*)"${trailingPropertyName}")`;
     }
     return dynamicMethodCall;
   }
