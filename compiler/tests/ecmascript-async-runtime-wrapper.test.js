@@ -191,7 +191,7 @@ test('async runtime transports string and object promise values through handles'
       scale(value) { return this.status * value; },
       combine(prefix, meta, scale) { return `${prefix}${meta.status * scale}`; },
       count(a, b) { return a + b; },
-      makeMeta() { return { status: this.meta.status, score: 3.5 }; }
+      makeMeta() { return { status: this.meta.status, score: 3.5, label: 'ready' }; }
     }),
     __getMessage: () => Promise.resolve('async handle text'),
     __malloc: (size) => {
@@ -226,6 +226,10 @@ test('async runtime transports string and object promise values through handles'
   assert.equal(imports.__async_handle_get_i32(methodMetaHandle, 16), 202, 'an object returned by a method must remain a readable handle');
   new TextEncoder().encodeInto('score\0', bytes.subarray(176));
   assert.equal(imports.__async_handle_get_f64(methodMetaHandle, 176), 3.5, 'fractional properties of a method result must remain readable through its handle');
+  new TextEncoder().encodeInto('label\0', bytes.subarray(192));
+  new TextEncoder().encodeInto('ready\0', bytes.subarray(208));
+  const labelHandle = imports.__async_handle_get_handle(methodMetaHandle, 192);
+  assert.equal(imports.__async_handle_equals_string(labelHandle, 208), 1, 'string properties of a method result must preserve strict equality');
   new TextEncoder().encodeInto('describe\0', bytes.subarray(48));
   new TextEncoder().encodeInto('status: \0', bytes.subarray(64));
   const descriptionHandle = imports.__async_handle_call1_string(responseHandle, 48, 64);

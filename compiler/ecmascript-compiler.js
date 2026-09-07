@@ -8036,6 +8036,16 @@ function lowerDynamicHandleMethodPropertyAsF64(node, compileContext) {
   }
 }
 
+function lowerDynamicHandleMethodPropertyAsString(node, compileContext) {
+  const previousType = compileContext.dynamicHandleMethodPropertyResultType;
+  compileContext.dynamicHandleMethodPropertyResultType = 'string';
+  try {
+    return lowerExpressionValue(node, compileContext);
+  } finally {
+    compileContext.dynamicHandleMethodPropertyResultType = previousType;
+  }
+}
+
 function lowerDynamicHandleMethodAsNumeric(node, compileContext, numericType) {
   const previousType = compileContext.dynamicHandleMethodResultType;
   compileContext.dynamicHandleMethodResultType = numericType;
@@ -8389,6 +8399,19 @@ function lowerInfixExpressionValue(node, compileContext) {
       const loweredNumeric = lowerDynamicHandleMethodAsNumeric(operandNodes[dynamicIndex], compileContext, numericType);
       if (loweredNumeric !== null) {
         parts[dynamicIndex * 2] = loweredNumeric;
+      }
+    }
+    for (const [dynamicIndex, otherIndex] of [[0, 1], [1, 0]]) {
+      if (!(operatorTokens.includes('===') || operatorTokens.includes('!=='))
+        || !isDynamicHandleMethodPropertyCall(operandNodes[dynamicIndex], compileContext)
+        || inferExprType(operandNodes[otherIndex], compileContext) !== 'string') {
+        continue;
+      }
+      const propertyHandle = lowerDynamicHandleMethodPropertyAsString(operandNodes[dynamicIndex], compileContext);
+      const otherString = lowerExpressionValue(operandNodes[otherIndex], compileContext);
+      if (propertyHandle !== null && otherString !== null) {
+        const equals = `__async_handle_equals_string(${propertyHandle}, (const char*)(${otherString}))`;
+        return operatorTokens.includes('!==') ? `(!${equals})` : equals;
       }
     }
     for (const [dynamicIndex, otherIndex] of [[0, 1], [1, 0]]) {
@@ -9831,6 +9854,9 @@ function lowerCallExpressionValue(node, compileContext) {
   if (dynamicMethodCall !== null) {
     const trailingPropertyName = getCallExpressionTrailingPropertyName(node);
     if (trailingPropertyName) {
+      if (compileContext.dynamicHandleMethodPropertyResultType === 'string') {
+        return `__async_handle_get_handle(${dynamicMethodCall}, (const char*)"${trailingPropertyName}")`;
+      }
       const getter = compileContext.dynamicHandleNumericType === 'f64'
         ? '__async_handle_get_f64'
         : '__async_handle_get_i32';

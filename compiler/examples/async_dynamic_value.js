@@ -12,6 +12,9 @@ async function useDynamicValues() {
   if (response.makeMeta().score === 3.5) {
     console.log('async dynamic method fractional property retained');
   }
+  if (response.makeMeta().label === 'ready') {
+    console.log('async dynamic method string property retained');
+  }
   if (response.score === 3.5) {
     console.log('async dynamic fractional object retained');
   }
