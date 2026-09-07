@@ -6056,6 +6056,11 @@ function lowerConsoleConcatPieceAsCString(pieceNode, compileContext) {
     return staticStringLiteralCpp(literalText);
   }
 
+  const dynamicMethodCall = tryLowerDynamicHandleMethodCall(pieceNode, compileContext);
+  if (dynamicMethodCall !== null) {
+    return `__maia_console_to_cstr_string(__async_handle_get_string(${dynamicMethodCall}))`;
+  }
+
   const staticCallNode = pieceNode && pieceNode.kind === 'nonterminal'
     ? (pieceNode.name === 'callExpression' ? pieceNode : findFirstNonterminal(pieceNode, 'callExpression'))
     : null;
@@ -8011,6 +8016,16 @@ function lowerDynamicHandleMethodAsNumeric(node, compileContext, numericType) {
   }
 }
 
+function lowerDynamicHandleMethodAsString(node, compileContext) {
+  const previousType = compileContext.dynamicHandleMethodResultType;
+  compileContext.dynamicHandleMethodResultType = 'string';
+  try {
+    return lowerExpressionValue(node, compileContext);
+  } finally {
+    compileContext.dynamicHandleMethodResultType = previousType;
+  }
+}
+
 function getDynamicHandleMethodCallInfo(node, compileContext) {
   if (!compileContext || !compileContext.asyncStateDynamicHandleFields) return null;
 
@@ -8123,6 +8138,9 @@ function tryLowerDynamicHandleMethodCall(node, compileContext) {
   }
   if (compileContext.dynamicHandleMethodResultType === 'i32') {
     return `__async_handle_to_i32(${loweredCall})`;
+  }
+  if (compileContext.dynamicHandleMethodResultType === 'string') {
+    return `__async_handle_get_string(${loweredCall})`;
   }
   return loweredCall;
 }
@@ -8327,6 +8345,16 @@ function lowerInfixExpressionValue(node, compileContext) {
     }
     for (const [dynamicIndex, otherIndex] of [[0, 1], [1, 0]]) {
       if (!isDynamicHandleMethodCall(operandNodes[dynamicIndex], compileContext)) continue;
+      if (operatorTokens.includes('===') || operatorTokens.includes('!==')) {
+        if (inferExprType(operandNodes[otherIndex], compileContext) === 'string') {
+          const dynamicHandle = tryLowerDynamicHandleMethodCall(operandNodes[dynamicIndex], compileContext);
+          const otherString = lowerExpressionValue(operandNodes[otherIndex], compileContext);
+          if (dynamicHandle !== null && otherString !== null) {
+            const equals = `__async_handle_equals_string(${dynamicHandle}, (const char*)(${otherString}))`;
+            return operatorTokens.includes('!==') ? `(!${equals})` : equals;
+          }
+        }
+      }
       const numericType = isFractionalNumericExpression(operandNodes[otherIndex]) ? 'f64' : 'i32';
       const loweredNumeric = lowerDynamicHandleMethodAsNumeric(operandNodes[dynamicIndex], compileContext, numericType);
       if (loweredNumeric !== null) {
@@ -13332,9 +13360,15 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
     const previousAsyncStateFieldTypes = compileContext ? compileContext.asyncStateLocalFieldTypes : null;
     const previousAsyncStateDynamicHandleFields = compileContext ? compileContext.asyncStateDynamicHandleFields : null;
     if (compileContext) {
+      const dynamicHandleFields = collectAsyncStateDynamicHandleFields(machine, localFields);
+      for (const field of localFields) {
+        if (dynamicHandleFields.has(field.name)) {
+          field.cppType = 'int';
+        }
+      }
       compileContext.asyncStateLocalFields = new Map(localFields.map((field) => [field.name, field.fieldName]));
       compileContext.asyncStateLocalFieldTypes = new Map(localFields.map((field) => [field.name, field.cppType]));
-      compileContext.asyncStateDynamicHandleFields = collectAsyncStateDynamicHandleFields(machine, localFields);
+      compileContext.asyncStateDynamicHandleFields = dynamicHandleFields;
     }
 
     const paramFields = machine.params.length === 0
@@ -13719,6 +13753,7 @@ function emitAsyncSchedulerHookDeclsCpp(machines) {
     'extern int __async_handle_callN(int handle, const char* key, int count);',
     'extern int __async_handle_to_i32(int handle);',
     'extern double __async_handle_to_f64(int handle);',
+    'extern int __async_handle_equals_string(int handle, const char* value);',
     'extern const char* __async_handle_get_string(int handle);',
     'extern int __async_handle_length(int handle);',
     'extern void __async_complete(void* sm);',

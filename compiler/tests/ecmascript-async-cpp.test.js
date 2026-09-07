@@ -112,7 +112,7 @@ test('async C++ emission: dynamic await result uses the scalar runtime ABI', () 
 
 test('async C++ emission: dynamic await handles lower string and object reads through the runtime ABI', () => {
   const cpp = runCompilerCpp(
-    'async function load() { const response = await getResponse(); if (response.status === 201) { console.log("ok"); } if (response.meta.status === 202) { console.log("nested"); } if (response.score === 3.5) { console.log("fractional"); } if (response.scale(2.5) === 502.5) { console.log("method fractional"); } if (response.count(2, 3) === 5) { console.log("method integer"); } const description = response.describe("status: "); const combined = response.combine("meta: ", response.meta, 2.5); console.log(description); console.log(combined); console.log(response.scale(2.5)); const message = await getMessage(); console.log(message); }\n'
+    'async function load() { const response = await getResponse(); if (response.status === 201) { console.log("ok"); } if (response.meta.status === 202) { console.log("nested"); } if (response.score === 3.5) { console.log("fractional"); } if (response.describe("status: ") === "status: 201") { console.log("method string"); } if (response.scale(2.5) === 502.5) { console.log("method fractional"); } if (response.count(2, 3) === 5) { console.log("method integer"); } const description = response.describe("status: "); const combined = response.combine("meta: ", response.meta, 2.5); console.log(description); console.log(combined); console.log(response.scale(2.5)); const message = await getMessage(); console.log(message); }\n'
   );
 
   assert.match(cpp, /__async_handle_get_i32\(__sm->__local_response, \(const char\*\)"status"\)/, 'object property must read from the dynamic handle');
@@ -124,6 +124,8 @@ test('async C++ emission: dynamic await handles lower string and object reads th
   assert.match(cpp, /__console__log\(__async_handle_get_string\(__sm->__local_combined\)\);/, 'a multiple-argument dynamic method result must remain available through its binding');
   assert.match(cpp, /__console__log\(__async_handle_get_string\(__async_handle_call1_f64\(__sm->__local_response, \(const char\*\)"scale", 2\.5\)\)\);/, 'fractional dynamic method arguments must preserve their value');
   assert.match(cpp, /__async_handle_to_f64\(__async_handle_call1_f64\(__sm->__local_response, \(const char\*\)"scale", 2\.5\)\) == 502\.5/, 'fractional method results must convert to double in a numeric comparison');
+  assert.match(cpp, /__async_handle_equals_string\(__async_handle_call1_string\(__sm->__local_response, \(const char\*\)"describe", \(const char\*\)\("status: "\)\), \(const char\*\)\("status: 201"\)\)/, 'strict string comparisons must preserve the host value type');
+  assert.match(cpp, /int __local_description;/, 'dynamic method-result bindings must retain their handle representation');
   assert.match(cpp, /__async_handle_to_i32\(\(__async_handle_arg_i32\(2\), __async_handle_arg_i32\(3\), __async_handle_callN\(__sm->__local_response, \(const char\*\)"count", 2\)\)\) == 5/, 'integer method results must convert to int in a numeric comparison');
   assert.match(cpp, /__console__log\(__async_handle_get_string\(__sm->__local_message\)\);/, 'string handle must convert to C string for console output');
   assert.match(cpp, /extern int __async_handle_get_handle\(int handle, const char\* key\);/, 'generated C++ must declare the nested-handle ABI');
@@ -132,6 +134,7 @@ test('async C++ emission: dynamic await handles lower string and object reads th
   assert.match(cpp, /extern int __async_handle_call1_string\(int handle, const char\* key, const char\* value\);/, 'generated C++ must declare the string method-argument ABI');
   assert.match(cpp, /extern int __async_handle_callN\(int handle, const char\* key, int count\);/, 'generated C++ must declare the variadic method ABI');
   assert.match(cpp, /extern double __async_handle_to_f64\(int handle\);/, 'generated C++ must declare numeric method-result conversion');
+  assert.match(cpp, /extern int __async_handle_equals_string\(int handle, const char\* value\);/, 'generated C++ must declare strict string comparison');
 });
 
 test('async C++ emission: rejected await resumes into its catch handler state', () => {

@@ -246,6 +246,9 @@ test('async runtime transports string and object promise values through handles'
   const countHandle = imports.__async_handle_callN(responseHandle, 128, 2);
   assert.equal(imports.__async_handle_to_i32(countHandle), 5, 'integer method results must be readable without exposing host handles');
   assert.equal(imports.__async_handle_to_f64(scaledHandle), 502.5, 'fractional method results must be readable without exposing host handles');
+  new TextEncoder().encodeInto('status: 201\0', bytes.subarray(144));
+  assert.equal(imports.__async_handle_equals_string(descriptionHandle, 144), 1, 'strict string comparison must match a string result');
+  assert.equal(imports.__async_handle_equals_string(scaledHandle, 144), 0, 'strict string comparison must not coerce numeric results');
   const stringPtr = imports.__async_handle_get_string(messageHandle);
   const end = bytes.indexOf(0, stringPtr);
   assert.equal(new TextDecoder().decode(bytes.subarray(stringPtr, end)), 'async handle text');

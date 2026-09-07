@@ -120,7 +120,8 @@ failure in the validated pipeline:
   dynamic-handle arguments such as `response.meta`; opaque results can be
   bound to later async-state locals and consumed as strings. Comparisons and
   arithmetic with numeric literals now convert dynamic method results to
-  `int` or `double` contextually. This is covered by
+  `int` or `double` contextually; strict equality with strings checks the
+  runtime value type rather than coercing it. This is covered by
   `npm run test:async:dynamic-value`. Richer contextual type selection and
   aggregate argument values remain.
 - [x] Preserve top-level local bindings in the async state structure and verify
