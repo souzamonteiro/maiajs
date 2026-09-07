@@ -8667,6 +8667,10 @@ function lowerExpressionValue(node, compileContext) {
         ? baseExpressionNode
         : findFirstNonterminal(baseExpressionNode, 'callExpression');
       if (baseCallExpressionNode) {
+        const dynamicMethodCall = tryLowerDynamicHandleMethodCall(baseCallExpressionNode, compileContext);
+        if (dynamicMethodCall !== null) {
+          return `__async_handle_get_i32(${dynamicMethodCall}, (const char*)"${directPropertyName}")`;
+        }
         const { memberExprNode: weakMapMemberExprNode, argExprs: weakMapArgExprs } = extractCallExpressionMemberAndArgs(baseCallExpressionNode);
         const weakMapPathSegments = weakMapMemberExprNode ? extractPathFromMemberExpression(weakMapMemberExprNode, null) : null;
         const weakMapMemberChildren = weakMapMemberExprNode ? (weakMapMemberExprNode.children || []) : [];
