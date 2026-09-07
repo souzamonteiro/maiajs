@@ -7997,7 +7997,7 @@ function lowerDynamicHandleMemberAsF64(node, compileContext) {
   }
 }
 
-function tryLowerDynamicHandleMethodCall(node, compileContext) {
+function getDynamicHandleMethodCallInfo(node, compileContext) {
   if (!compileContext || !compileContext.asyncStateDynamicHandleFields) return null;
 
   const callNode = node && node.name === 'callExpression'
@@ -8006,11 +8006,8 @@ function tryLowerDynamicHandleMethodCall(node, compileContext) {
   if (!callNode) return null;
 
   const memberExprNode = extractOutermostCallMemberExpression(callNode);
-  const argsNode = findFirstNonterminal(callNode, 'arguments');
+  const { argsNode, argExprs } = extractCallExpressionMemberAndArgs(callNode);
   if (!memberExprNode || !argsNode) return null;
-
-  const argListNode = findFirstNonterminal(argsNode, 'argumentList');
-  if (argListNode && collectArgumentExpressions(argListNode).length > 0) return null;
 
   const segments = extractPathFromMemberExpression(memberExprNode, null);
   if (!segments || segments.length < 2) return null;
@@ -8022,7 +8019,37 @@ function tryLowerDynamicHandleMethodCall(node, compileContext) {
   for (let index = 1; index < segments.length - 1; index += 1) {
     handleExpression = `__async_handle_get_handle(${handleExpression}, (const char*)"${segments[index]}")`;
   }
-  return `__async_handle_call0(${handleExpression}, (const char*)"${segments[segments.length - 1]}")`;
+  return {
+    handleExpression,
+    methodName: segments[segments.length - 1],
+    argExprs
+  };
+}
+
+function tryLowerDynamicHandleMethodCall(node, compileContext) {
+  const info = getDynamicHandleMethodCallInfo(node, compileContext);
+  if (!info) return null;
+
+  const prefix = `${info.handleExpression}, (const char*)"${info.methodName}"`;
+  if (info.argExprs.length === 0) {
+    return `__async_handle_call0(${prefix})`;
+  }
+  if (info.argExprs.length !== 1) return null;
+
+  const argumentNode = info.argExprs[0];
+  const loweredArgument = lowerExpressionValue(argumentNode, compileContext);
+  if (loweredArgument === null) return null;
+  if (inferExprType(argumentNode, compileContext) === 'string') {
+    return `__async_handle_call1_string(${prefix}, (const char*)(${loweredArgument}))`;
+  }
+  if (isFractionalNumericExpression(argumentNode)) {
+    return `__async_handle_call1_f64(${prefix}, ${loweredArgument})`;
+  }
+  if (inferExprType(argumentNode, compileContext) === 'number'
+    || inferExprType(argumentNode, compileContext) === 'bool') {
+    return `__async_handle_call1_i32(${prefix}, ${loweredArgument})`;
+  }
+  return null;
 }
 
 function lowerInfixExpressionValue(node, compileContext) {
@@ -13029,6 +13056,42 @@ function collectAsyncStateLocalFields(machine, compileContext) {
   return fields;
 }
 
+function collectAsyncStateDynamicHandleFields(machine, localFields) {
+  const dynamicFields = new Map(
+    machine.body
+      .filter((suspendPoint) => suspendPoint && suspendPoint.resultBinding && awaitUsesDynamicRuntimeTransport(suspendPoint))
+      .map((suspendPoint) => [
+        suspendPoint.resultBinding.name,
+        `__local_${suspendPoint.resultBinding.name}`
+      ])
+  );
+  const localFieldNames = new Map(localFields.map((field) => [field.name, field.fieldName]));
+
+  // Method results remain opaque host values. Discover these declarations after
+  // the awaited bindings so a later local can be used like any other handle.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const statementNode of (machine.statementNodes || [])) {
+      walk(statementNode, (node) => {
+        if (!node || node.kind !== 'nonterminal' || node.name !== 'variableDeclaration') return;
+        const name = extractVariableDeclarationName(node);
+        const initializer = extractVariableDeclarationInitializer(node);
+        const callNode = initializer ? extractDirectCallExpressionNode(initializer) : null;
+        const memberExprNode = callNode ? extractOutermostCallMemberExpression(callNode) : null;
+        const segments = memberExprNode ? extractPathFromMemberExpression(memberExprNode, null) : null;
+        if (!name || dynamicFields.has(name) || !localFieldNames.has(name)
+          || !segments || segments.length < 2 || !dynamicFields.has(segments[0])) {
+          return;
+        }
+        dynamicFields.set(name, localFieldNames.get(name));
+        changed = true;
+      });
+    }
+  }
+  return dynamicFields;
+}
+
 function lowerAsyncAwaitedExpression(suspendPoint, compileContext) {
   const operand = extractAsyncAwaitOperand(suspendPoint && suspendPoint.awaitNode);
   return operand ? lowerExpressionValue(operand, compileContext) : suspendPoint.awaitedExpr;
@@ -13174,14 +13237,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
     if (compileContext) {
       compileContext.asyncStateLocalFields = new Map(localFields.map((field) => [field.name, field.fieldName]));
       compileContext.asyncStateLocalFieldTypes = new Map(localFields.map((field) => [field.name, field.cppType]));
-      compileContext.asyncStateDynamicHandleFields = new Map(
-        machine.body
-          .filter((suspendPoint) => suspendPoint && suspendPoint.resultBinding && awaitUsesDynamicRuntimeTransport(suspendPoint))
-          .map((suspendPoint) => [
-            suspendPoint.resultBinding.name,
-            `__local_${suspendPoint.resultBinding.name}`
-          ])
-      );
+      compileContext.asyncStateDynamicHandleFields = collectAsyncStateDynamicHandleFields(machine, localFields);
     }
 
     const paramFields = machine.params.length === 0
@@ -13556,6 +13612,9 @@ function emitAsyncSchedulerHookDeclsCpp(machines) {
     'extern double __async_handle_get_f64(int handle, const char* key);',
     'extern int __async_handle_get_handle(int handle, const char* key);',
     'extern int __async_handle_call0(int handle, const char* key);',
+    'extern int __async_handle_call1_i32(int handle, const char* key, int value);',
+    'extern int __async_handle_call1_f64(int handle, const char* key, double value);',
+    'extern int __async_handle_call1_string(int handle, const char* key, const char* value);',
     'extern const char* __async_handle_get_string(int handle);',
     'extern int __async_handle_length(int handle);',
     'extern void __async_complete(void* sm);',

@@ -187,7 +187,8 @@ test('async runtime transports string and object promise values through handles'
     __getResponse: () => Promise.resolve({
       status: 201,
       meta: { status: 202 },
-      describe() { return `status ${this.status}`; }
+      describe(prefix) { return `${prefix}${this.status}`; },
+      scale(value) { return this.status * value; }
     }),
     __getMessage: () => Promise.resolve('async handle text'),
     __malloc: (size) => {
@@ -218,10 +219,16 @@ test('async runtime transports string and object promise values through handles'
   assert.notEqual(metaHandle, 0, 'nested object property must retain an opaque handle');
   assert.equal(imports.__async_handle_get_i32(metaHandle, 16), 202, 'nested object scalar must be readable through its retained handle');
   new TextEncoder().encodeInto('describe\0', bytes.subarray(48));
-  const descriptionHandle = imports.__async_handle_call0(responseHandle, 48);
+  new TextEncoder().encodeInto('status: \0', bytes.subarray(64));
+  const descriptionHandle = imports.__async_handle_call1_string(responseHandle, 48, 64);
   const descriptionPtr = imports.__async_handle_get_string(descriptionHandle);
   const descriptionEnd = bytes.indexOf(0, descriptionPtr);
-  assert.equal(new TextDecoder().decode(bytes.subarray(descriptionPtr, descriptionEnd)), 'status 201', 'method calls must preserve the host object receiver');
+  assert.equal(new TextDecoder().decode(bytes.subarray(descriptionPtr, descriptionEnd)), 'status: 201', 'method calls must preserve the host object receiver and string argument');
+  new TextEncoder().encodeInto('scale\0', bytes.subarray(80));
+  const scaledHandle = imports.__async_handle_call1_f64(responseHandle, 80, 2.5);
+  const scaledPtr = imports.__async_handle_get_string(scaledHandle);
+  const scaledEnd = bytes.indexOf(0, scaledPtr);
+  assert.equal(new TextDecoder().decode(bytes.subarray(scaledPtr, scaledEnd)), '502.5', 'fractional method arguments must reach the host method');
   const stringPtr = imports.__async_handle_get_string(messageHandle);
   const end = bytes.indexOf(0, stringPtr);
   assert.equal(new TextDecoder().decode(bytes.subarray(stringPtr, end)), 'async handle text');

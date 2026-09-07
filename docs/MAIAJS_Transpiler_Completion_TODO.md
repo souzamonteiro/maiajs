@@ -113,11 +113,12 @@ failure in the validated pipeline:
 - [~] Extend handle lowering to object methods and typed structured values.
   Nested scalar properties are covered by the dynamic-handle ABI, including
   `double` selection for properties compared with fractional numeric literals.
-  No-argument method calls on a dynamic object or nested dynamic object are
-  now dispatched with the original receiver through `__async_handle_call0`;
-  string results consumed directly by `console.log` are covered by
-  `npm run test:async:dynamic-value`. Method arguments, binding a method
-  result for later use, and richer contextual type selection remain.
+  Method calls with zero or one scalar argument on a dynamic object or nested
+  dynamic object are dispatched with the original receiver through
+  `__async_handle_call0` and the typed `__async_handle_call1_*` hooks. Their
+  opaque results can be bound to later async-state locals and consumed as
+  strings; this is covered by `npm run test:async:dynamic-value`. Multiple or
+  handle-valued method arguments and richer contextual type selection remain.
 - [x] Preserve top-level local bindings in the async state structure and verify
   their resumed reads through the public Node/WASM distribution path:
   `npm run test:async:locals`.

@@ -9,7 +9,9 @@ async function useDynamicValues() {
   if (response.score === 3.5) {
     console.log('async dynamic fractional object retained');
   }
-  console.log(response.describe());
+  const description = response.describe('dynamic status: ');
+  console.log(description);
+  console.log(response.scale(2.5));
   const message = await getMessage();
   console.log(message);
 }

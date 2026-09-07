@@ -112,17 +112,20 @@ test('async C++ emission: dynamic await result uses the scalar runtime ABI', () 
 
 test('async C++ emission: dynamic await handles lower string and object reads through the runtime ABI', () => {
   const cpp = runCompilerCpp(
-    'async function load() { const response = await getResponse(); if (response.status === 201) { console.log("ok"); } if (response.meta.status === 202) { console.log("nested"); } if (response.score === 3.5) { console.log("fractional"); } console.log(response.describe()); const message = await getMessage(); console.log(message); }\n'
+    'async function load() { const response = await getResponse(); if (response.status === 201) { console.log("ok"); } if (response.meta.status === 202) { console.log("nested"); } if (response.score === 3.5) { console.log("fractional"); } const description = response.describe("status: "); console.log(description); console.log(response.scale(2.5)); const message = await getMessage(); console.log(message); }\n'
   );
 
   assert.match(cpp, /__async_handle_get_i32\(__sm->__local_response, \(const char\*\)"status"\)/, 'object property must read from the dynamic handle');
   assert.match(cpp, /__async_handle_get_i32\(__async_handle_get_handle\(__sm->__local_response, \(const char\*\)"meta"\), \(const char\*\)"status"\)/, 'nested object property must retain and read through an intermediate handle');
   assert.match(cpp, /__async_handle_get_f64\(__sm->__local_response, \(const char\*\)"score"\) == 3\.5/, 'fractional comparisons must select the f64 handle getter');
-  assert.match(cpp, /__console__log\(__async_handle_get_string\(__async_handle_call0\(__sm->__local_response, \(const char\*\)"describe"\)\)\);/, 'no-argument dynamic object methods must preserve their receiver and return a handle');
+  assert.match(cpp, /__sm->__local_description = __async_handle_call1_string\(__sm->__local_response, \(const char\*\)"describe", \(const char\*\)\("status: "\)\);/, 'dynamic method results assigned to locals must remain opaque handles');
+  assert.match(cpp, /__console__log\(__async_handle_get_string\(__sm->__local_description\)\);/, 'a bound dynamic method result must be readable as a later string');
+  assert.match(cpp, /__console__log\(__async_handle_get_string\(__async_handle_call1_f64\(__sm->__local_response, \(const char\*\)"scale", 2\.5\)\)\);/, 'fractional dynamic method arguments must preserve their value');
   assert.match(cpp, /__console__log\(__async_handle_get_string\(__sm->__local_message\)\);/, 'string handle must convert to C string for console output');
   assert.match(cpp, /extern int __async_handle_get_handle\(int handle, const char\* key\);/, 'generated C++ must declare the nested-handle ABI');
   assert.match(cpp, /extern const char\* __async_handle_get_string\(int handle\);/, 'generated C++ must declare the string handle ABI');
   assert.match(cpp, /extern int __async_handle_call0\(int handle, const char\* key\);/, 'generated C++ must declare the dynamic method ABI');
+  assert.match(cpp, /extern int __async_handle_call1_string\(int handle, const char\* key, const char\* value\);/, 'generated C++ must declare the string method-argument ABI');
 });
 
 test('async C++ emission: rejected await resumes into its catch handler state', () => {
