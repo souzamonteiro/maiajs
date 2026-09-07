@@ -76,8 +76,8 @@ failure in the validated pipeline:
   `for`, and nested `break`/`continue`; `for` containing `while` and `while`
   containing `for` are covered by `npm run test:async:nested-for-while` and
   `npm run test:async:nested-while-for`. An inner post-`await` `break` is
-  covered by `npm run test:async:nested-for-while-break`; nested `continue`
-  remains to be gated.
+  covered by `npm run test:async:nested-for-while-break`, and an inner
+  post-`await` `continue` by `npm run test:async:nested-for-while-continue`.
 - [x] Materialize declaration targets for `await Promise.resolve(value)` in the
   resumed state and verify them through Node/WASM:
   `npm run test:async:await-result`.
