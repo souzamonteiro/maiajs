@@ -73,8 +73,11 @@ failure in the validated pipeline:
   fields, preserves the inner local through `await`, and returns through the
   parent increment path.
 - [~] Add Node/WASM gates for `for` containing `while`, `while` containing
-  `for`, and nested `break`/`continue`; `for` containing `while` is covered by
-  `npm run test:async:nested-for-while`.
+  `for`, and nested `break`/`continue`; `for` containing `while` and `while`
+  containing `for` are covered by `npm run test:async:nested-for-while` and
+  `npm run test:async:nested-while-for`. An inner post-`await` `break` is
+  covered by `npm run test:async:nested-for-while-break`; nested `continue`
+  remains to be gated.
 - [x] Materialize declaration targets for `await Promise.resolve(value)` in the
   resumed state and verify them through Node/WASM:
   `npm run test:async:await-result`.

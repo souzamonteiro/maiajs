@@ -13122,6 +13122,7 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
       const previousIfGuard = ifGuardsBySuspend.get(previousSuspendPoint) || null;
       const previousLoopGuards = loopGuardsBySuspend.get(previousSuspendPoint) || [];
       const previousLoopGuard = previousLoopGuards[previousLoopGuards.length - 1] || null;
+      const previousParentLoopGuard = previousLoopGuards[previousLoopGuards.length - 2] || null;
       const loopGuards = loopGuardsBySuspend.get(suspendPoint) || [];
       const resumedAssignment = stateIndex > 0
         ? lowerAsyncAwaitResultAssignment(previousSuspendPoint, compileContext)
@@ -13178,7 +13179,15 @@ function emitAsyncStateMachinesCpp(machines, bridgePlanByFunctionName = new Map(
           switchBody += `        __sm->__branch = 0;\n`;
         }
         if (tailControl === 'break') {
-          switchBody += `        ${previousLoopProgress} = 0;\n        __sm->__state = ${stateIndex};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+          if (previousParentLoopGuard) {
+            switchBody += `        ${previousLoopProgress} = 0;\n`;
+            for (const statement of previousParentLoopGuard.postAwaitStatements) {
+              for (const line of lowerStatementNode(statement, compileContext, 4, { returnTypeCpp: machine.returnValueCppType })) switchBody += `${line}\n`;
+            }
+            switchBody += `        __sm->__loop_progress_${previousParentLoopGuard.depth} = 2;\n        __sm->__state = 0;\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+          } else {
+            switchBody += `        ${previousLoopProgress} = 0;\n        __sm->__state = ${stateIndex};\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
+          }
         } else {
           switchBody += `        ${previousLoopProgress} = 2;\n        __sm->__state = 0;\n        ${structName}__resume(__sm);\n        return;\n      }\n`;
         }
