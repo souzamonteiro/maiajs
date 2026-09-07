@@ -126,8 +126,9 @@ failure in the validated pipeline:
   async-state local and then accessed through dynamic properties; direct
   call/property chains such as `response.makeMeta().status` are also lowered
   through the returned handle, including `double` selection for a fractional
-  comparison, strict equality for strings, and direct string output. Richer
-  contextual type selection and aggregate argument values remain.
+  comparison, strict equality for strings, direct string output, and nested
+  object properties. Richer contextual type selection and aggregate argument
+  values remain.
 - [x] Preserve top-level local bindings in the async state structure and verify
   their resumed reads through the public Node/WASM distribution path:
   `npm run test:async:locals`.

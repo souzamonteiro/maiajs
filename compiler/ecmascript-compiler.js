@@ -8011,17 +8011,28 @@ function lowerDynamicHandleMemberAsF64(node, compileContext) {
 }
 
 function getCallExpressionTrailingPropertyName(node) {
+  const propertyNames = getCallExpressionTrailingPropertyNames(node);
+  return propertyNames.length > 0 ? propertyNames[0] : null;
+}
+
+function getCallExpressionTrailingPropertyNames(node) {
   const callNode = node && node.name === 'callExpression'
     ? node
     : findFirstNonterminal(node, 'callExpression');
-  if (!callNode) return null;
+  if (!callNode) return [];
   const children = callNode.children || [];
   const argsIndex = children.findIndex((child) => child && child.kind === 'nonterminal' && child.name === 'arguments');
-  if (argsIndex < 0 || !children[argsIndex + 1]
-    || children[argsIndex + 1].kind !== 'terminal' || children[argsIndex + 1].value !== '.') {
-    return null;
+  if (argsIndex < 0) return [];
+  const names = [];
+  for (let index = argsIndex + 1; index + 1 < children.length; index += 2) {
+    if (!children[index] || children[index].kind !== 'terminal' || children[index].value !== '.') {
+      break;
+    }
+    const name = findFirstIdentifierValue(children[index + 1]);
+    if (!name) break;
+    names.push(name);
   }
-  return findFirstIdentifierValue(children[argsIndex + 2]);
+  return names;
 }
 
 function isDynamicHandleMethodCall(node, compileContext) {
@@ -9862,13 +9873,19 @@ function lowerCallExpressionValue(node, compileContext) {
   if (dynamicMethodCall !== null) {
     const trailingPropertyName = getCallExpressionTrailingPropertyName(node);
     if (trailingPropertyName) {
+      const trailingPropertyNames = getCallExpressionTrailingPropertyNames(node);
+      let propertyReceiver = dynamicMethodCall;
+      for (let index = 0; index < trailingPropertyNames.length - 1; index += 1) {
+        propertyReceiver = `__async_handle_get_handle(${propertyReceiver}, (const char*)"${trailingPropertyNames[index]}")`;
+      }
+      const finalPropertyName = trailingPropertyNames[trailingPropertyNames.length - 1];
       if (compileContext.dynamicHandleMethodPropertyResultType === 'string') {
-        return `__async_handle_get_handle(${dynamicMethodCall}, (const char*)"${trailingPropertyName}")`;
+        return `__async_handle_get_handle(${propertyReceiver}, (const char*)"${finalPropertyName}")`;
       }
       const getter = compileContext.dynamicHandleNumericType === 'f64'
         ? '__async_handle_get_f64'
         : '__async_handle_get_i32';
-      return `${getter}(${dynamicMethodCall}, (const char*)"${trailingPropertyName}")`;
+      return `${getter}(${propertyReceiver}, (const char*)"${finalPropertyName}")`;
     }
     return dynamicMethodCall;
   }
