@@ -6287,9 +6287,10 @@ function lowerRequiredExpressionValue(expressionNode, compileContext, code, deta
 
 function lowerConsoleLogArgumentExpression(expressionNode, compileContext) {
   if (isDynamicHandleMethodPropertyCall(expressionNode, compileContext)) {
-    const propertyHandle = lowerDynamicHandleMethodPropertyAsString(expressionNode, compileContext);
-    if (propertyHandle !== null) {
-      return `__async_handle_get_string(${propertyHandle})`;
+    const dynamicMethodCall = tryLowerDynamicHandleMethodCall(expressionNode, compileContext);
+    const propertyName = getCallExpressionTrailingPropertyName(expressionNode);
+    if (dynamicMethodCall !== null && propertyName) {
+      return `__async_handle_get_property_string(${dynamicMethodCall}, (const char*)"${propertyName}")`;
     }
   }
 
@@ -13838,6 +13839,7 @@ function emitAsyncSchedulerHookDeclsCpp(machines) {
     'extern int __async_handle_to_i32(int handle);',
     'extern double __async_handle_to_f64(int handle);',
     'extern int __async_handle_equals_string(int handle, const char* value);',
+    'extern const char* __async_handle_get_property_string(int handle, const char* key);',
     'extern const char* __async_handle_get_string(int handle);',
     'extern int __async_handle_length(int handle);',
     'extern void __async_complete(void* sm);',
