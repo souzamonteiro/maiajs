@@ -9,7 +9,8 @@ Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 - Ported MaiaCpp examples are green: runtime suite **22/22**, course suite **48/48**,
   and MaiaJS transpilation **22/22**.
 - `bash compiler/examples/validate_full_es8_dist.sh` validates the complete
-  JS -> C++98 -> C -> WASM dist path against source runtime markers.
+  JS -> C++98 -> C -> WASM dist path against source runtime markers and uses
+  strict lowering so unsupported source forms fail before MaiaCpp runs.
 - The compiled Node runner prints the required ES8 markers and returns `0`.
 - Compile-context analysis no longer times out on `compiler/examples/test.js`:
   the representative transpilation takes about five seconds rather than roughly

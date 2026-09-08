@@ -68,7 +68,7 @@ fi
 echo "[validate-full-es8] transpiling JS -> C++98 with webjs (timeout=${PIPELINE_TIMEOUT}s)"
 if ! run_timed "$PIPELINE_TIMEOUT" bash -c '
   cd "$1"
-  bin/webjs.sh --file "$2" --cpp-out "$3" --no-webcpp
+  bin/webjs.sh --file "$2" --cpp-out "$3" --strict-lowering --no-webcpp
 ' _ "$REPO_ROOT" "$SOURCE_JS" "$CPP_OUT" 2>&1 | tee "$TRANSPILE_LOG"; then
   echo "[validate-full-es8] FAIL: JS -> C++ transpile stage failed or timed out." >&2
   show_log_tail "$TRANSPILE_LOG" "transpile"

@@ -22,6 +22,7 @@ Options:
   --ast-json-out FILE  Write AST JSON file.
   --ir-json-out FILE   Write compiler IR JSON (placeholder).
   --cpp-out FILE       Write generated C++ file (default: <out-dir>/<name>.cpp).
+  --strict-lowering    Fail when source requires an unsupported lowering path.
   --name NAME          Base output name (default: input filename stem).
   --no-webcpp          Only generate C++ (skip MaiaCpp webcpp.sh invocation).
   -h, --help           Show help.
@@ -170,6 +171,7 @@ AST_JSON_OUT=""
 IR_JSON_OUT=""
 CPP_OUT=""
 NAME=""
+STRICT_LOWERING=0
 NO_WEBCPP=0
 HAS_DIST=0
 RUN_TESTS_BEFORE_DIST=0
@@ -210,6 +212,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || err "missing value for --cpp-out"
       CPP_OUT="$2"
       shift 2
+      ;;
+    --strict-lowering)
+      STRICT_LOWERING=1
+      shift
       ;;
     --name)
       [[ $# -ge 2 ]] || err "missing value for --name"
@@ -304,6 +310,9 @@ fi
 
 if [[ $AST_SHOW -eq 1 ]]; then
   compiler_args+=(--ast-show)
+fi
+if [[ $STRICT_LOWERING -eq 1 ]]; then
+  compiler_args+=(--strict-lowering)
 fi
 
 echo "[webjs] transpiling JS -> C++: $INPUT_FILE"
