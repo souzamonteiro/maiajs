@@ -24,6 +24,15 @@ async function useDynamicValues() {
   if (response.useMeta(response.makeTaggedMeta('ready')) === 202) {
     console.log('async dynamic method object argument with scalar retained');
   }
+  if (response.sumValues([2, 3]) === 5) {
+    console.log('async dynamic array argument retained');
+  }
+  if (response.readMeta({ status: 202, label: 'ready' }) === 202) {
+    console.log('async dynamic object argument retained');
+  }
+  if (response.readNestedMeta({ nested: { label: 'inner' } }) === 1) {
+    console.log('async dynamic nested object argument retained');
+  }
   if (response.makeMeta().score === 3.5) {
     console.log('async dynamic method fractional property retained');
   }

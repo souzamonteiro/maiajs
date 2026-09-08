@@ -8119,6 +8119,76 @@ function getDynamicHandleMethodCallInfo(node, compileContext) {
   };
 }
 
+function tryLowerDynamicHandleAggregateValue(node, compileContext) {
+  const arrayLiteral = node && node.name === 'arrayLiteral'
+    ? node
+    : findFirstNonterminal(node, 'arrayLiteral');
+  const objectLiteral = node && node.name === 'objectLiteral'
+    ? node
+    : findFirstNonterminal(node, 'objectLiteral');
+  if (!arrayLiteral && !objectLiteral) return null;
+  if (!compileContext) return null;
+  if (!Array.isArray(compileContext._preludeStatements)) {
+    compileContext._preludeStatements = [];
+  }
+  if (compileContext._dynamicAggregateTempCount === undefined) {
+    compileContext._dynamicAggregateTempCount = 0;
+  }
+
+  const lowerItem = (valueNode, operation, key = null) => {
+    const nested = tryLowerDynamicHandleAggregateValue(valueNode, compileContext);
+    let kind = 'handle';
+    let value = nested;
+    if (value === null) {
+      value = tryLowerDynamicHandleArgument(valueNode, compileContext);
+    }
+    if (value === null) {
+      value = lowerExpressionValue(valueNode, compileContext);
+      if (value === null) return null;
+      if (inferExprType(valueNode, compileContext) === 'string') kind = 'string';
+      else if (isFractionalNumericExpression(valueNode)) kind = 'f64';
+      else if (inferExprType(valueNode, compileContext) === 'number' || inferExprType(valueNode, compileContext) === 'bool') kind = 'i32';
+      else return null;
+    }
+    const prefix = key === null
+      ? `__async_handle_aggregate_push_${kind}`
+      : `__async_handle_aggregate_set_${kind}`;
+    const valueArg = kind === 'string' ? `(const char*)(${value})` : value;
+    return key === null
+      ? `${prefix}(${valueArg})`
+      : `${prefix}((const char*)${JSON.stringify(key)}, ${valueArg})`;
+  };
+
+  if (arrayLiteral) {
+    const info = extractArrayLiteralElements(arrayLiteral);
+    if (info.hasSpread || info.hasElision) return null;
+    const operations = [];
+    for (const valueNode of info.values) {
+      const lowered = lowerItem(valueNode, 'push');
+      if (lowered === null) return null;
+      operations.push(lowered);
+    }
+    const tempName = `__async_aggregate_tmp${compileContext._dynamicAggregateTempCount++}`;
+    compileContext._preludeStatements.push('__async_handle_aggregate_begin_array();');
+    for (const operation of operations) compileContext._preludeStatements.push(`${operation};`);
+    compileContext._preludeStatements.push(`int ${tempName} = __async_handle_aggregate_end();`);
+    return tempName;
+  }
+
+  const properties = extractObjectLiteralProperties(objectLiteral, compileContext);
+  const operations = [];
+  for (const property of properties) {
+    const lowered = lowerItem(property.valueExprNode, 'set', property.key);
+    if (lowered === null) return null;
+    operations.push(lowered);
+  }
+  const tempName = `__async_aggregate_tmp${compileContext._dynamicAggregateTempCount++}`;
+  compileContext._preludeStatements.push('__async_handle_aggregate_begin_object();');
+  for (const operation of operations) compileContext._preludeStatements.push(`${operation};`);
+  compileContext._preludeStatements.push(`int ${tempName} = __async_handle_aggregate_end();`);
+  return tempName;
+}
+
 function tryLowerDynamicHandleArgument(node, compileContext) {
   if (!compileContext || !compileContext.asyncStateDynamicHandleFields) return null;
 
@@ -8127,6 +8197,9 @@ function tryLowerDynamicHandleArgument(node, compileContext) {
   if (directName && compileContext.asyncStateDynamicHandleFields.has(directName)) {
     return `__sm->${compileContext.asyncStateDynamicHandleFields.get(directName)}`;
   }
+
+  const aggregateValue = tryLowerDynamicHandleAggregateValue(node, compileContext);
+  if (aggregateValue !== null) return aggregateValue;
 
   const callNode = node && node.name === 'callExpression'
     ? node
@@ -13877,6 +13950,17 @@ function emitAsyncSchedulerHookDeclsCpp(machines) {
     'extern int __async_handle_arg_f64(double value);',
     'extern int __async_handle_arg_string(const char* value);',
     'extern int __async_handle_arg_handle(int value);',
+    'extern int __async_handle_aggregate_begin_array(void);',
+    'extern int __async_handle_aggregate_begin_object(void);',
+    'extern int __async_handle_aggregate_push_i32(int value);',
+    'extern int __async_handle_aggregate_push_f64(double value);',
+    'extern int __async_handle_aggregate_push_string(const char* value);',
+    'extern int __async_handle_aggregate_push_handle(int value);',
+    'extern int __async_handle_aggregate_set_i32(const char* key, int value);',
+    'extern int __async_handle_aggregate_set_f64(const char* key, double value);',
+    'extern int __async_handle_aggregate_set_string(const char* key, const char* value);',
+    'extern int __async_handle_aggregate_set_handle(const char* key, int value);',
+    'extern int __async_handle_aggregate_end(void);',
     'extern int __async_handle_callN(int handle, const char* key, int count);',
     'extern int __async_handle_to_i32(int handle);',
     'extern double __async_handle_to_f64(int handle);',

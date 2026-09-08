@@ -133,7 +133,10 @@ failure in the validated pipeline:
   dynamic method can also be passed to another dynamic method through the
   handle staging ABI, including when the inner method has supported scalar
   arguments, for example `response.useMeta(response.makeTaggedMeta('ready'))`.
-  Richer contextual type selection and aggregate argument values remain.
+  Array and object literals with supported scalar values, dynamic handles, and
+  nested aggregates are now materialized by a typed host-side builder ABI
+  before the dynamic call. Spread elements, elisions, and unsupported value
+  expressions remain outside that aggregate-argument subset.
 - [x] Preserve top-level local bindings in the async state structure and verify
   their resumed reads through the public Node/WASM distribution path:
   `npm run test:async:locals`.
