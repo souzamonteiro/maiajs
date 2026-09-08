@@ -21,6 +21,9 @@ async function useDynamicValues() {
   if (response.useMeta(response.makeMeta()) === 202) {
     console.log('async dynamic method object argument retained');
   }
+  if (response.useMeta(response.makeTaggedMeta('ready')) === 202) {
+    console.log('async dynamic method object argument with scalar retained');
+  }
   if (response.makeMeta().score === 3.5) {
     console.log('async dynamic method fractional property retained');
   }

@@ -8133,8 +8133,13 @@ function tryLowerDynamicHandleArgument(node, compileContext) {
     : findFirstNonterminal(node, 'callExpression');
   if (callNode && getCallExpressionTrailingPropertyNames(callNode).length === 0) {
     const callInfo = getDynamicHandleMethodCallInfo(callNode, compileContext);
-    if (callInfo && callInfo.argExprs.length === 0) {
-      return `__async_handle_call0(${callInfo.handleExpression}, (const char*)"${callInfo.methodName}")`;
+    if (callInfo) {
+      const rawResultContext = {
+        ...compileContext,
+        dynamicHandleMethodResultType: null
+      };
+      const loweredCall = tryLowerDynamicHandleMethodCall(callNode, rawResultContext);
+      if (loweredCall !== null) return loweredCall;
     }
   }
 

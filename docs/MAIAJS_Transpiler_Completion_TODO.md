@@ -131,7 +131,8 @@ failure in the validated pipeline:
   through chains such as `response.makeMeta().nested.score` and
   `response.makeMeta().nested.label`. An object returned by a zero-argument
   dynamic method can also be passed to another dynamic method through the
-  handle staging ABI, for example `response.useMeta(response.makeMeta())`.
+  handle staging ABI, including when the inner method has supported scalar
+  arguments, for example `response.useMeta(response.makeTaggedMeta('ready'))`.
   Richer contextual type selection and aggregate argument values remain.
 - [x] Preserve top-level local bindings in the async state structure and verify
   their resumed reads through the public Node/WASM distribution path:
