@@ -178,11 +178,14 @@ spreadElement ::= '...' assignmentExpression
 objectLiteral ::= '{' ( propertyAssignment ( ',' propertyAssignment )* ','? )? '}'
 
 propertyAssignment ::= propertyName ':' assignmentExpression
+           | spreadProperty
            | identifierReference
            | coverInitializedName
            | methodDefinition
            | 'get' propertyName '(' ')' '{' functionBody '}'
            | 'set' propertyName '(' propertySetParameterList ')' '{' functionBody '}'
+
+spreadProperty ::= '...' assignmentExpression
 
 propertyName ::= literalPropertyName
            | computedPropertyName

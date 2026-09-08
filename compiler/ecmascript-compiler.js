@@ -6646,10 +6646,48 @@ function extractObjectLiteralProperties(objectLiteralNode, compileContext = null
       continue;
     }
 
-    properties.push({ key, valueExprNode });
+    properties.push({ key, valueExprNode, sourceNode: child });
   }
 
   return properties;
+}
+
+function extractObjectLiteralOperations(objectLiteralNode, compileContext = null) {
+  const properties = extractObjectLiteralProperties(objectLiteralNode, compileContext);
+  const propertiesBySourceNode = new Map(properties.map((property) => [property.sourceNode, property]));
+  const operations = [];
+
+  for (const child of (objectLiteralNode.children || [])) {
+    if (!child || child.kind !== 'nonterminal' || child.name !== 'propertyAssignment') {
+      continue;
+    }
+
+    const spreadProperty = (child.children || []).find(
+      (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'spreadProperty'
+    ) || findFirstNonterminal(child, 'spreadProperty');
+    if (spreadProperty) {
+      const valueExprNode = (spreadProperty.children || []).find(
+        (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'assignmentExpression'
+      ) || findFirstNonterminal(spreadProperty, 'assignmentExpression');
+      if (valueExprNode) {
+        operations.push({ kind: 'spread', valueExprNode });
+      } else {
+        reportUnsupportedLowering(
+          compileContext,
+          'object-spread-unlowerable',
+          'object spread property has no value expression'
+        );
+      }
+      continue;
+    }
+
+    const property = propertiesBySourceNode.get(child);
+    if (property) {
+      operations.push({ kind: 'property', ...property });
+    }
+  }
+
+  return operations;
 }
 
 function lowerObjectLiteralValue(objectLiteralNode, compileContext) {
@@ -6666,6 +6704,7 @@ function lowerObjectLiteralValue(objectLiteralNode, compileContext) {
   }
 
   const properties = extractObjectLiteralProperties(objectLiteralNode, compileContext);
+  const operations = extractObjectLiteralOperations(objectLiteralNode, compileContext);
   const propertyAssignmentCount = (objectLiteralNode.children || []).filter(
     (child) => child && child.kind === 'nonterminal' && child.name === 'propertyAssignment'
   ).length;
@@ -6681,14 +6720,25 @@ function lowerObjectLiteralValue(objectLiteralNode, compileContext) {
     }
   }
 
-  if (properties.length === 0) {
+  if (operations.length === 0) {
     return '__maia_obj_literal0()';
   }
 
-  if (properties.length > 4) {
-    // Use builder pattern for large objects
+  if (operations.some((operation) => operation.kind === 'spread') || properties.length > 4) {
+    // Builders preserve source-order overwrite semantics for spreads and large literals.
     let chain = '__maia_obj_builder_begin()';
-    for (const property of properties) {
+    for (const operation of operations) {
+      if (operation.kind === 'spread') {
+        const loweredValue = lowerRequiredExpressionValue(
+          operation.valueExprNode,
+          compileContext,
+          'object-spread-unlowerable',
+          'object spread value expression'
+        );
+        chain = `__maia_obj_builder_spread(${chain}, (void*)(${loweredValue}))`;
+        continue;
+      }
+      const property = operation;
       const keyLiteral = `(char*)${JSON.stringify(property.key)}`;
       const loweredValue = lowerRequiredExpressionValue(
         property.valueExprNode,
@@ -9049,8 +9099,6 @@ function lowerExpressionValue(node, compileContext) {
   return null;
 }
 
-const MAX_INLINE_OBJECT_PROPERTIES = 8;
-
 function collectObjectLiteralArities(tree, compileContext = null) {
   const simpleArities = new Set();
   let requiresBuilderHooks = false;
@@ -9061,7 +9109,8 @@ function collectObjectLiteralArities(tree, compileContext = null) {
     }
 
     const properties = extractObjectLiteralProperties(node, compileContext);
-    if (properties.length > MAX_INLINE_OBJECT_PROPERTIES) {
+    const operations = extractObjectLiteralOperations(node, compileContext);
+    if (operations.some((operation) => operation.kind === 'spread') || properties.length > 4) {
       requiresBuilderHooks = true;
     } else {
       simpleArities.add(properties.length);
@@ -9101,6 +9150,7 @@ function emitObjectLiteralRuntimeDeclsCpp(tree, compileContext = null) {
   if (requiresBuilderHooks) {
     decls.push('extern void* __maia_obj_builder_begin(void);');
     decls.push('extern void* __maia_obj_builder_set_key(void* builder, char* key, long value);');
+    decls.push('extern void* __maia_obj_builder_spread(void* builder, void* source);');
     decls.push('extern void* __maia_obj_builder_end(void* builder);');
   }
 
@@ -9545,6 +9595,14 @@ function emitObjectLiteralRuntimeFallbackCpp(tree, compileContext = null) {
     lines.push('void* __maia_obj_builder_set_key(void* builder, char* key, long value) {');
     lines.push('  __maia_runtime_value* b = (__maia_runtime_value*)builder;');
     lines.push('  if (!b) { return builder; }');
+    lines.push('  if (b->k1 && strcmp(b->k1, key) == 0) { b->v1 = value; return builder; }');
+    lines.push('  if (b->k2 && strcmp(b->k2, key) == 0) { b->v2 = value; return builder; }');
+    lines.push('  if (b->k3 && strcmp(b->k3, key) == 0) { b->v3 = value; return builder; }');
+    lines.push('  if (b->k4 && strcmp(b->k4, key) == 0) { b->v4 = value; return builder; }');
+    lines.push('  if (b->k5 && strcmp(b->k5, key) == 0) { b->v5 = value; return builder; }');
+    lines.push('  if (b->k6 && strcmp(b->k6, key) == 0) { b->v6 = value; return builder; }');
+    lines.push('  if (b->k7 && strcmp(b->k7, key) == 0) { b->v7 = value; return builder; }');
+    lines.push('  if (b->k8 && strcmp(b->k8, key) == 0) { b->v8 = value; return builder; }');
     lines.push('  b->a += 1;');
     lines.push('  if (b->a == 1) { b->k1 = key; b->v1 = value; }');
     lines.push('  else if (b->a == 2) { b->k2 = key; b->v2 = value; }');
@@ -9556,28 +9614,41 @@ function emitObjectLiteralRuntimeFallbackCpp(tree, compileContext = null) {
     lines.push('  else if (b->a == 8) { b->k8 = key; b->v8 = value; }');
     lines.push('  return builder;');
     lines.push('}');
+    lines.push('void* __maia_obj_builder_spread(void* builder, void* source) {');
+    lines.push('  __maia_runtime_value* value = (__maia_runtime_value*)source;');
+    lines.push('  if (!value || value->tag != 1) { return builder; }');
+    lines.push('  if (value->k1) { __maia_obj_builder_set_key(builder, value->k1, value->v1); }');
+    lines.push('  if (value->k2) { __maia_obj_builder_set_key(builder, value->k2, value->v2); }');
+    lines.push('  if (value->k3) { __maia_obj_builder_set_key(builder, value->k3, value->v3); }');
+    lines.push('  if (value->k4) { __maia_obj_builder_set_key(builder, value->k4, value->v4); }');
+    lines.push('  if (value->k5) { __maia_obj_builder_set_key(builder, value->k5, value->v5); }');
+    lines.push('  if (value->k6) { __maia_obj_builder_set_key(builder, value->k6, value->v6); }');
+    lines.push('  if (value->k7) { __maia_obj_builder_set_key(builder, value->k7, value->v7); }');
+    lines.push('  if (value->k8) { __maia_obj_builder_set_key(builder, value->k8, value->v8); }');
+    lines.push('  return builder;');
+    lines.push('}');
     lines.push('void* __maia_obj_builder_end(void* builder) {');
     lines.push('  __maia_runtime_value* b = (__maia_runtime_value*)builder;');
     lines.push('  if (!b) { return __maia_obj_literal0(); }');
-    lines.push('  void* obj = __maia_runtime_alloc_value(1, b->a, 0, 0);');
-    lines.push('  ((__maia_runtime_value*)obj)->k1 = b->k1;');
-    lines.push('  ((__maia_runtime_value*)obj)->k2 = b->k2;');
-    lines.push('  ((__maia_runtime_value*)obj)->k3 = b->k3;');
-    lines.push('  ((__maia_runtime_value*)obj)->k4 = b->k4;');
-    lines.push('  ((__maia_runtime_value*)obj)->k5 = b->k5;');
-    lines.push('  ((__maia_runtime_value*)obj)->k6 = b->k6;');
-    lines.push('  ((__maia_runtime_value*)obj)->k7 = b->k7;');
-    lines.push('  ((__maia_runtime_value*)obj)->k8 = b->k8;');
-    lines.push('  ((__maia_runtime_value*)obj)->v1 = b->v1;');
-    lines.push('  ((__maia_runtime_value*)obj)->v2 = b->v2;');
-    lines.push('  ((__maia_runtime_value*)obj)->v3 = b->v3;');
-    lines.push('  ((__maia_runtime_value*)obj)->v4 = b->v4;');
-    lines.push('  ((__maia_runtime_value*)obj)->v5 = b->v5;');
-    lines.push('  ((__maia_runtime_value*)obj)->v6 = b->v6;');
-    lines.push('  ((__maia_runtime_value*)obj)->v7 = b->v7;');
-    lines.push('  ((__maia_runtime_value*)obj)->v8 = b->v8;');
+    lines.push('  __maia_runtime_value* obj = (__maia_runtime_value*)__maia_runtime_alloc_value(1, b->a, 0, 0);');
+    lines.push('  obj->k1 = b->k1;');
+    lines.push('  obj->k2 = b->k2;');
+    lines.push('  obj->k3 = b->k3;');
+    lines.push('  obj->k4 = b->k4;');
+    lines.push('  obj->k5 = b->k5;');
+    lines.push('  obj->k6 = b->k6;');
+    lines.push('  obj->k7 = b->k7;');
+    lines.push('  obj->k8 = b->k8;');
+    lines.push('  obj->v1 = b->v1;');
+    lines.push('  obj->v2 = b->v2;');
+    lines.push('  obj->v3 = b->v3;');
+    lines.push('  obj->v4 = b->v4;');
+    lines.push('  obj->v5 = b->v5;');
+    lines.push('  obj->v6 = b->v6;');
+    lines.push('  obj->v7 = b->v7;');
+    lines.push('  obj->v8 = b->v8;');
     lines.push('  delete b;');
-    lines.push('  return obj;');
+    lines.push('  return (void*)obj;');
     lines.push('}');
   }
 

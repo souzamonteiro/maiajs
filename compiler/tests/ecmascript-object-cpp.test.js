@@ -71,6 +71,16 @@ test('object literal lowering: uses builder for arity > 4', () => {
   assert.match(cpp, /__maia_obj_builder_end\(/, 'C++ must close with builder end');
 });
 
+test('object literal lowering: preserves spread ordering and key overwrite semantics', () => {
+  const cpp = runCompilerCpp('let base = { a: 1, b: 2 };\nlet merged = { before: 0, ...base, b: 3, after: 4 };\n');
+
+  assert.match(cpp, /extern void\* __maia_obj_builder_spread\(void\* builder, void\* source\);/, 'C++ must declare the object spread helper');
+  assert.match(cpp, /__maia_obj_builder_spread\(__maia_obj_builder_set_key\(__maia_obj_builder_begin\(\), \(char\*\)"before", \(long\)\(0\)\), \(void\*\)\(base\)\)/, 'C++ must preserve operations before the spread');
+  assert.match(cpp, /strcmp\(b->k1, key\) == 0/, 'builder updates must replace an existing key');
+  assert.match(cpp, /if \(value->k1\) \{ __maia_obj_builder_set_key\(builder, value->k1, value->v1\); \}/, 'spread helper must copy source properties through the overwrite-aware setter');
+  assert.match(cpp, /__maia_runtime_value\* obj = \(__maia_runtime_value\*\)__maia_runtime_alloc_value\(1, b->a, 0, 0\);/, 'builder end must use a typed result pointer compatible with WebC member-access lowering');
+});
+
 test('static Promise.then: preserves a computed object projection across multi-part string concatenation', () => {
   const cpp = runCompilerCpp([
     'const key = "score";',

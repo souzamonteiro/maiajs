@@ -30,8 +30,12 @@ failure in the validated pipeline:
   computed property: `npm run test:es8:promise-object`.
 - [x] Provide a Chrome-headless gate for that same object/Promise marker:
   `npm run test:browser:promise-object`.
-- [ ] Implement object spread only as an ES2018+ work item. It is deliberately
-  rejected by the ES8 grammar today; do not present it as ES8 compatibility.
+- [x] Implement object spread as an ES2018+ extension, outside the ES8
+  compatibility claim. The parser accepts spread properties and the C++
+  lowering preserves left-to-right overwrite order through the local object
+  builder runtime. Current runtime-object coverage is limited to MaiaJS
+  literal/runtime objects with up to eight own properties; spreading arbitrary
+  host objects, accessors, symbols, and larger objects remains future work.
 - [x] Establish an executable async state-machine baseline through MaiaJS,
   MaiaCpp, MaiaC/WebC, and the Node/browser scheduler bridges. Linear async
   bodies now run before and after `await` rather than emitting a passive

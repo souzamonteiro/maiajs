@@ -3510,6 +3510,16 @@ class Parser {
     if (!_matched) {
       const _ruleMark = this.markEventState();
       try {
+    this.parsespreadProperty();
+        _matched = true;
+      } catch (e) {
+        this.position = _ruleStart;
+        this.restoreEventState(_ruleMark);
+      }
+    }
+    if (!_matched) {
+      const _ruleMark = this.markEventState();
+      try {
     this.parseidentifierReference();
         _matched = true;
       } catch (e) {
@@ -3571,7 +3581,7 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 6 alternatives`);
+      throw new Error(`Expected one of: 7 alternatives`);
     }
 
       __ok = true;
@@ -3585,6 +3595,35 @@ class Parser {
         }
         if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
           this.eventHandler.abortNonterminal('propertyAssignment', this.position);
+        }
+      }
+    }
+  }
+  parsespreadProperty() {
+    const __memoStart = this.position;
+    const __memoKey = 'spreadProperty@' + __memoStart;
+    if (this.failureMemo.has(__memoKey)) {
+      throw new Error('Previously failed rule spreadProperty at position ' + __memoStart);
+    }
+    if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
+      this.eventHandler.startNonterminal('spreadProperty', this.position);
+    }
+    let __ok = false;
+    try {
+    this.consume('TOKEN__2E__2E__2E_');
+    this.parseassignmentExpression();
+
+      __ok = true;
+    } finally {
+      if (!__ok) {
+        this.failureMemo.add(__memoKey);
+      }
+      if (this.eventHandler) {
+        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+          this.eventHandler.endNonterminal('spreadProperty', this.position);
+        }
+        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+          this.eventHandler.abortNonterminal('spreadProperty', this.position);
         }
       }
     }

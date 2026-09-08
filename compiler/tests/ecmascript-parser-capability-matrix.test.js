@@ -29,15 +29,10 @@ const capabilityMatrix = [
       { name: 'boolean literal expression', source: 'true;' },
       { name: 'null literal expression', source: 'null;' },
       { name: 'non-empty array literal expression', source: '[1,2];' },
-      { name: 'spread array literal expression', source: '[...x];' }
+      { name: 'spread array literal expression', source: '[...x];' },
+      { name: 'object spread literal (ES2018+)', source: 'const y = {...x};' }
     ],
-    unsupported: [
-      {
-        name: 'object spread literal (ES2018+)',
-        source: 'const y = {...x};',
-        errorLike: "Object spread/rest in object literals is not supported yet|Expected 'EOF', got 'TOKEN_const'"
-      }
-    ]
+    unsupported: []
   },
   {
     area: 'Comments and trivia',
