@@ -8128,6 +8128,16 @@ function tryLowerDynamicHandleArgument(node, compileContext) {
     return `__sm->${compileContext.asyncStateDynamicHandleFields.get(directName)}`;
   }
 
+  const callNode = node && node.name === 'callExpression'
+    ? node
+    : findFirstNonterminal(node, 'callExpression');
+  if (callNode && getCallExpressionTrailingPropertyNames(callNode).length === 0) {
+    const callInfo = getDynamicHandleMethodCallInfo(callNode, compileContext);
+    if (callInfo && callInfo.argExprs.length === 0) {
+      return `__async_handle_call0(${callInfo.handleExpression}, (const char*)"${callInfo.methodName}")`;
+    }
+  }
+
   const memberNode = node && node.name === 'memberExpression'
     ? node
     : findFirstNonterminal(node, 'memberExpression');
@@ -8155,17 +8165,22 @@ function tryLowerDynamicHandleMethodCall(node, compileContext) {
 
   if (!loweredCall && info.argExprs.length === 1) {
     const argumentNode = info.argExprs[0];
-    const loweredArgument = lowerExpressionValue(argumentNode, compileContext);
-    if (loweredArgument === null) return null;
-    if (inferExprType(argumentNode, compileContext) === 'string') {
-      loweredCall = `__async_handle_call1_string(${prefix}, (const char*)(${loweredArgument}))`;
-    }
-    if (!loweredCall && isFractionalNumericExpression(argumentNode)) {
-      loweredCall = `__async_handle_call1_f64(${prefix}, ${loweredArgument})`;
-    }
-    if (!loweredCall && (inferExprType(argumentNode, compileContext) === 'number'
-      || inferExprType(argumentNode, compileContext) === 'bool')) {
-      loweredCall = `__async_handle_call1_i32(${prefix}, ${loweredArgument})`;
+    const dynamicHandleArgument = tryLowerDynamicHandleArgument(argumentNode, compileContext);
+    if (dynamicHandleArgument !== null) {
+      loweredCall = `(__async_handle_arg_handle(${dynamicHandleArgument}), __async_handle_callN(${prefix}, 1))`;
+    } else {
+      const loweredArgument = lowerExpressionValue(argumentNode, compileContext);
+      if (loweredArgument === null) return null;
+      if (inferExprType(argumentNode, compileContext) === 'string') {
+        loweredCall = `__async_handle_call1_string(${prefix}, (const char*)(${loweredArgument}))`;
+      }
+      if (!loweredCall && isFractionalNumericExpression(argumentNode)) {
+        loweredCall = `__async_handle_call1_f64(${prefix}, ${loweredArgument})`;
+      }
+      if (!loweredCall && (inferExprType(argumentNode, compileContext) === 'number'
+        || inferExprType(argumentNode, compileContext) === 'bool')) {
+        loweredCall = `__async_handle_call1_i32(${prefix}, ${loweredArgument})`;
+      }
     }
   }
 

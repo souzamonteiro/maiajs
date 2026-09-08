@@ -18,6 +18,9 @@ async function useDynamicValues() {
   if (response.makeMeta().nested.label === 'inner') {
     console.log('async dynamic method nested string property retained');
   }
+  if (response.useMeta(response.makeMeta()) === 202) {
+    console.log('async dynamic method object argument retained');
+  }
   if (response.makeMeta().score === 3.5) {
     console.log('async dynamic method fractional property retained');
   }
