@@ -10094,6 +10094,23 @@ function lowerCallExpressionValue(node, compileContext) {
   const lambdaBindingState = getLambdaBindingStateAtCallNode(node, pathSegments, compileContext);
   let droppedJsRuntimeMethodCall = false;
 
+  // Constructor-style function expressions are emitted as __new__Name() and
+  // __Name__call(receiver, ...). A bare Name(...) would require a JavaScript
+  // global `this` receiver, which this C++ runtime intentionally does not
+  // model. Do not fall through and emit an undefined C++ symbol.
+  if (pathSegments
+    && pathSegments.length === 1
+    && compileContext
+    && compileContext.topLevelConstructorBindingNames
+    && compileContext.topLevelConstructorBindingNames.has(pathSegments[0])) {
+    reportUnsupportedLowering(
+      compileContext,
+      'constructor-call-without-new',
+      `constructor-style function expression '${pathSegments[0]}' must be invoked with new or .call(receiver, ...)`
+    );
+    return '0';
+  }
+
   if (compileContext
     && compileContext.hasLambdaCapturePayload
     && lambdaBindingState
