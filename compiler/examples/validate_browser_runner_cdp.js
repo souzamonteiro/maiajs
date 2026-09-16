@@ -89,8 +89,7 @@ async function main() {
           const status = document.getElementById('status');
           const output = document.getElementById('output');
           if (!run || !status || !output) return { ready: false, status: '', output: '' };
-          if (!window.__maiaHeadlessRunStarted) {
-            window.__maiaHeadlessRunStarted = true;
+          if (status.textContent === 'Idle') {
             run.click();
           }
           return { ready: true, status: status.textContent, output: output.textContent };

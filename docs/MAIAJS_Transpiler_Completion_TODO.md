@@ -1,11 +1,11 @@
 # MaiaJS Transpiler Completion Strategy and TODO
 
-Last updated: 2026-09-07
+Last updated: 2026-09-16
 Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
 
-- Full compiler test suite is green: **344/344 passing**.
+- Full compiler test suite is green: **346/346 passing**.
 - Ported MaiaCpp examples are green: runtime suite **22/22**, course suite **48/48**,
   and MaiaJS transpilation **22/22**.
 - `bash compiler/examples/validate_full_es8_dist.sh` validates the complete
@@ -52,26 +52,27 @@ failure in the validated pipeline:
 - [x] Preserve a selected `if` branch through multiple sequential `await`
   checkpoints without duplicating interstitial statements; the alternate branch
   skips all of those checkpoints. Covered by `npm run test:async:if-guard`.
-- [ ] Extend async behavior-marker coverage to deeper nested conditional and
-  loop forms. `while` bodies now cover independently selected awaits in both
+- [x] Extend async behavior-marker coverage to deeper nested conditional and
+  loop forms. `while` bodies cover independently selected awaits in both
   `if` branches, multiple sequential awaits, and `break`/`continue` after an
   await through the dedicated Node/WASM validations. A canonical `for`
   initializer, condition, increment, and direct body await are now covered by
   `npm run test:async:for-loop`. `for` loops also cover selected awaits in
   both `if` branches plus `break` and `continue` after an await through the
-  dedicated Node/WASM gates. Nested `if` statements now associate each await
-  with its innermost condition. Nested loops remain pending because they need
-  independent per-loop progress fields and parent-loop continuation routing;
-  they must not reuse the single-loop state as a special-case workaround.
+  dedicated Node/WASM gates. Nested `if` statements associate each await with
+  its innermost condition. `for`/`while` and `while`/`for` nesting, including
+  inner post-await `break` and `continue`, pass their dedicated Node/WASM
+  gates and the sequential Chrome-headless gate
+  `npm run test:browser:async-nested-loops`.
 
 ### Nested async loops implementation sequence
 
 - [x] Build the enclosing-loop chain for every await, ordered from outermost
   to innermost, and keep its identity in the async IR.
-- [~] Reserve one generated progress field per enclosing loop while retaining
-  the legacy single-loop slot until multinível routing is complete. Existing
-  single-loop entry, condition, tail, `break`, and `continue` routing now use
-  `__loop_progress_0`, verified through the Node/WASM `while` and `for` gates.
+- [x] Reserve one generated progress field per enclosing loop. Single-loop
+  entry, condition, tail, `break`, and `continue` routing use
+  `__loop_progress_0`; nested cases use independent fields and are verified
+  through the Node/WASM and Chrome-headless loop gates.
 - [x] Lower entry, condition, tail, and exit routing for each loop level so an
   inner exit resumes the parent tail rather than the function continuation.
   The canonical `for` containing `while` case uses independent progress

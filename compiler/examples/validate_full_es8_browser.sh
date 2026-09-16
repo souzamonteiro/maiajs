@@ -17,8 +17,8 @@ for required in "$SOURCE_JS" "$REPO_ROOT/bin/webjs.sh" "$CHROME_BIN"; do
   fi
 done
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "[validate-full-es8-browser] python3 is required to serve the temporary dist." >&2
+if ! command -v node >/dev/null 2>&1; then
+  echo "[validate-full-es8-browser] node is required to serve the temporary dist." >&2
   exit 1
 fi
 
@@ -53,7 +53,38 @@ echo "[validate-full-es8-browser] building browser dist through MaiaJS"
   --out-dir "$DIST_DIR" --name "$APP_NAME" --dist
 
 echo "[validate-full-es8-browser] serving temporary dist"
-python3 -u -m http.server "$REQUESTED_PORT" --directory "$DIST_DIR" >"$SERVER_LOG" 2>&1 &
+node -e '
+  const fs = require("fs");
+  const http = require("http");
+  const path = require("path");
+  const port = Number(process.argv[1]);
+  const root = path.resolve(process.argv[2]);
+  const contentTypes = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".wasm": "application/wasm"
+  };
+  const server = http.createServer((request, response) => {
+    const pathname = decodeURIComponent(new URL(request.url, "http://127.0.0.1").pathname);
+    const filePath = path.resolve(root, pathname === "/" ? "browser-runner.html" : `.${pathname}`);
+    if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
+      response.writeHead(403);
+      response.end("Forbidden");
+      return;
+    }
+    fs.readFile(filePath, (error, content) => {
+      if (error) {
+        response.writeHead(error.code === "ENOENT" ? 404 : 500);
+        response.end(error.code === "ENOENT" ? "Not found" : "Server error");
+        return;
+      }
+      response.writeHead(200, { "Content-Type": contentTypes[path.extname(filePath)] || "application/octet-stream" });
+      response.end(content);
+    });
+  });
+  server.listen(port, "127.0.0.1", () => console.log(`LISTENING ${server.address().port}`));
+' "$REQUESTED_PORT" "$DIST_DIR" >"$SERVER_LOG" 2>&1 &
 SERVER_PID="$!"
 PORT=""
 for _ in {1..50}; do
@@ -61,7 +92,7 @@ for _ in {1..50}; do
     cat "$SERVER_LOG" >&2 || true
     exit 1
   fi
-  PORT="$(sed -n 's/.*port \([0-9][0-9]*\).*/\1/p' "$SERVER_LOG" | tail -n 1)"
+  PORT="$(sed -n 's/^LISTENING \([0-9][0-9]*\)$/\1/p' "$SERVER_LOG" | tail -n 1)"
   if [[ -n "$PORT" ]]; then
     break
   fi
