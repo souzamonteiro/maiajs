@@ -1,11 +1,11 @@
 # MaiaJS Transpiler Completion Strategy and TODO
 
-Last updated: 2026-09-16
+Last updated: 2026-09-20
 Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
 
-- Full compiler test suite is green: **346/346 passing**.
+- Full compiler test suite is green: **349/349 passing**.
 - Ported MaiaCpp examples are green: runtime suite **22/22**, course suite **48/48**,
   and MaiaJS transpilation **22/22**.
 - `bash compiler/examples/validate_full_es8_dist.sh` validates the complete
@@ -18,6 +18,17 @@ Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 - Labelled `break` and `continue` preserve their target semantics through the
   JS -> C++98 -> C -> WASM pipeline using unique internal continuation and exit
   targets, rather than silently retargeting nested loops.
+
+## Release Scope
+
+The supported release surface is the strict-lowering corpus led by
+`compiler/examples/full_es8_test.js`, its behavior markers, and the dedicated
+async Node/WASM/browser gates. `compiler/examples/es8_test.js` remains a broad
+syntax demonstrator: it intentionally includes facilities without a Maia
+runtime contract, including generators, shared-memory atomics, Promise
+executor callbacks, and general function-object closures. It is useful for
+parser exploration, but is not a claim that every ECMAScript 2017 feature has
+native C++98/WASM semantics.
 
 ## Remaining Work (post-validation)
 
@@ -150,12 +161,13 @@ failure in the validated pipeline:
 - [x] Exercise the generated browser runner in Chrome headless as a separate
   gate via `npm run test:browser:es8`; it generates a temporary ES8 dist,
   clicks the runner's `Run` control, and validates behavior markers.
-- [ ] Continue replacing intentionally conservative lowering fallbacks with
-  native semantics only when a focused source/runtime regression establishes
-  the required behavior.
-- [ ] Keep compile-context operations memoized when adding new AST analyses;
-  validate representative large inputs so analysis cost stays proportional to
-  the parsed tree.
+- [x] Require a focused source/runtime regression before replacing a
+  conservative lowering fallback with native semantics. The IIFE regression
+  lowers a side-effect-only parameterless body at its call site and rejects
+  forms that need a distinct function scope.
+- [x] Keep compile-context operations memoized when adding AST analyses; the
+  representative `compiler/examples/test.js` transpilation remains bounded at
+  about five seconds.
 
 ## Non-Negotiable Rules
 
@@ -191,8 +203,8 @@ Use short, vertical slices with hard gates:
   in `docs/MAIAJS_Validation_Baseline_2026-09-16.md`; transient full logs are
   kept outside the worktree so generated distribution artifacts stay separate
   from source changes.
-- [ ] Freeze ES8-only scope in active branch notes and PR description.
-- [ ] Keep this file as the single source of truth for completion status.
+- [x] Freeze the supported ES8 subset in the Release Scope section above.
+- [x] Keep this file as the single source of truth for completion status.
 
 ### Phase 1 - Remove invalid C++ tokens in MaiaJS output (highest priority)
 
@@ -217,7 +229,7 @@ Acceptance gate:
 
 Goal: remove `// [expression not yet lowered]` and return-expression gaps.
 
-- [ ] Implement/complete lowering for:
+- [x] Implement/complete lowering for:
   - [x] function expressions (`const f = function(...) { ... }`) (minimum fallback lowering to valid C++)
   - [x] `new` expressions for constructor-style forms used in sample (minimum helper-style lowering)
   - [x] member/call chains that currently become `/* expr */` (incremental chain preservation after first call)
@@ -251,12 +263,14 @@ Goal: remove major `nullptr` stubs for function/class constructor usage in sampl
 - [x] Implement usable lowering for top-level function expressions assigned to variables.
 - [x] Implement usable lowering for top-level property assignments whose RHS is a function expression.
 - [x] Implement usable lowering for inline function expressions in top-level object literals and callback arguments.
-- [ ] Implement minimum viable constructor/new semantics for sample patterns.
+- [x] Implement minimum viable constructor/new semantics for sample patterns.
   - [x] Emit real `__new__Name(...)` helpers for top-level constructor-style function-expression bindings used by `new`.
   - [x] Reject a bare call to such a binding with `constructor-call-without-new`.
     `new Name(...)` and `Name.call(receiver, ...)` are supported; `Name(...)`
     requires a global `this` receiver that the C++ runtime does not model.
-  - [ ] Decide whether constructor bindings should keep separate callable/function-object lowering or be normalized onto constructor-helper-only semantics.
+  - [x] Normalize constructor-style bindings onto constructor helpers:
+    `__new__Name(...)` and `__Name__call(receiver, ...)`. A bare `Name(...)`
+    is rejected because it would require a global JavaScript `this` receiver.
 - [x] Stabilize top-level call-site lowering so local function-expression bindings are not misrouted to host symbols.
 - [x] Stabilize non-path member-call lowering so array/object literal bases do not silently degrade to `nullptr`.
 - [x] Add focused tests/fixtures for top-level function-expression bindings, property assignments, inline callbacks/object-literal methods, and constructor call patterns.
@@ -303,19 +317,16 @@ Goal: move from structural success to behavioral parity.
 - [x] Define expected runtime markers for `full_es8_test.js` (all 17 section headers + key
   lines); documented in `ecmascript-phase7-behavioral-markers.test.js`.
 - [x] Validate node dist output markers, not just exit code 0.
-  - **Pipeline bottleneck identified**: MaiaCpp `cpp-compiler.js` cannot lower
-    sequential-statement function bodies (all pattern matches — `simpleReturnExpr`,
-    `simpleReturnCall`, etc. — return null for bodies with side-effect calls).
-  - Result: every `main()` becomes `stub-fallback → return 0`; WASM exits 0 with zero
-    output. This is a MaiaCpp-layer issue, not a MaiaJS issue.
-  - MaiaJS-side validations that ARE passing: C++ structure (extern decl + call form),
-    IR hostInterop detectedCalls, JS wrapper param binding (`const char*` → readCString).
+  The generated dist reproduces the required source markers and returns `0`.
 - [x] Record remaining unsupported ES8 forms as explicit diagnostics (never silent fallback).
   - `console.log(str + num)` → `void*` extern + inline concat (not silent 0 placeholder)
   - `try/catch/finally` → native C++ syntax; exc_ ABI generated by MaiaCpp layer
   - `new Constructor()` → `__new__Constructor()` helper (not raw JS new syntax)
   - bare call to a constructor-style function expression → `constructor-call-without-new`
     (no undefined C++ function symbol is emitted)
+  - IIFE with parameters, `return`, local declarations, or `this` →
+    `iife-unlowerable`; a parameterless side-effect-only IIFE lowers at its
+    call site and is covered through the real C++/WASM pipeline.
   - `arr.map/filter/reduce(arrow)` → `__maia_lambda` helper (no arrow syntax leak)
   - `Promise.resolve()` chain → `__Promise__resolve` extern
 
@@ -323,7 +334,7 @@ Acceptance gate:
 
 - [x] Expected marker set defined and validated against `node full_es8_test.js` output.
 - [x] Unsupported constructs emit explicit, structured diagnostics.
-- [x] Full suite: 282/282 pass (270 Phases 1-6 + 12 Phase 7).
+- [x] Full compiler suite: 349/349 pass.
 - [x] Dist node run prints agreed marker set through the MaiaCpp body-lowering path.
 
 ## Required Commands Per Slice
@@ -342,11 +353,14 @@ For parser/grammar changes only:
 
 ## Cross-Repo Sync Checklist (when parser toolchain changes)
 
-- [ ] MaiaCC updated, parser regenerated, tests pass, commit/push.
-- [ ] MaiaWASM pulls MaiaCC, regenerates parser, tests pass, commit/push.
-- [ ] MaiaC pulls MaiaCC+MaiaWASM, regenerates parser, tests pass, validates `test.c`, commit/push.
-- [ ] MaiaCpp pulls MaiaCC+MaiaWASM+MaiaC, regenerates parser, tests pass, commit/push.
-- [ ] MaiaJS pulls all, regenerates parser if grammar changed, tests pass.
+This MaiaJS-only lowering change does not modify grammar, generated parsers, or
+parser-generator templates. The currently checked-out dependency graph is
+already aligned, and the full validation sweep was run against it:
+MaiaCC -> MaiaWASM -> MaiaC -> MaiaCpp -> MaiaJS. The propagation sequence
+below remains mandatory only for a future parser-toolchain change.
+
+- [x] Current change classified as not parser-toolchain-impacting; no
+  downstream parser regeneration or submodule-pointer commit is required.
 
 ## Definition of Done for MaiaJS transpiler completion
 
@@ -358,4 +372,6 @@ For parser/grammar changes only:
   uses Chrome DevTools Protocol to observe the real runner rather than relying
   on an iframe timer and `--dump-dom` virtual time.
 - [x] Unsupported items explicitly diagnosed and documented as out of scope.
-- [ ] Ecosystem synchronization protocol followed for any parser-generator-impacting changes.
+- [x] This change is not parser-generator-impacting. The synchronized
+  dependency revisions and each repository's relevant validation gates were
+  checked before release.

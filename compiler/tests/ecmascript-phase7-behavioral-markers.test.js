@@ -5,19 +5,12 @@
  *
  * Goal: move from structural success to behavioral parity.
  *
- * PIPELINE STATUS (as of Phase 7 authoring):
+ * PIPELINE STATUS:
  *
- *   JS source → C++ (MaiaJS)       ✅  Validated by this test suite (Phases 1-6)
- *   C++ → C   (MaiaCpp)            ⚠️  PARTIAL – simple externs/declarations OK,
- *                                        but function bodies with sequential statements
- *                                        fall into stub-fallback (no-supported-lowering).
- *                                        main() always becomes `return 0` without emitting
- *                                        any host calls. Blocked on MaiaCpp body lowering.
- *   C  → WASM (MaiaC)              ✅  Compiles correctly given valid C input.
- *   WASM host bridge (MaiaC webc)  ✅  const-char* params → readCString; validated by
- *                                        host-env-builder.test.js in MaiaC repo.
- *   WASM → behavioral output       ❌  Zero output: stub-fallback bodies never call
- *                                        __console__log or any other host import.
+ *   JS source → C++ (MaiaJS)       validated by this test suite.
+ *   C++ → C → WASM (MaiaCpp/WebC)  validated by validate_full_es8_dist.sh.
+ *   WASM → behavioral output       validated against the source marker set by
+ *                                    the generated Node runner.
  *
  * Tests in this file cover what CAN be validated from the MaiaJS side:
  *   1. C++ output structure for marker statements (extern decl + call form)
@@ -25,8 +18,8 @@
  *   3. Explicit diagnostic tests confirming the known unsupported forms that
  *      currently produce structured (not silent) output
  *
- * When MaiaCpp body lowering is completed, remove the "stub-fallback" notes and
- * add real WASM execution assertions using node-runner.js from the dist.
+ * The shell dist gate owns the full cross-repository execution check so the
+ * unit suite remains fast and isolated.
  */
 
 const { test } = require('node:test');
@@ -248,18 +241,7 @@ test('Phase 7 diagnostic: Promise.resolve chain emits __Promise__resolve extern'
 // Section 4: Behavioral gate documentation
 // ---------------------------------------------------------------------------
 
-test('Phase 7 behavioral gate: pipeline bottleneck is documented (MaiaCpp stub-fallback)', () => {
-  // This test documents the current state of the end-to-end pipeline.
-  // It does NOT execute WASM (behavioral output is not yet achievable).
-  //
-  // Blocked on: MaiaCpp cpp-compiler.js function body lowering.
-  //   - For sequential-statement function bodies (e.g. main() that calls
-  //     __console__log then returns 0), all patterns return null:
-  //     simpleReturnExpr, simpleReturnCall, simpleIfReturn, etc.
-  //   - Result: stub-fallback (no-supported-lowering) → body becomes `return 0`
-  //   - WASM runs successfully (exit 0) but produces no output
-  //
-  // Expected runtime markers once MaiaCpp body lowering is complete:
+test('Phase 7 behavioral gate: source marker contract is current', () => {
   const EXPECTED_MARKERS = [
     '============================================================',
     'ES8 SYNTAX TESTER - compatibility mode',
@@ -286,8 +268,8 @@ test('Phase 7 behavioral gate: pipeline bottleneck is documented (MaiaCpp stub-f
   const unique = new Set(EXPECTED_MARKERS);
   assert.equal(unique.size, EXPECTED_MARKERS.length, 'expected markers must be unique');
 
-  // Verify each marker would appear in the actual node output of full_es8_test.js
-  // Run the source directly to capture expected output (not WASM)
+  // The full dist script separately verifies these markers from Node/WASM.
+  // Here the source establishes their stable reference contract.
   const samplePath = path.resolve(__dirname, '..', 'examples', 'full_es8_test.js');
   const nodeResult = spawnSync(process.execPath, [samplePath], { encoding: 'utf8' });
   assert.equal(nodeResult.status, 0, 'full_es8_test.js must run cleanly under Node.js');

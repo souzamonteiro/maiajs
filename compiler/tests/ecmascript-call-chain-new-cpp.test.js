@@ -45,6 +45,27 @@ test('new-expression lowering: lowers constructor call to __new__ helper symbol'
   assert.match(cpp, /__new__Animal\("Rex"\);/, 'C++ must lower constructor expression to __new__ helper style call');
 });
 
+test('IIFE lowering: emits the parameterless body at its C++ call site', () => {
+  const cpp = runCompilerCpp('(function() { console.log("IIFE marker"); })();\n', { strictLowering: true });
+
+  assert.match(cpp, /int main\(\) \{\n  __console__log\("IIFE marker"\);\n/, 'IIFE body must be emitted directly at its C++ call site');
+  assert.doesNotMatch(cpp, /__function\(\);/, 'IIFE must not be routed to the undefined host symbol __function');
+});
+
+test('IIFE lowering: rejects forms that would require a distinct function scope', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'maiajs-iife-strict-'));
+  const inputFile = path.join(tempDir, 'input.js');
+  const cppOut = path.join(tempDir, 'out.cpp');
+  fs.writeFileSync(inputFile, '(function() { let localValue = 1; console.log(localValue); })();\n', 'utf8');
+  const result = spawnSync(process.execPath, [COMPILER, '--file', inputFile, '--cpp-out', cppOut, '--strict-lowering'], {
+    cwd: path.resolve(__dirname, '..', '..'),
+    encoding: 'utf8'
+  });
+
+  assert.notEqual(result.status, 0, 'strict lowering must reject an IIFE with a local function scope');
+  assert.match(result.stderr || result.stdout, /iife-unlowerable/, 'strict lowering must identify the unsupported IIFE form');
+});
+
 test('constructor function expressions: reject bare calls instead of emitting undefined C++ symbols', () => {
   const source = [
     'const Animal = function(value) { this.value = value; };',

@@ -5837,6 +5837,61 @@ function extractDirectCallExpressionNode(node) {
   return null;
 }
 
+function tryLowerIifeExpressionStatement(expressionNode, compileContext, indentLevel, options) {
+  const callExpressionNode = extractDirectCallExpressionNode(expressionNode);
+  if (!callExpressionNode) {
+    return null;
+  }
+
+  const { memberExprNode, argExprs } = extractCallExpressionMemberAndArgs(callExpressionNode);
+  const functionExpressionNode = memberExprNode
+    ? findFirstNonterminal(memberExprNode, 'functionExpression')
+    : null;
+  if (!functionExpressionNode) {
+    return null;
+  }
+
+  const parameterNames = extractFunctionParameterNames(functionExpressionNode);
+  const statementNodes = collectFunctionBodyStatementNodes(functionExpressionNode);
+  const hasReturn = statementNodes.some((statementNode) =>
+    Boolean(findFirstNonterminal(statementNode, 'returnStatement'))
+  );
+  const hasLocalDeclaration = statementNodes.some((statementNode) => (
+    Boolean(findFirstNonterminal(statementNode, 'variableStatement'))
+    || Boolean(findFirstNonterminal(statementNode, 'letDeclaration'))
+    || Boolean(findFirstNonterminal(statementNode, 'constDeclaration'))
+  ));
+  const usesThis = nodeContainsThisReference(functionExpressionNode);
+  if (parameterNames.length > 0 || argExprs.length > 0 || hasReturn || hasLocalDeclaration || usesThis) {
+    const unsupportedParts = [];
+    if (parameterNames.length > 0 || argExprs.length > 0) {
+      unsupportedParts.push('parameters or arguments');
+    }
+    if (hasReturn) {
+      unsupportedParts.push('return');
+    }
+    if (hasLocalDeclaration) {
+      unsupportedParts.push('local declarations');
+    }
+    if (usesThis) {
+      unsupportedParts.push('this');
+    }
+    reportUnsupportedLowering(
+      compileContext,
+      'iife-unlowerable',
+      `IIFE requires unsupported ${unsupportedParts.join(', ')}`
+    );
+    return [`${indentation(indentLevel)}(void)0;`];
+  }
+
+  const lines = [];
+  for (const statementNode of statementNodes) {
+    resetStatementLoweringState(compileContext);
+    lines.push(...lowerStatementNode(statementNode, compileContext, indentLevel, options));
+  }
+  return lines;
+}
+
 function callExpressionContainsDirectPromiseThen(callExpressionNode) {
   if (!callExpressionNode || callExpressionNode.kind !== 'nonterminal' || callExpressionNode.name !== 'callExpression') {
     return false;
@@ -11531,6 +11586,13 @@ function lowerStatementNode(statementNode, compileContext, indentLevel = 1, opti
         err('unsupported lowering: expression statement missing expression');
       }
       return [`${indent}// [expression statement missing expression]`];
+    }
+
+    // C++98 has no lambda syntax. A side-effect-only parameterless IIFE can
+    // preserve its semantics by lowering its body directly at the call site.
+    const loweredIife = tryLowerIifeExpressionStatement(exprNode, compileContext, indentLevel, options);
+    if (loweredIife !== null) {
+      return loweredIife;
     }
 
     // A class construction used as a statement has no JavaScript result to
