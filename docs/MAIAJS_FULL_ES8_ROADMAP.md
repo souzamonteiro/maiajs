@@ -35,6 +35,18 @@ and many library APIs depend on real function values.
   captured environment, parameter metadata, and return channel.
 - [ ] Lower function expressions and arrow functions used as values, including
   calls through local variables, object properties, and arguments.
+- [x] Lower direct calls to non-capturing top-level synchronous arrow bindings
+  as concrete C++ functions. The regression `increment(4)` is validated through
+  JS -> C++98 -> C -> WASM and prints `result 5` in the Node runner. This is a
+  narrow first milestone, not yet general function-value or closure support.
+- [x] Invoke a non-capturing top-level function declaration as a callback in
+  statically lowered `Array.prototype.forEach`. The complete pipeline preserves
+  element arguments and prints `item 2` and `item 4`; dynamic callback values,
+  storage, and captured state remain outside this milestone.
+- [x] Lower an inline non-capturing synchronous arrow callback in statically
+  lowered `Array.prototype.forEach` to a concrete helper function. The WASM
+  behavior gate prints `item 2` and `item 4`; this does not yet make arbitrary
+  arrow values, capture environments, or async arrows generally callable.
 - [ ] Capture lexical locals by value and by shared mutable cell where JavaScript
   semantics require subsequent writes to be visible.
 - [ ] Preserve lexical `this` for arrow functions; preserve call-site receiver
@@ -125,4 +137,5 @@ tests in every supported runtime host.
 - [x] Strict MaiaJS release subset is published and behavior-validated through
   C++98, C, and WASM.
 - [ ] Full ES8 runtime compatibility is not yet claimed.
-- [ ] Phase 1 is the next implementation milestone.
+- [~] Phase 1 is in progress; only direct non-capturing calls and a static
+  `forEach` callback case are behavior-validated so far.

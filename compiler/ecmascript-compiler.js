@@ -839,6 +839,57 @@ function collectTopLevelCallArgumentFunctionExpressionBindings(tree) {
   return bindings;
 }
 
+function collectTopLevelForEachArrowFunctionBindings(tree) {
+  const bindings = [];
+  const topLevelBindingNames = collectTopLevelBindingNames(tree);
+  const localFunctionNames = new Set(collectTopLevelFunctionNames(tree));
+  for (const { bindingName } of collectTopLevelFunctionExpressionBindings(tree)) {
+    localFunctionNames.add(bindingName);
+  }
+  const lambdaCompileContext = { tree, topLevelBindingNames, localFunctionNames };
+
+  for (const statementNode of extractTopLevelStatementNodes(tree)) {
+    walk(statementNode, (node) => {
+      if (!node || node.kind !== 'nonterminal' || node.name !== 'callExpression') {
+        return;
+      }
+      const memberExpressionNode = (node.children || []).find(
+        (child) => child && child.kind === 'nonterminal' && child.name === 'memberExpression'
+      );
+      const memberChildren = memberExpressionNode ? (memberExpressionNode.children || []) : [];
+      const directPropertyIndex = memberChildren.findIndex(
+        (child) => child && child.kind === 'terminal' && child.value === '.'
+      );
+      const directPropertyNode = directPropertyIndex >= 0 ? memberChildren[directPropertyIndex + 1] : null;
+      if (!directPropertyNode || findFirstIdentifierValue(directPropertyNode) !== 'forEach') {
+        return;
+      }
+      const argsNode = (node.children || []).find(
+        (child) => child && child.kind === 'nonterminal' && child.name === 'arguments'
+      );
+      const argListNode = argsNode && (argsNode.children || []).find(
+        (child) => child && child.kind === 'nonterminal' && child.name === 'argumentList'
+      );
+      const argExprs = argListNode ? collectArgumentExpressions(argListNode) : [];
+      argExprs.forEach((argExpr) => {
+        const arrowFunctionNode = findCallableNodeFromExpression(argExpr);
+        if (!arrowFunctionNode || arrowFunctionNode.name !== 'arrowFunction') {
+          return;
+        }
+        if (collectLambdaCaptureNames(arrowFunctionNode, lambdaCompileContext).length > 0) {
+          return;
+        }
+        bindings.push({
+          symbolName: `__maia_fn_arrow_arg_${bindings.length}`,
+          arrowFunctionNode
+        });
+      });
+    });
+  }
+
+  return bindings;
+}
+
 function nodeContainsThisReference(node) {
   let found = false;
   walk(node, (candidate) => {
@@ -2746,6 +2797,39 @@ function findCallableNodeFromExpression(expressionNode) {
     || findFirstNonterminal(expressionNode, 'functionDeclaration');
 }
 
+function resolveCallableNodeFromExpression(expressionNode, compileContext) {
+  const inlineCallable = findCallableNodeFromExpression(expressionNode);
+  if (inlineCallable) {
+    return inlineCallable;
+  }
+
+  const bindingName = findFirstIdentifierValue(expressionNode);
+  if (!bindingName || !compileContext || !compileContext.topLevelArrowFunctionSymbols) {
+    return null;
+  }
+
+  for (const [arrowNode, name] of compileContext.topLevelArrowFunctionSymbols.entries()) {
+    if (name === bindingName) {
+      return arrowNode;
+    }
+  }
+
+  for (const functionNode of collectTopLevelFunctionDeclarations(compileContext.tree)) {
+    if (extractFunctionDeclarationName(functionNode) === bindingName) {
+      return functionNode;
+    }
+  }
+
+  if (compileContext.topLevelFunctionExpressionSymbols) {
+    for (const [functionNode, name] of compileContext.topLevelFunctionExpressionSymbols.entries()) {
+      if (name === bindingName) {
+        return functionNode;
+      }
+    }
+  }
+  return null;
+}
+
 function resolveFlatStaticPrimitiveModel(expressionNode) {
   const flattenedText = flattenNodeText(expressionNode);
   if (/^(?:'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*")$/.test(flattenedText)) {
@@ -3552,6 +3636,7 @@ function buildCompileContext(tree, hostRegistry) {
   const topLevelObjectLiteralFunctionExpressionBindings = collectTopLevelObjectLiteralFunctionExpressionBindings(tree);
   const objectLiteralPropertyTypesByFunctionNode = collectTopLevelObjectLiteralPropertyTypeInfo(tree);
   const topLevelCallArgumentFunctionExpressionBindings = collectTopLevelCallArgumentFunctionExpressionBindings(tree);
+  const topLevelForEachArrowFunctionBindings = collectTopLevelForEachArrowFunctionBindings(tree);
   const localFunctionArgumentsInfo = collectLocalFunctionArgumentsInfo(tree);
   const hasLambdaCapturePayload = [
     ...Array.from(lambdaStats.syncSignatures.values()),
@@ -3601,7 +3686,8 @@ function buildCompileContext(tree, hostRegistry) {
     objectLiteralPropertyTypesByFunctionNode,
     inlineFunctionExpressionSymbols: new Map([
       ...topLevelObjectLiteralFunctionExpressionBindings.map((binding) => [binding.functionExpressionNode, binding.symbolName]),
-      ...topLevelCallArgumentFunctionExpressionBindings.map((binding) => [binding.functionExpressionNode, binding.symbolName])
+      ...topLevelCallArgumentFunctionExpressionBindings.map((binding) => [binding.functionExpressionNode, binding.symbolName]),
+      ...topLevelForEachArrowFunctionBindings.map((binding) => [binding.arrowFunctionNode, binding.symbolName])
     ]),
     _visibleVariableBindingsCache: new WeakMap(),
     _staticModelCache: new WeakMap(),
@@ -4160,6 +4246,9 @@ function collectCallableParameterCppTypes(tree, baseCompileContext = null) {
   for (const { symbolName, functionExpressionNode } of collectTopLevelCallArgumentFunctionExpressionBindings(tree)) {
     registerCallable(symbolName, functionExpressionNode, extractCallableParameterNames(functionExpressionNode));
   }
+  for (const { symbolName, arrowFunctionNode } of collectTopLevelForEachArrowFunctionBindings(tree)) {
+    registerCallable(symbolName, arrowFunctionNode, extractCallableParameterNames(arrowFunctionNode));
+  }
   for (const { bindingName, functionExpressionNode } of collectTopLevelConstructorFunctionExpressionBindings(tree)) {
     registerCallable(bindingName, functionExpressionNode, extractCallableParameterNames(functionExpressionNode));
   }
@@ -4179,7 +4268,7 @@ function collectCallableParameterCppTypes(tree, baseCompileContext = null) {
   });
 
   const mergeCallbackParamTypeHints = (callbackExprNode, hintedCppTypes = []) => {
-    const callbackNode = findCallableNodeFromExpression(callbackExprNode);
+    const callbackNode = resolveCallableNodeFromExpression(callbackExprNode, buildIterationContext());
     if (!callbackNode) {
       return false;
     }
@@ -7388,6 +7477,13 @@ function lowerArrowFunctionValue(arrowNode, isAsync = false, compileContext = nu
     return null;
   }
 
+  const inlineSymbol = !isAsync && compileContext && compileContext.inlineFunctionExpressionSymbols
+    ? compileContext.inlineFunctionExpressionSymbols.get(arrowNode)
+    : null;
+  if (inlineSymbol) {
+    return inlineSymbol;
+  }
+
   const params = extractLambdaParameterNames(arrowNode);
   const arity = params.length;
   const captures = collectLambdaCaptureNames(arrowNode, compileContext);
@@ -10422,7 +10518,7 @@ function lowerCallExpressionValue(node, compileContext) {
   if (!loweredCall && directPropertyName === 'forEach' && baseExpressionNode && argExprs.length >= 1) {
     const baseModel = resolveStaticModelFromExpression(baseExpressionNode, node, compileContext, new Set());
     const callbackSymbol = lowerExpressionValue(argExprs[0], compileContext);
-    const callbackNode = findCallableNodeFromExpression(argExprs[0]);
+    const callbackNode = resolveCallableNodeFromExpression(argExprs[0], compileContext);
     const callbackParams = extractCallableParameterNames(callbackNode);
     const loweredBase = lowerExpressionValue(baseExpressionNode, compileContext);
     if (baseModel
@@ -11278,6 +11374,17 @@ function lowerVariableDeclarations(statementNode, compileContext, indent = '  ')
     const topLevelArrowFunction = isTopLevelStatement
       ? extractDirectArrowFunctionInitializer(initializerExpr)
       : null;
+    // Non-capturing top-level arrows have a concrete C++ function definition
+    // emitted by emitTopLevelFunctionDefinitions(). Emitting a second void*
+    // variable with the same binding name shadows that function and turns a
+    // valid call such as increment(4) into an invalid pointer invocation.
+    if (topLevelArrowFunction
+      && topLevelArrowFunction.name === 'arrowFunction'
+      && compileContext
+      && compileContext.topLevelArrowFunctionSymbols
+      && compileContext.topLevelArrowFunctionSymbols.has(topLevelArrowFunction)) {
+      continue;
+    }
 
     const newClassInfo = extractDirectNewClassInfo(initializerExpr, compileContext);
     if (newClassInfo) {
@@ -12676,7 +12783,11 @@ function emitTopLevelFunctionDefinitions(tree, compileContext) {
         const loweredReturn = lowerExpressionValue(returnExprNode, compileContext);
         if (loweredReturn !== null) {
           bodyLines.push(...takePreludeStatements(compileContext, '  '));
-          bodyLines.push(`  return ${castReturnExpression(loweredReturn, returnTypeCpp)};`);
+          if (/^__console__log\(/.test(loweredReturn.trim())) {
+            bodyLines.push(`  ${loweredReturn};`);
+          } else {
+            bodyLines.push(`  return ${castReturnExpression(loweredReturn, returnTypeCpp)};`);
+          }
         }
       }
     }
@@ -12688,6 +12799,43 @@ function emitTopLevelFunctionDefinitions(tree, compileContext) {
 
     definitions.push(
       `${returnTypeCpp} ${bindingName}(${cppParams}) {\n`
+      + `${bodyLines.join('\n')}\n`
+      + `}`
+    );
+  }
+
+  for (const { symbolName, arrowFunctionNode } of collectTopLevelForEachArrowFunctionBindings(tree)) {
+    const returnTypeCpp = compileContext.functionReturnTypes.get(symbolName) || 'int';
+    const cppParams = buildCppParamsFromFunctionNode(arrowFunctionNode, symbolName, compileContext);
+    const statementNodes = collectFunctionBodyStatementNodes(arrowFunctionNode);
+    const bodyLines = [];
+    beginDeferredPromiseQueueScope(compileContext);
+
+    if (statementNodes.length > 0) {
+      for (const statementNode of statementNodes) {
+        resetStatementLoweringState(compileContext);
+        bodyLines.push(...lowerStatementNode(statementNode, compileContext, 1, { returnTypeCpp }));
+      }
+    } else {
+      const returnExprNode = extractCallableReturnExpressionNode(arrowFunctionNode);
+      if (returnExprNode) {
+        const loweredReturn = lowerExpressionValue(returnExprNode, compileContext);
+        if (loweredReturn !== null) {
+          bodyLines.push(...takePreludeStatements(compileContext, '  '));
+          if (/^__console__log\(/.test(loweredReturn.trim())) {
+            bodyLines.push(`  ${loweredReturn};`);
+          } else {
+            bodyLines.push(`  return ${castReturnExpression(loweredReturn, returnTypeCpp)};`);
+          }
+        }
+      }
+    }
+    bodyLines.push(...takeDeferredPromiseStatements(compileContext, '  '));
+    if (!bodyLines.some((line) => /^\s*return\b/.test(line))) {
+      bodyLines.push(`  return ${defaultCppValue(returnTypeCpp)};`);
+    }
+    definitions.push(
+      `${returnTypeCpp} ${symbolName}(${cppParams}) {\n`
       + `${bodyLines.join('\n')}\n`
       + `}`
     );
@@ -12858,6 +13006,16 @@ function emitTopLevelFunctionPrototypes(tree, compileContext) {
 
     prototypes.push(`${returnTypeCpp} ${bindingName}(${cppParams});`);
     seen.add(bindingName);
+  }
+
+  for (const { symbolName, arrowFunctionNode } of collectTopLevelForEachArrowFunctionBindings(tree)) {
+    if (seen.has(symbolName)) {
+      continue;
+    }
+    const returnTypeCpp = compileContext.functionReturnTypes.get(symbolName) || 'int';
+    const cppParams = buildCppParamsFromFunctionNode(arrowFunctionNode, symbolName, compileContext);
+    prototypes.push(`${returnTypeCpp} ${symbolName}(${cppParams});`);
+    seen.add(symbolName);
   }
 
   for (const { symbolName, functionExpressionNode } of collectTopLevelAssignedFunctionExpressionBindings(tree)) {

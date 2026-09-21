@@ -9,14 +9,18 @@ const { spawnSync } = require('node:child_process');
 
 const COMPILER = path.resolve(__dirname, '..', 'ecmascript-compiler.js');
 
-function runCompilerCpp(sourceCode) {
+function runCompilerCpp(sourceCode, options = {}) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'maiajs-lambda-cpp-'));
   const inputFile = path.join(tempDir, 'input.js');
   const cppOut = path.join(tempDir, 'out.cpp');
 
   fs.writeFileSync(inputFile, sourceCode, 'utf8');
 
-  const result = spawnSync(process.execPath, [COMPILER, '--file', inputFile, '--cpp-out', cppOut], {
+  const args = [COMPILER, '--file', inputFile, '--cpp-out', cppOut];
+  if (options.strictLowering) {
+    args.push('--strict-lowering');
+  }
+  const result = spawnSync(process.execPath, args, {
     cwd: path.resolve(__dirname, '..', '..'),
     encoding: 'utf8'
   });
@@ -27,20 +31,50 @@ function runCompilerCpp(sourceCode) {
   return fs.readFileSync(cppOut, 'utf8');
 }
 
-test('lambda lowering: emits sync lambda runtime hook by arity', () => {
-  const cpp = runCompilerCpp('const f = x => x;\nconsole.log(f);\n');
+test('lambda lowering: emits a callable C++ function for a non-capturing top-level arrow', () => {
+  const cpp = runCompilerCpp('const f = x => x;\nconsole.log(f(5));\n');
 
   assert.match(cpp, /extern void\* __maia_lambda1\(void\);/, 'C++ must declare lambda runtime hook for arity-1');
   assert.match(cpp, /void\* __maia_lambda1\(void\) \{/, 'C++ must provide local fallback definition for sync lambda hook');
-  assert.match(cpp, /void\* f = __maia_lambda1\(\);/, 'C++ must lower sync lambda expression into runtime helper');
-  assert.match(cpp, /__console__log\(f\);/, 'C++ must preserve lambda value usage in host call');
+  assert.match(cpp, /int f\(int x\) \{[\s\S]*return \(int\)\(x\);/, 'C++ must emit the arrow body as a callable function');
+  assert.doesNotMatch(cpp, /void\* f = __maia_lambda1\(\);/, 'C++ must not shadow the callable function with an opaque lambda value');
+  assert.match(cpp, /__console__log\(f\(5\)\);/, 'C++ must call the generated function directly');
+});
+
+test('lambda lowering: non-capturing top-level arrow calls preserve arguments and return values', () => {
+  const cpp = runCompilerCpp('const increment = x => x + 1;\nconsole.log("result", increment(4));\n', { strictLowering: true });
+
+  assert.match(cpp, /int increment\(int x\) \{[\s\S]*return \(int\)\(x \+ 1\);/, 'C++ must emit the arrow implementation');
+  assert.match(cpp, /__maia_console_value_tmp0 = \(double\)\(increment\(4\)\);/, 'C++ must call the generated function directly');
+  assert.doesNotMatch(cpp, /const void\* increment =/, 'C++ must not emit an opaque binding that shadows increment');
+});
+
+test('function values: non-capturing top-level function binding receives static forEach callback arguments', () => {
+  const cpp = runCompilerCpp([
+    'function show(value) { console.log("item", value); }',
+    '[2, 4].forEach(show);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /int show\((?:int|double) value\) \{/, 'C++ must emit the callback with a numeric parameter');
+  assert.match(cpp, /show\(2\);[\s\S]*show\(4\);/, 'static forEach lowering must pass each array element to the bound callback');
+  assert.doesNotMatch(cpp, /show\(\);/, 'callback invocation must not drop its required argument');
+});
+
+test('function values: inline non-capturing arrow receives static forEach callback arguments', () => {
+  const cpp = runCompilerCpp('[2, 4].forEach(value => console.log("item", value));\n', { strictLowering: true });
+
+  assert.match(cpp, /int __maia_fn_arrow_arg_0\((?:int|double) value\) \{/, 'C++ must emit the inline arrow as a concrete callback function');
+  assert.match(cpp, /__maia_fn_arrow_arg_0\(2\);[\s\S]*__maia_fn_arrow_arg_0\(4\);/, 'static forEach lowering must pass each array element to the inline arrow');
+  assert.match(cpp, /__console__log\(/, 'the inline arrow body must preserve its side effect');
+  assert.doesNotMatch(cpp, /__maia_lambda1\(\)\(2\)/, 'C++ must not call an opaque lambda payload as a function');
 });
 
 test('lambda lowering: emits parenthesized sync lambda runtime hook by arity', () => {
   const cpp = runCompilerCpp('const add = (x, y) => x + y;\n');
 
   assert.match(cpp, /extern void\* __maia_lambda2\(void\);/, 'C++ must declare lambda runtime hook for arity-2');
-  assert.match(cpp, /void\* add = __maia_lambda2\(\);/, 'C++ must lower arity-2 lambda into runtime helper');
+  assert.match(cpp, /int add\(int x, int y\) \{[\s\S]*return \(int\)\(x \+ y\);/, 'C++ must emit the arity-2 arrow as a callable function');
+  assert.doesNotMatch(cpp, /void\* add = __maia_lambda2\(\);/, 'C++ must not shadow the arity-2 callable function');
 });
 
 test('lambda lowering: emits capture-aware sync lambda hook for simple top-level identifier capture', () => {
@@ -87,7 +121,7 @@ test('lambda lowering: emits nested lambda capture-aware hook for enclosing lamb
 
   assert.match(cpp, /extern void\* __maia_lambda1_capture1\(int c1\);/, 'C++ must declare capture-aware hook for inner lambda that captures outer lambda parameter');
   assert.match(cpp, /void\* __maia_lambda1_capture1\(int c1\) \{/, 'C++ must emit local fallback definition for inner lambda capture hook');
-  assert.match(cpp, /const void\* f = __maia_lambda1\(\);/, 'outer lambda remains lowered through the existing non-closure hook path');
+  assert.match(cpp, /void\* f\(int x\) \{[\s\S]*__maia_lambda1_capture1\(\(int\)\(x\)\)/, 'outer lambda must be emitted as a function that produces the captured closure');
 });
 
 test('lambda lowering: nested lambda captures enclosing lambda local without leaking it onto outer lambda hook', () => {
@@ -95,8 +129,8 @@ test('lambda lowering: nested lambda captures enclosing lambda local without lea
 
   assert.match(cpp, /extern void\* __maia_lambda1_capture2\(int c1, int c2\);/, 'C++ must declare inner lambda hook that captures enclosing lambda param and local');
   assert.match(cpp, /void\* __maia_lambda1_capture2\(int c1, int c2\) \{/, 'C++ must emit fallback definition for the inner nested lambda hook');
-  assert.match(cpp, /const void\* f = __maia_lambda1\(\);/, 'outer lambda must not capture its own local declarations');
-  assert.doesNotMatch(cpp, /const void\* f = __maia_lambda1_capture1\(\(int\)\(z\)\);/, 'outer lambda must not leak inner local binding into top-level lowering');
+  assert.match(cpp, /int f\(int x\) \{/, 'outer lambda must emit a callable function without capture payload');
+  assert.doesNotMatch(cpp, /__maia_lambda1_capture1\(\(int\)\(z\)\)/, 'outer lambda must not leak inner local binding into its own lowering');
 });
 
 test('lambda lowering: emits async lambda runtime hook by arity', () => {
@@ -208,8 +242,8 @@ test('lambda lowering: nested async lambda captures enclosing lambda parameter a
 
   assert.match(cpp, /extern void\* __maia_async_lambda1_capture2\(int c1, int c2\);/, 'C++ must declare nested async lambda hook that captures enclosing lambda param and local');
   assert.match(cpp, /void\* __maia_async_lambda1_capture2\(int c1, int c2\) \{/, 'C++ must emit local fallback definition for nested async lambda capture hook');
-  assert.match(cpp, /const void\* f = __maia_lambda1\(\);/, 'outer lambda must stay on the existing non-closure hook path');
-  assert.doesNotMatch(cpp, /const void\* f = __maia_lambda1_capture1\(/, 'outer lambda must not leak enclosing-lambda local captures into its own hook');
+  assert.match(cpp, /int f\(int x\) \{/, 'outer non-capturing lambda must emit a callable function');
+  assert.doesNotMatch(cpp, /__maia_lambda1_capture1\(/, 'outer lambda must not leak enclosing-lambda local captures into its own lowering');
 });
 
 test('lambda lowering: does not emit fallback comments for arrow declaration', () => {

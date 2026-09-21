@@ -1,11 +1,11 @@
 # MaiaJS Transpiler Completion Strategy and TODO
 
-Last updated: 2026-09-20
+Last updated: 2026-09-21
 Scope: ECMAScript 2017 (ES8) only, grammar-first workflow.
 
 ## Current Baseline (validated)
 
-- Full compiler test suite is green: **349/349 passing**.
+- Full compiler test suite is green: **352/352 passing**.
 - Ported MaiaCpp examples are green: runtime suite **22/22**, course suite **48/48**,
   and MaiaJS transpilation **22/22**.
 - `bash compiler/examples/validate_full_es8_dist.sh` validates the complete
@@ -334,7 +334,7 @@ Acceptance gate:
 
 - [x] Expected marker set defined and validated against `node full_es8_test.js` output.
 - [x] Unsupported constructs emit explicit, structured diagnostics.
-- [x] Full compiler suite: 349/349 pass.
+- [x] Full compiler suite: 352/352 pass.
 - [x] Dist node run prints agreed marker set through the MaiaCpp body-lowering path.
 
 ## Required Commands Per Slice
