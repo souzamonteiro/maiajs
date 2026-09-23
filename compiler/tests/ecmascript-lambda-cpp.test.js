@@ -69,6 +69,45 @@ test('function values: inline non-capturing arrow receives static forEach callba
   assert.doesNotMatch(cpp, /__maia_lambda1\(\)\(2\)/, 'C++ must not call an opaque lambda payload as a function');
 });
 
+test('function values: named callbacks drive direct static map, filter, and reduce evaluation', () => {
+  const cpp = runCompilerCpp([
+    'function doubleValue(value) { return value * 2; }',
+    'function isEven(value) { return value % 2 === 0; }',
+    'function sum(total, value) { return total + value; }',
+    'const doubled = [1, 2, 3].map(doubleValue);',
+    'const evens = [1, 2, 3, 4].filter(isEven);',
+    'const total = [1, 2, 3].reduce(sum, 0);',
+    'console.log("map", doubled[2]);',
+    'console.log("filter", evens.length);',
+    'console.log("reduce", total);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /const void\* doubled = __maia_arr_literal3\(\(long\)\(2\), \(long\)\(4\), \(long\)\(6\)\);/, 'map must retain statically evaluated elements');
+  assert.match(cpp, /const void\* evens = __maia_arr_literal2\(\(long\)\(2\), \(long\)\(4\)\);/, 'filter must retain matching elements');
+  assert.match(cpp, /const double total = 6;/, 'reduce must materialize the named callback result');
+  assert.doesNotMatch(cpp, /\.map\(|\.filter\(|\.reduce\(/, 'JS collection calls must not leak into C++ output');
+});
+
+test('function values: named non-capturing arrows drive direct static map, filter, and reduce evaluation', () => {
+  const cpp = runCompilerCpp([
+    'const doubleValue = value => value * 2;',
+    'const isEven = value => value % 2 === 0;',
+    'const sum = (total, value) => total + value;',
+    'const doubled = [1, 2, 3].map(doubleValue);',
+    'const evens = [1, 2, 3, 4].filter(isEven);',
+    'const total = [1, 2, 3].reduce(sum, 0);',
+    'console.log("map", doubled[2]);',
+    'console.log("filter", evens.length);',
+    'console.log("reduce", total);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /int doubleValue\(double value\) \{/, 'C++ must emit the map callback as a concrete arrow function');
+  assert.match(cpp, /const void\* doubled = __maia_arr_literal3\(\(long\)\(2\), \(long\)\(4\), \(long\)\(6\)\);/, 'map must evaluate the named arrow callback');
+  assert.match(cpp, /const void\* evens = __maia_arr_literal2\(\(long\)\(2\), \(long\)\(4\)\);/, 'filter must evaluate the named arrow callback');
+  assert.match(cpp, /const double total = 6;/, 'reduce must evaluate the named arrow callback');
+  assert.doesNotMatch(cpp, /__maia_lambda\d+\(\)\(/, 'C++ must not call an opaque lambda payload as a callback');
+});
+
 test('lambda lowering: emits parenthesized sync lambda runtime hook by arity', () => {
   const cpp = runCompilerCpp('const add = (x, y) => x + y;\n');
 

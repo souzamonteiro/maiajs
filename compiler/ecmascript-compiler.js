@@ -2391,7 +2391,7 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
 
     if (!staticCallModel && (directPropertyName === 'reduce' || directPropertyName === 'reduceRight') && baseExpressionNode && argExprs.length >= 1) {
       const baseModel = resolveStaticModelFromExpression(baseExpressionNode, targetNode, compileContext, seenBindings);
-      const callbackNode = findCallableNodeFromExpression(argExprs[0]);
+      const callbackNode = resolveCallableNodeFromExpression(argExprs[0], compileContext);
       const callbackParams = extractCallableParameterNames(callbackNode);
       const callbackReturnExpression = extractCallableReturnExpressionNode(callbackNode);
       const initialModel = argExprs.length >= 2
@@ -2539,6 +2539,13 @@ function lowerStaticModelToRuntimeExpression(model) {
     return scalar;
   }
   if (model.kind === 'array') {
+    const values = Array.isArray(model.values) ? model.values : null;
+    if (values && values.length <= 4) {
+      const loweredValues = values.map((value) => lowerStaticModelToExpression(value));
+      if (loweredValues.every((value) => value !== null)) {
+        return `__maia_arr_literal${values.length}(${loweredValues.map((value) => `(long)(${value})`).join(', ')})`;
+      }
+    }
     return `__maia_runtime_alloc_value(2, ${model.length || 0}, 0, 0)`;
   }
   return null;
@@ -2804,13 +2811,15 @@ function resolveCallableNodeFromExpression(expressionNode, compileContext) {
   }
 
   const bindingName = findFirstIdentifierValue(expressionNode);
-  if (!bindingName || !compileContext || !compileContext.topLevelArrowFunctionSymbols) {
+  if (!bindingName || !compileContext) {
     return null;
   }
 
-  for (const [arrowNode, name] of compileContext.topLevelArrowFunctionSymbols.entries()) {
-    if (name === bindingName) {
-      return arrowNode;
+  if (compileContext.topLevelArrowFunctionSymbols) {
+    for (const [arrowNode, name] of compileContext.topLevelArrowFunctionSymbols.entries()) {
+      if (name === bindingName) {
+        return arrowNode;
+      }
     }
   }
 
@@ -3209,13 +3218,7 @@ function tryResolveStaticFilterResultModel(callExpressionNode, baseExpressionNod
     return null;
   }
 
-  const callbackContainerNode = argExprs[0];
-  const callbackNode = callbackContainerNode && callbackContainerNode.kind === 'nonterminal'
-    ? (callbackContainerNode.name === 'arrowFunction' || callbackContainerNode.name === 'functionExpression'
-      ? callbackContainerNode
-      : (findFirstNonterminal(callbackContainerNode, 'arrowFunction')
-        || findFirstNonterminal(callbackContainerNode, 'functionExpression')))
-    : null;
+  const callbackNode = resolveCallableNodeFromExpression(argExprs[0], compileContext);
   if (!callbackNode) {
     return null;
   }
@@ -3288,7 +3291,7 @@ function tryResolveStaticMapResultModel(baseExpressionNode, argExprs, targetNode
     return null;
   }
 
-  const callbackNode = findCallableNodeFromExpression(argExprs[0]);
+  const callbackNode = resolveCallableNodeFromExpression(argExprs[0], compileContext);
   const callbackReturnExpression = extractCallableReturnExpressionNode(callbackNode);
   if (!callbackNode || !callbackReturnExpression) {
     return null;

@@ -47,6 +47,10 @@ and many library APIs depend on real function values.
   lowered `Array.prototype.forEach` to a concrete helper function. The WASM
   behavior gate prints `item 2` and `item 4`; this does not yet make arbitrary
   arrow values, capture environments, or async arrows generally callable.
+- [x] Resolve named top-level non-capturing function declarations and arrows in
+  direct static `map`, `filter`, and `reduce` evaluation. The WASM gate
+  validates `map 6`, `filter 2`, and `reduce 6`; collection-result chaining,
+  dynamic callback dispatch, and captured arrows remain unsupported.
 - [ ] Capture lexical locals by value and by shared mutable cell where JavaScript
   semantics require subsequent writes to be visible.
 - [ ] Preserve lexical `this` for arrow functions; preserve call-site receiver

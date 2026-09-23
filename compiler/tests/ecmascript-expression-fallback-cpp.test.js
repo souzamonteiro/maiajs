@@ -104,7 +104,7 @@ test('JS-runtime method calls on lowered non-path bases (array literal) are safe
   );
 
   assert.match(cpp, /void\* __maia_fn_arg_call_0\(double v, double i, void\* arr\)/, 'array-literal callback should still emit a synthesized helper');
-  assert.match(cpp, /const void\* setLike = __maia_runtime_alloc_value\(2, 4, 0, 0\);/, 'pure literal .filter() may resolve statically to a runtime array shape');
+  assert.match(cpp, /const void\* setLike = __maia_arr_literal4\(\(long\)\(1\), \(long\)\(2\), \(long\)\(3\), \(long\)\(4\)\);/, 'pure literal .filter() must preserve the statically resolved elements');
   assert.doesNotMatch(cpp, /\.filter\(/, 'JS-only .filter() on literal must not appear in C++ output');
 });
 
