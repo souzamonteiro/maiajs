@@ -1,6 +1,6 @@
 # MaiaJS Full ES8 Roadmap
 
-Last updated: 2026-09-20
+Last updated: 2026-09-22
 
 ## Objective
 
@@ -48,9 +48,20 @@ and many library APIs depend on real function values.
   behavior gate prints `item 2` and `item 4`; this does not yet make arbitrary
   arrow values, capture environments, or async arrows generally callable.
 - [x] Resolve named top-level non-capturing function declarations and arrows in
-  direct static `map`, `filter`, and `reduce` evaluation. The WASM gate
-  validates `map 6`, `filter 2`, and `reduce 6`; collection-result chaining,
-  dynamic callback dispatch, and captured arrows remain unsupported.
+  direct static `map`, `filter`, `some`, `every`, `find`, `findIndex`,
+  `reduce`, and `reduceRight` evaluation. The WASM gate validates `map 6`,
+  `filter 2`, `some true`, `every false`, `found 4`, `index 2`, `reduce 6`,
+  and ordered `reduceRight 4`; direct chains with named or inline
+  non-capturing callbacks retain their values and produce `12`. Static
+  non-empty `reduce` and `reduceRight` calls without an initial accumulator
+  use the respective first and last elements, preserving ECMAScript callback
+  indexes. `find` without a match remains outside this static specialization
+  until `undefined` has a faithful runtime representation.
+  Collection-result bindings preserve the model across later static operations
+  and produce `values 2,4,6` and `total 12`. Dynamic callback dispatch and
+  captured arrows remain unsupported, except that a callback may capture
+  immutable lexical bindings when the entire collection operation is folded at
+  compile time; the WASM gate prints `captured 2,4,6` for that specialization.
 - [ ] Capture lexical locals by value and by shared mutable cell where JavaScript
   semantics require subsequent writes to be visible.
 - [ ] Preserve lexical `this` for arrow functions; preserve call-site receiver
@@ -141,5 +152,7 @@ tests in every supported runtime host.
 - [x] Strict MaiaJS release subset is published and behavior-validated through
   C++98, C, and WASM.
 - [ ] Full ES8 runtime compatibility is not yet claimed.
-- [~] Phase 1 is in progress; only direct non-capturing calls and a static
-  `forEach` callback case are behavior-validated so far.
+- [~] Phase 1 is in progress; direct non-capturing calls plus static
+  collection callbacks and immutable-capture specialization are
+  behavior-validated. General function values and runtime closure environments
+  remain open.

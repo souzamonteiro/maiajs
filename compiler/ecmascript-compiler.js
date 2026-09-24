@@ -2134,6 +2134,9 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
     ) || null;
     const operandNode = children.find((child) => child && child.kind === 'nonterminal') || null;
     if (!operatorToken || !operandNode) {
+      if (!operatorToken && operandNode) {
+        return finish(resolveStaticModelFromExpression(operandNode, targetNode, compileContext, seenBindings));
+      }
       return finish(null);
     }
     const operandModel = resolveStaticModelFromExpression(operandNode, targetNode, compileContext, seenBindings);
@@ -2276,6 +2279,24 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
       }
     }
 
+    if (!staticCallModel
+      && ['some', 'every', 'find', 'findIndex'].includes(directPropertyName)
+      && baseExpressionNode
+      && argExprs.length >= 1) {
+      const baseModel = resolveStaticModelFromExpression(baseExpressionNode, targetNode, compileContext, seenBindings);
+      const predicateResult = applyStaticArrayCallbackModel(
+        baseModel,
+        directPropertyName,
+        argExprs,
+        targetNode,
+        compileContext,
+        seenBindings
+      );
+      if (predicateResult) {
+        staticCallModel = predicateResult;
+      }
+    }
+
     if (!staticCallModel && (directPropertyName === 'padStart' || directPropertyName === 'padEnd') && baseExpressionNode && argExprs.length >= 1) {
       const baseModel = resolveStaticModelFromExpression(baseExpressionNode, targetNode, compileContext, seenBindings);
       const widthModel = resolveStaticModelFromExpression(argExprs[0], targetNode, compileContext, seenBindings);
@@ -2394,7 +2415,14 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
       const callbackNode = resolveCallableNodeFromExpression(argExprs[0], compileContext);
       const callbackParams = extractCallableParameterNames(callbackNode);
       const callbackReturnExpression = extractCallableReturnExpressionNode(callbackNode);
-      const initialModel = argExprs.length >= 2
+      const callbackCaptureModels = resolveStaticArrowCaptureModels(
+        callbackNode,
+        targetNode,
+        compileContext,
+        seenBindings
+      );
+      const hasInitialValue = argExprs.length >= 2;
+      const initialModel = hasInitialValue
         ? resolveStaticModelFromExpression(argExprs[1], targetNode, compileContext, seenBindings)
         : null;
       if (baseModel
@@ -2402,13 +2430,14 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
         && Array.isArray(baseModel.values)
         && callbackNode
         && callbackReturnExpression
-        && initialModel) {
+        && callbackCaptureModels
+        && (hasInitialValue ? initialModel : baseModel.values.length > 0)) {
         const values = directPropertyName === 'reduceRight'
           ? Array.from(baseModel.values).reverse()
           : baseModel.values;
-        let accModel = initialModel;
-        for (let index = 0; index < values.length; index += 1) {
-          const scopeModels = new Map();
+        let accModel = hasInitialValue ? initialModel : values[0];
+        for (let index = hasInitialValue ? 0 : 1; index < values.length; index += 1) {
+          const scopeModels = new Map(callbackCaptureModels);
           if (callbackParams[0]) {
             scopeModels.set(callbackParams[0], accModel);
           }
@@ -2416,7 +2445,12 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
             scopeModels.set(callbackParams[1], values[index]);
           }
           if (callbackParams[2]) {
-            scopeModels.set(callbackParams[2], { kind: 'number', value: index });
+            scopeModels.set(callbackParams[2], {
+              kind: 'number',
+              value: directPropertyName === 'reduceRight'
+                ? baseModel.values.length - 1 - index
+                : index
+            });
           }
           if (callbackParams[3]) {
             scopeModels.set(callbackParams[3], baseModel);
@@ -2698,6 +2732,163 @@ function applyStaticStringMethodModel(baseModel, methodName, argumentModels) {
   return null;
 }
 
+function applyStaticArrayCallbackModel(baseModel, methodName, argExprs, targetNode, compileContext, seenBindings) {
+  if (!baseModel || baseModel.kind !== 'array' || !Array.isArray(baseModel.values) || !Array.isArray(argExprs) || argExprs.length < 1) {
+    return null;
+  }
+
+  const callbackNode = resolveCallableNodeFromExpression(argExprs[0], compileContext);
+  const callbackParams = extractCallableParameterNames(callbackNode);
+  const callbackReturnExpression = extractCallableReturnExpressionNode(callbackNode);
+  const callbackCaptureModels = resolveStaticArrowCaptureModels(
+    callbackNode,
+    targetNode,
+    compileContext,
+    seenBindings
+  );
+  if (!callbackNode || !callbackReturnExpression || !callbackCaptureModels) {
+    return null;
+  }
+
+  if (methodName === 'map') {
+    const mappedValues = [];
+    for (let index = 0; index < baseModel.values.length; index += 1) {
+      const scopeModels = new Map(callbackCaptureModels);
+      if (callbackParams[0]) { scopeModels.set(callbackParams[0], baseModel.values[index]); }
+      if (callbackParams[1]) { scopeModels.set(callbackParams[1], { kind: 'number', value: index }); }
+      if (callbackParams[2]) { scopeModels.set(callbackParams[2], baseModel); }
+      const valueModel = evaluateStaticExpressionModel(callbackReturnExpression, scopeModels, compileContext);
+      if (!valueModel) {
+        return null;
+      }
+      mappedValues.push(valueModel);
+    }
+    return { kind: 'array', length: mappedValues.length, values: mappedValues };
+  }
+
+  if (methodName === 'filter') {
+    const filteredValues = [];
+    for (let index = 0; index < baseModel.values.length; index += 1) {
+      const scopeModels = new Map(callbackCaptureModels);
+      if (callbackParams[0]) { scopeModels.set(callbackParams[0], baseModel.values[index]); }
+      if (callbackParams[1]) { scopeModels.set(callbackParams[1], { kind: 'number', value: index }); }
+      if (callbackParams[2]) { scopeModels.set(callbackParams[2], baseModel); }
+      const predicateModel = evaluateStaticExpressionModel(callbackReturnExpression, scopeModels, compileContext);
+      if (!predicateModel || predicateModel.kind !== 'bool') {
+        return null;
+      }
+      if (predicateModel.value) {
+        filteredValues.push(baseModel.values[index]);
+      }
+    }
+    return { kind: 'array', length: filteredValues.length, values: filteredValues };
+  }
+
+  if (methodName === 'some'
+    || methodName === 'every'
+    || methodName === 'find'
+    || methodName === 'findIndex') {
+    let matchedIndex = -1;
+    let everyMatches = true;
+    for (let index = 0; index < baseModel.values.length; index += 1) {
+      const scopeModels = new Map(callbackCaptureModels);
+      if (callbackParams[0]) { scopeModels.set(callbackParams[0], baseModel.values[index]); }
+      if (callbackParams[1]) { scopeModels.set(callbackParams[1], { kind: 'number', value: index }); }
+      if (callbackParams[2]) { scopeModels.set(callbackParams[2], baseModel); }
+      const predicateModel = evaluateStaticExpressionModel(callbackReturnExpression, scopeModels, compileContext);
+      if (!predicateModel || predicateModel.kind !== 'bool') {
+        return null;
+      }
+      if (predicateModel.value) {
+        matchedIndex = index;
+        if (methodName !== 'every') {
+          break;
+        }
+      } else if (methodName === 'every') {
+        everyMatches = false;
+        break;
+      }
+    }
+    if (methodName === 'some') {
+      return { kind: 'bool', value: matchedIndex >= 0 ? 1 : 0 };
+    }
+    if (methodName === 'every') {
+      return { kind: 'bool', value: everyMatches ? 1 : 0 };
+    }
+    if (methodName === 'findIndex') {
+      return { kind: 'number', value: matchedIndex };
+    }
+    return matchedIndex >= 0 ? baseModel.values[matchedIndex] : null;
+  }
+
+  if (methodName === 'reduce' || methodName === 'reduceRight') {
+    const hasInitialValue = argExprs.length >= 2;
+    if (!hasInitialValue && baseModel.values.length === 0) {
+      return null;
+    }
+    const values = methodName === 'reduceRight'
+      ? Array.from(baseModel.values).reverse()
+      : baseModel.values;
+    let accModel = hasInitialValue
+      ? resolveStaticModelFromExpression(argExprs[1], targetNode, compileContext, seenBindings)
+      : values[0];
+    if (!accModel) {
+      return null;
+    }
+    for (let index = hasInitialValue ? 0 : 1; index < values.length; index += 1) {
+      const scopeModels = new Map(callbackCaptureModels);
+      if (callbackParams[0]) { scopeModels.set(callbackParams[0], accModel); }
+      if (callbackParams[1]) { scopeModels.set(callbackParams[1], values[index]); }
+      if (callbackParams[2]) {
+        scopeModels.set(callbackParams[2], {
+          kind: 'number',
+          value: methodName === 'reduceRight'
+            ? baseModel.values.length - 1 - index
+            : index
+        });
+      }
+      if (callbackParams[3]) { scopeModels.set(callbackParams[3], baseModel); }
+      const nextModel = evaluateStaticExpressionModel(callbackReturnExpression, scopeModels, compileContext);
+      if (!nextModel) {
+        return null;
+      }
+      accModel = nextModel;
+    }
+    return accModel;
+  }
+
+  return null;
+}
+
+function resolveStaticArrowCaptureModels(callbackNode, targetNode, compileContext, seenBindings) {
+  if (!callbackNode || callbackNode.kind !== 'nonterminal') {
+    return null;
+  }
+  if (callbackNode.name !== 'arrowFunction' && callbackNode.name !== 'asyncArrowFunction') {
+    return new Map();
+  }
+
+  const visibleBindings = collectVisibleVariableBindingsAtNode(targetNode, compileContext);
+  const captureModels = new Map();
+  for (const captureName of collectLambdaCaptureNames(callbackNode, compileContext)) {
+    const bindingInfo = visibleBindings.get(captureName) || null;
+    if (!bindingInfo || bindingInfo.kind !== 'initializer' || !bindingInfo.expressionNode) {
+      return null;
+    }
+    const captureModel = resolveStaticModelFromExpression(
+      bindingInfo.expressionNode,
+      targetNode,
+      compileContext,
+      seenBindings
+    );
+    if (!captureModel) {
+      return null;
+    }
+    captureModels.set(captureName, captureModel);
+  }
+  return captureModels;
+}
+
 function resolveStaticModelFromCallChainSuffix(callExpressionNode, argsNode, initialModel, targetNode, compileContext, seenBindings) {
   if (!callExpressionNode || !initialModel) {
     return initialModel;
@@ -2743,8 +2934,9 @@ function resolveStaticModelFromCallChainSuffix(callExpressionNode, argsNode, ini
       const argumentList = (nextChainChild.children || []).find(
         (candidate) => candidate && candidate.kind === 'nonterminal' && candidate.name === 'argumentList'
       ) || findFirstNonterminal(nextChainChild, 'argumentList');
-      const argumentModels = argumentList
-        ? collectArgumentExpressions(argumentList).map((argument) =>
+      const argumentExprs = argumentList ? collectArgumentExpressions(argumentList) : [];
+      const argumentModels = argumentExprs
+        ? argumentExprs.map((argument) =>
           resolveStaticModelFromExpression(argument, targetNode, compileContext, seenBindings)
         )
         : [];
@@ -2754,8 +2946,19 @@ function resolveStaticModelFromCallChainSuffix(callExpressionNode, argsNode, ini
         i += 2;
         continue;
       }
-      if (currentModel.kind === 'array' && (propertyName === 'map' || propertyName === 'filter')) {
-        currentModel = { kind: 'array', length: currentModel.length || 0 };
+      if (currentModel.kind === 'array' && ['map', 'filter', 'some', 'every', 'find', 'findIndex', 'reduce', 'reduceRight'].includes(propertyName)) {
+        const nextModel = applyStaticArrayCallbackModel(
+          currentModel,
+          propertyName,
+          argumentExprs,
+          targetNode,
+          compileContext,
+          seenBindings
+        );
+        if (!nextModel) {
+          return null;
+        }
+        currentModel = nextModel;
         i += 2;
         continue;
       }
@@ -2813,6 +3016,18 @@ function resolveCallableNodeFromExpression(expressionNode, compileContext) {
   const bindingName = findFirstIdentifierValue(expressionNode);
   if (!bindingName || !compileContext) {
     return null;
+  }
+
+  // Capture-aware arrows are intentionally absent from the concrete C++
+  // callable-symbol table. They can still participate in static collection
+  // evaluation when their immutable binding is visible at this call site.
+  const visibleBindings = collectVisibleVariableBindingsAtNode(expressionNode, compileContext);
+  const bindingInfo = visibleBindings.get(bindingName) || null;
+  if (bindingInfo && bindingInfo.kind === 'initializer' && bindingInfo.expressionNode) {
+    const boundCallable = findCallableNodeFromExpression(bindingInfo.expressionNode);
+    if (boundCallable) {
+      return boundCallable;
+    }
   }
 
   if (compileContext.topLevelArrowFunctionSymbols) {
@@ -3097,7 +3312,12 @@ function evaluateStaticExpressionModel(expressionNode, scopeModels, compileConte
   }
   if (current.name === 'identifier') {
     const name = findFirstIdentifierValue(current);
-    return name && scopeModels.has(name) ? scopeModels.get(name) : null;
+    if (name && scopeModels.has(name)) {
+      return scopeModels.get(name);
+    }
+    // Callback parameters live in scopeModels. Immutable lexical bindings are
+    // resolved by the normal static resolver and are safe to fold here too.
+    return resolveStaticModelFromExpression(current, current, compileContext);
   }
   if (current.name === 'memberExpression') {
     const segments = extractPathFromMemberExpression(current, null);
@@ -3182,7 +3402,7 @@ function evaluateStaticExpressionModel(expressionNode, scopeModels, compileConte
   if (current.name === 'additiveExpression') {
     const parts = infixChildren.filter((child) => child && child.kind === 'nonterminal');
     const operators = infixChildren.filter(
-      (child) => child && child.kind === 'terminal' && child.value === '+'
+      (child) => child && child.kind === 'terminal' && ['+', '-'].includes(child.value)
     );
     if (parts.length >= 2 && operators.length === parts.length - 1) {
       let result = evaluateStaticExpressionModel(parts[0], scopeModels, compileContext);
@@ -3192,8 +3412,16 @@ function evaluateStaticExpressionModel(expressionNode, scopeModels, compileConte
           return null;
         }
         if (result.kind === 'number' && next.kind === 'number') {
-          result = { kind: 'number', value: result.value + next.value };
+          result = {
+            kind: 'number',
+            value: operators[i - 1].value === '-'
+              ? result.value - next.value
+              : result.value + next.value
+          };
           continue;
+        }
+        if (operators[i - 1].value === '-') {
+          return null;
         }
         const resultString = staticModelToJsString(result);
         const nextString = staticModelToJsString(next);
@@ -10234,7 +10462,7 @@ function lowerCallExpressionValue(node, compileContext) {
   // the static evaluator: resolving arbitrary calls here is both unsound and
   // unnecessarily expensive for host APIs such as Reflect.set.
   const staticLocalMethodNames = new Set([
-    'padStart', 'padEnd', 'map', 'filter', 'reduce', 'reduceRight', 'includes'
+    'padStart', 'padEnd', 'map', 'filter', 'some', 'every', 'find', 'findIndex', 'reduce', 'reduceRight', 'includes'
   ]);
   if (staticLocalMethodNames.has(directPropertyName)) {
     const staticCallModel = resolveStaticModelFromExpression(node, node, compileContext);

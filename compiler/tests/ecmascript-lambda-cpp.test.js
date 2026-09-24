@@ -108,6 +108,117 @@ test('function values: named non-capturing arrows drive direct static map, filte
   assert.doesNotMatch(cpp, /__maia_lambda\d+\(\)\(/, 'C++ must not call an opaque lambda payload as a callback');
 });
 
+test('function values: direct static collection chains retain values through map, filter, and reduce', () => {
+  const cpp = runCompilerCpp([
+    'function doubleValue(value) { return value * 2; }',
+    'function isEven(value) { return value % 2 === 0; }',
+    'function sum(total, value) { return total + value; }',
+    'const total = [1, 2, 3].map(doubleValue).filter(isEven).reduce(sum, 0);',
+    'console.log("total", total);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /const double total = 12;/, 'the chained callbacks must retain mapped and filtered values before reduction');
+  assert.doesNotMatch(cpp, /\.map\(|\.filter\(|\.reduce\(/, 'JS collection calls must not leak into C++ output');
+});
+
+test('function values: inline non-capturing arrows drive a direct static collection chain', () => {
+  const cpp = runCompilerCpp([
+    'const total = [1, 2, 3]',
+    '  .map(value => value * 2)',
+    '  .filter(value => value % 2 === 0)',
+    '  .reduce((sum, value) => sum + value, 0);',
+    'console.log("total", total);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /const double total = 12;/, 'the inline callbacks must retain values through the complete static chain');
+  assert.doesNotMatch(cpp, /__maia_lambda\d+\(\)\(/, 'C++ must not call an opaque lambda payload in the static chain');
+  assert.doesNotMatch(cpp, /\.map\(|\.filter\(|\.reduce\(/, 'JS collection calls must not leak into C++ output');
+});
+
+test('function values: static collection results retain their model through const bindings', () => {
+  const cpp = runCompilerCpp([
+    'function doubleValue(value) { return value * 2; }',
+    'function isEven(value) { return value % 2 === 0; }',
+    'function sum(total, value) { return total + value; }',
+    'const doubled = [1, 2, 3].map(doubleValue);',
+    'const evens = doubled.filter(isEven);',
+    'const total = evens.reduce(sum, 0);',
+    'console.log("values", evens.join(","));',
+    'console.log("total", total);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /const void\* doubled = __maia_arr_literal3\(\(long\)\(2\), \(long\)\(4\), \(long\)\(6\)\);/, 'map result must retain its values when assigned');
+  assert.match(cpp, /const void\* evens = __maia_arr_literal3\(\(long\)\(2\), \(long\)\(4\), \(long\)\(6\)\);/, 'filter must use the bound map result model');
+  assert.match(cpp, /const double total = 12;/, 'reduce must use the bound filter result model');
+});
+
+test('function values: static reduceRight preserves right-to-left callback order', () => {
+  const cpp = runCompilerCpp([
+    'function subtract(total, value) { return total - value; }',
+    'const total = [1, 2, 3].reduceRight(subtract, 10);',
+    'console.log("reduceRight", total);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /const double total = 4;/, 'reduceRight must evaluate from the final element toward the first');
+  assert.doesNotMatch(cpp, /\.reduceRight\(/, 'the JS runtime method call must not leak into C++ output');
+});
+
+test('function values: static reduceRight passes original array indexes to its callback', () => {
+  const cpp = runCompilerCpp([
+    'function encode(total, value, index) { return total * 10 + index; }',
+    'const encoded = [1, 2, 3].reduceRight(encode, 0);',
+    'console.log("indexes", encoded);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /const double encoded = 210;/, 'reduceRight must expose indexes 2, 1, and 0 in callback order');
+});
+
+test('function values: static reduce and reduceRight use endpoint accumulators without an initial value', () => {
+  const cpp = runCompilerCpp([
+    'function sum(total, value) { return total + value; }',
+    'function subtract(total, value) { return total - value; }',
+    'const reduced = [1, 2, 3].reduce(sum);',
+    'const reducedRight = [1, 2, 3].reduceRight(subtract);',
+    'console.log("reduce", reduced);',
+    'console.log("reduceRight", reducedRight);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /const double reduced = 6;/, 'reduce must use the first array element as the accumulator');
+  assert.match(cpp, /const double reducedRight = 0;/, 'reduceRight must use the final array element as the accumulator');
+});
+
+test('function values: static collection callbacks fold immutable lexical captures', () => {
+  const cpp = runCompilerCpp([
+    'const factor = 2;',
+    'const doubleValue = value => value * factor;',
+    'const values = [1, 2, 3].map(doubleValue);',
+    'console.log("captured", values.join(","));'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /const void\* values = __maia_arr_literal3\(\(long\)\(2\), \(long\)\(4\), \(long\)\(6\)\);/, 'a callback may fold an immutable lexical capture into its static result');
+  assert.doesNotMatch(cpp, /const void\* values = 0;/, 'the callback result must not fall back to an empty opaque value');
+});
+
+test('function values: static predicate callbacks evaluate some, every, find, and findIndex', () => {
+  const cpp = runCompilerCpp([
+    'function isEven(value) { return value % 2 === 0; }',
+    'const someEven = [1, 3, 4].some(isEven);',
+    'const everyEven = [2, 4, 5].every(isEven);',
+    'const found = [1, 3, 4].find(isEven);',
+    'const foundIndex = [1, 3, 4].findIndex(isEven);',
+    'console.log("some", someEven);',
+    'console.log("every", everyEven);',
+    'console.log("found", found);',
+    'console.log("index", foundIndex);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /const (?:bool|int) someEven = 1;/, 'some must materialize a true result');
+  assert.match(cpp, /const (?:bool|int) everyEven = 0;/, 'every must materialize a false result');
+  assert.match(cpp, /const double found = 4;/, 'find must retain the matching static element');
+  assert.match(cpp, /const double foundIndex = 2;/, 'findIndex must retain the matching index');
+  assert.doesNotMatch(cpp, /\.(?:some|every|find|findIndex)\(/, 'predicate method calls must not leak into C++ output');
+});
+
 test('lambda lowering: emits parenthesized sync lambda runtime hook by arity', () => {
   const cpp = runCompilerCpp('const add = (x, y) => x + y;\n');
 
