@@ -23,7 +23,7 @@ typedef struct Vec2 {
 } Vec2;
 
 void Vec2_init__dd(Vec2* self, double x_, double y_);
-void Vec2_init__pv(Vec2* self, Vec2* o);
+void Vec2_init__N4Vec2(Vec2* self, Vec2 o);
 void Vec2_destroy(Vec2* self);
 Vec2* Vec2_operator_assign__pv(Vec2* self, Vec2* o);
 double Vec2_dot__pv(Vec2* self, Vec2* o);
@@ -37,10 +37,10 @@ void Vec2_init__dd(Vec2* self, double x_, double y_) {
   (void)y_;
 }
 
-void Vec2_init__pv(Vec2* self, Vec2* o) {
+void Vec2_init__N4Vec2(Vec2* self, Vec2 o) {
   (void)self;
-  self->x = o->x;
-  self->y = o->y;
+  self->x = o.x;
+  self->y = o.y;
   (void)o;
 }
 
@@ -74,7 +74,7 @@ int main(void) {
   Vec2 a;
   Vec2_init__dd(&a, 3.0, 4.0);
   Vec2 b;
-  Vec2_init__pv(&b, &a);
+  Vec2_init__N4Vec2(&b, a);
   Vec2 c;
   Vec2_init__dd(&c, 0.0, 0.0);
   Vec2 unit;

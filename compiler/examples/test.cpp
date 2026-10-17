@@ -1,4 +1,4 @@
-extern void __fn(void*, void*);
+extern void __fn(double, double);
 extern void __c__getValue(void);
 extern void __box__setAt(double, double);
 extern void __box__at(double);
@@ -43,28 +43,40 @@ void Box_ctor_init__pv(Box* self) {
 }
 int Box_meth_at(Box* self, int i) {
   if (i == 0) {
-    return (int)(self->d0);
+    {
+      return (int)(self->d0);
+    }
   }
   if (i == 1) {
-    return (int)(self->d1);
+    {
+      return (int)(self->d1);
+    }
   }
   if (i == 2) {
-    return (int)(self->d2);
+    {
+      return (int)(self->d2);
+    }
   }
   return (int)(self->d3);
 }
 int Box_meth_setAt(Box* self, int i, int v) {
   if (i == 0) {
-    self->d0 = v;
-    return (int)(0);
+    {
+      self->d0 = v;
+      return (int)(0);
+    }
   }
   if (i == 1) {
-    self->d1 = v;
-    return (int)(0);
+    {
+      self->d1 = v;
+      return (int)(0);
+    }
   }
   if (i == 2) {
-    self->d2 = v;
-    return (int)(0);
+    {
+      self->d2 = v;
+      return (int)(0);
+    }
   }
   self->d3 = v;
   return (int)(0);
@@ -86,7 +98,6 @@ struct DDerived : public BBase {
 
 void DDerived_ctor_init(DDerived* self, int n) {
   BBase_ctor_init__pv((BBase*)self);
-  ;
   self->number = n;
 }
 void DDerived_ctor_init__pvi(DDerived* self, int n) {
@@ -112,16 +123,16 @@ int P_meth_getValue(P* self) {
 
 int add(int a, int b);
 int multiply(int a, int b);
-double execute(double a, double b, int (*fn)(int, int));
-double run_class_tests(void);
-double run_template_tests(void);
-double run_function_pointer_tests(void);
-double run_cast_tests(void);
-double run_new_delete_tests(void);
-double run_cout_stress_tests(void);
-double run_for_cout_test(void);
-double run_main_baseline_sections(void);
-double run_program(void);
+int execute(int a, int b, int (*fn)(int, int));
+int run_class_tests(void);
+int run_template_tests(void);
+int run_function_pointer_tests(void);
+int run_cast_tests(void);
+int run_new_delete_tests(void);
+int run_cout_stress_tests(void);
+int run_for_cout_test(void);
+int run_main_baseline_sections(void);
+int run_program(void);
 
 int add(int a, int b) {
   return (int)(a + b);
@@ -131,112 +142,134 @@ int multiply(int a, int b) {
   return (int)(a * b);
 }
 
-double execute(double a, double b, int (*fn)(int, int)) {
-  return (double)(fn(a, b));
+int execute(int a, int b, int (*fn)(int, int)) {
+  return (int)(fn(a, b));
 }
 
-double run_class_tests(void) {
+int run_class_tests(void) {
   C c;
   C_ctor_init__pvi((C*)&c, 42);
-  return (double)(((C_meth_getValue(&c) == 42) ? (1) : (0)));
+  return (int)(((C_meth_getValue(&c) == 42) ? (1) : (0)));
 }
 
-double run_template_tests(void) {
+int run_template_tests(void) {
   Box box;
   Box_ctor_init__pv((Box*)&box);
   Box_meth_setAt(&box, 0, 10);
   Box_meth_setAt(&box, 1, 20);
-  return (double)(((Box_meth_at(&box, 0) + Box_meth_at(&box, 1) == 30) ? (1) : (0)));
+  return (int)(((Box_meth_at(&box, 0) + Box_meth_at(&box, 1) == 30) ? (1) : (0)));
 }
 
-double run_function_pointer_tests(void) {
+int run_function_pointer_tests(void) {
   const double s = execute(7, 3, add);
   const double m = execute(7, 3, multiply);
   double __maia_logical_tmp1 = (double)(s == 10);
-  return (double)((((((__maia_logical_tmp1 != 0)) ? m == 21 : __maia_logical_tmp1)) ? (1) : (0)));
+  return (int)((((((__maia_logical_tmp1 != 0)) ? m == 21 : __maia_logical_tmp1)) ? (1) : (0)));
 }
 
-double run_cast_tests(void) {
+int run_cast_tests(void) {
   DDerived b;
   DDerived_ctor_init__pvi((DDerived*)&b, 15);
   const double isDerived = ((1) ? (1) : (0));
   const int n = (int)(3.2) | (int)(0);
   if (isDerived != 1) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   if (DDerived_meth_value(&b) != 15) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   if (n != 3) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
-  return (double)(1);
+  return (int)(1);
 }
 
-double run_new_delete_tests(void) {
+int run_new_delete_tests(void) {
   C a;
   C_ctor_init__pvi((C*)&a, 1);
   if (C_meth_getValue(&a) != 1) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   P p;
   P_ctor_init__pvi((P*)&p, 10);
   const double v = P_meth_getValue(&p);
-  return (double)(((v == 10) ? (1) : (0)));
+  return (int)(((v == 10) ? (1) : (0)));
 }
 
-double run_cout_stress_tests(void) {
+int run_cout_stress_tests(void) {
   double cout_acc = 0;
   double i = 1;
   cout_acc = cout_acc + i;
   if (cout_acc != 1) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("[cout-test] i=1 acc=1 int=42 double=3.25 char=Q");
   i = i + 1;
   cout_acc = cout_acc + i;
   if (cout_acc != 3) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("[cout-test] i=2 acc=3 int=42 double=3.25 char=Q");
   i = i + 1;
   cout_acc = cout_acc + i;
   if (cout_acc != 6) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("[cout-test] i=3 acc=6 int=42 double=3.25 char=Q");
-  return (double)(((cout_acc == 6) ? (1) : (0)));
+  return (int)(((cout_acc == 6) ? (1) : (0)));
 }
 
-double run_for_cout_test(void) {
+int run_for_cout_test(void) {
   double sum = 0;
   const double ratio = 1.5;
   {
     double i = 1;
     for (; i < 4; i = i + 1) {
-      sum = sum + i;
-      double __maia_logical_tmp2 = (double)(i == 1);
-      if ((((__maia_logical_tmp2 != 0)) ? sum == 1 : __maia_logical_tmp2)) {
-        __console__log("[for-cout] i=1 sum=1 ratio=1.5");
-        continue;
+      {
+        sum = sum + i;
+        double __maia_logical_tmp2 = (double)(i == 1);
+        if ((((__maia_logical_tmp2 != 0)) ? sum == 1 : __maia_logical_tmp2)) {
+          {
+            __console__log("[for-cout] i=1 sum=1 ratio=1.5");
+            continue;
+          }
+        }
+        double __maia_logical_tmp3 = (double)(i == 2);
+        if ((((__maia_logical_tmp3 != 0)) ? sum == 3 : __maia_logical_tmp3)) {
+          {
+            __console__log("[for-cout] i=2 sum=3 ratio=1.5");
+            continue;
+          }
+        }
+        double __maia_logical_tmp4 = (double)(i == 3);
+        if ((((__maia_logical_tmp4 != 0)) ? sum == 6 : __maia_logical_tmp4)) {
+          {
+            __console__log("[for-cout] i=3 sum=6 ratio=1.5");
+            continue;
+          }
+        }
+        return (int)(0);
       }
-      double __maia_logical_tmp3 = (double)(i == 2);
-      if ((((__maia_logical_tmp3 != 0)) ? sum == 3 : __maia_logical_tmp3)) {
-        __console__log("[for-cout] i=2 sum=3 ratio=1.5");
-        continue;
-      }
-      double __maia_logical_tmp4 = (double)(i == 3);
-      if ((((__maia_logical_tmp4 != 0)) ? sum == 6 : __maia_logical_tmp4)) {
-        __console__log("[for-cout] i=3 sum=6 ratio=1.5");
-        continue;
-      }
-      return (double)(0);
     }
   }
-  return (double)(((sum == 6) ? (1) : (0)));
+  return (int)(((sum == 6) ? (1) : (0)));
 }
 
-double run_main_baseline_sections(void) {
+int run_main_baseline_sections(void) {
   double a = 10;
   const double b = 20;
   double result = 0;
@@ -247,78 +280,112 @@ double run_main_baseline_sections(void) {
   __console__log("--- Arithmetic Operators ---");
   result = a + 20;
   if (result != 30) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("add result=30");
   result = 20 - a;
   if (result != 10) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("b-a=10");
   result = a * 3;
   if (result != 30) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("a*3=30");
   result = ((double)(20) / (double)(2));
   if (result != 10) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("b/2=10");
   result = (int)(20) % (int)(3);
   if (result != 2) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("b%3=2");
   __console__log("--- Assignment Operators ---");
   result = a;
   if (result != 10) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("result=10");
   result = result + 20;
   if (result != 30) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("result+=b => 30");
   result = result - 10;
   if (result != 20) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("result-=10 => 20");
   result = result * 2;
   if (result != 40) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("result*=2 => 40");
-  result = result / 5;
+  result = ((double)(result) / (double)(5));
   if (result != 8) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("result/=5 => 8");
-  result = result - result / 4 * 4;
+  result = result - ((double)(result) / (double)(4)) * 4;
   if (result != 0) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("result%=4 => 0");
   __console__log("--- Relational Operators ---");
   if (((a == 20) ? (1) : (0))) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   if (((a != 20) ? (1) : (0)) != 1) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   if (((a < 20) ? (1) : (0)) != 1) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   if (((a > 20) ? (1) : (0))) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   if (((a <= 20) ? (1) : (0)) != 1) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   if (((a >= 20) ? (1) : (0))) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("a==b => 0");
   __console__log("a!=b => 1");
@@ -327,13 +394,17 @@ double run_main_baseline_sections(void) {
   __console__log("a<=b => 1");
   __console__log("a>=b => 0");
   __console__log("--- Logical Operators ---");
-  void* __maia_logical_tmp5 = (void*)(a);
+  double __maia_logical_tmp5 = (double)(a);
   if ((((((__maia_logical_tmp5 != 0)) ? 20 : __maia_logical_tmp5)) ? (1) : (0)) != 1) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
-  void* __maia_logical_tmp6 = (void*)(a);
+  double __maia_logical_tmp6 = (double)(a);
   if ((((((__maia_logical_tmp6 != 0)) ? __maia_logical_tmp6 : 0)) ? (1) : (0)) != 1) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("a&&b => 1");
   __console__log("a||0 => 1");
@@ -344,19 +415,29 @@ double run_main_baseline_sections(void) {
   const int shiftLeft = (int)(a) << (int)(2);
   const int shiftRight = (int)(20) >> (int)(1);
   if (bitAnd != 0) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   if (bitOr != 30) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   if (bitXor != 30) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   if (shiftLeft != 40) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   if (shiftRight != 10) {
-    return (double)(0);
+    {
+      return (int)(0);
+    }
   }
   __console__log("a&b => 0");
   __console__log("a|b => 30");
@@ -367,129 +448,183 @@ double run_main_baseline_sections(void) {
   a = 100;
   __console__log("*ptr=100 => a=100");
   __console__log("--- Control Flow ---");
-  for (; i < 8; i = i + 1) {
-    if (i == 5) {
-      continue;
+  for (i = 0; i < 8; i = i + 1) {
+    {
+      if (i == 5) {
+        {
+          continue;
+        }
+      }
+      loop_sum = loop_sum + i;
+      double __maia_logical_tmp7 = (double)(i == 0);
+      if ((((__maia_logical_tmp7 != 0)) ? loop_sum == 0 : __maia_logical_tmp7)) {
+        {
+          __console__log("[for] i=0 loop_sum=0");
+          continue;
+        }
+      }
+      double __maia_logical_tmp8 = (double)(i == 1);
+      if ((((__maia_logical_tmp8 != 0)) ? loop_sum == 1 : __maia_logical_tmp8)) {
+        {
+          __console__log("[for] i=1 loop_sum=1");
+          continue;
+        }
+      }
+      double __maia_logical_tmp9 = (double)(i == 2);
+      if ((((__maia_logical_tmp9 != 0)) ? loop_sum == 3 : __maia_logical_tmp9)) {
+        {
+          __console__log("[for] i=2 loop_sum=3");
+          continue;
+        }
+      }
+      double __maia_logical_tmp10 = (double)(i == 3);
+      if ((((__maia_logical_tmp10 != 0)) ? loop_sum == 6 : __maia_logical_tmp10)) {
+        {
+          __console__log("[for] i=3 loop_sum=6");
+          continue;
+        }
+      }
+      double __maia_logical_tmp11 = (double)(i == 4);
+      if ((((__maia_logical_tmp11 != 0)) ? loop_sum == 10 : __maia_logical_tmp11)) {
+        {
+          __console__log("[for] i=4 loop_sum=10");
+          continue;
+        }
+      }
+      double __maia_logical_tmp12 = (double)(i == 6);
+      if ((((__maia_logical_tmp12 != 0)) ? loop_sum == 16 : __maia_logical_tmp12)) {
+        {
+          __console__log("[for] i=6 loop_sum=16");
+          continue;
+        }
+      }
+      double __maia_logical_tmp13 = (double)(i == 7);
+      if ((((__maia_logical_tmp13 != 0)) ? loop_sum == 23 : __maia_logical_tmp13)) {
+        {
+          __console__log("[for] i=7 loop_sum=23");
+          continue;
+        }
+      }
+      return (int)(0);
     }
-    loop_sum = loop_sum + i;
-    double __maia_logical_tmp7 = (double)(i == 0);
-    if ((((__maia_logical_tmp7 != 0)) ? loop_sum == 0 : __maia_logical_tmp7)) {
-      __console__log("[for] i=0 loop_sum=0");
-      continue;
-    }
-    double __maia_logical_tmp8 = (double)(i == 1);
-    if ((((__maia_logical_tmp8 != 0)) ? loop_sum == 1 : __maia_logical_tmp8)) {
-      __console__log("[for] i=1 loop_sum=1");
-      continue;
-    }
-    double __maia_logical_tmp9 = (double)(i == 2);
-    if ((((__maia_logical_tmp9 != 0)) ? loop_sum == 3 : __maia_logical_tmp9)) {
-      __console__log("[for] i=2 loop_sum=3");
-      continue;
-    }
-    double __maia_logical_tmp10 = (double)(i == 3);
-    if ((((__maia_logical_tmp10 != 0)) ? loop_sum == 6 : __maia_logical_tmp10)) {
-      __console__log("[for] i=3 loop_sum=6");
-      continue;
-    }
-    double __maia_logical_tmp11 = (double)(i == 4);
-    if ((((__maia_logical_tmp11 != 0)) ? loop_sum == 10 : __maia_logical_tmp11)) {
-      __console__log("[for] i=4 loop_sum=10");
-      continue;
-    }
-    double __maia_logical_tmp12 = (double)(i == 6);
-    if ((((__maia_logical_tmp12 != 0)) ? loop_sum == 16 : __maia_logical_tmp12)) {
-      __console__log("[for] i=6 loop_sum=16");
-      continue;
-    }
-    double __maia_logical_tmp13 = (double)(i == 7);
-    if ((((__maia_logical_tmp13 != 0)) ? loop_sum == 23 : __maia_logical_tmp13)) {
-      __console__log("[for] i=7 loop_sum=23");
-      continue;
-    }
-    return (double)(0);
   }
   __console__log("loop_sum=23");
   while (down > 0) {
-    down = down - 1;
+    {
+      down = down - 1;
+    }
   }
   __console__log("while-down=0");
   do {
-    up = up + 1;
+    {
+      up = up + 1;
+    }
   } while (up < 5);
   __console__log("do-while-up=5");
-  return (double)(((loop_sum == 23 && down == 0 && up == 5 && a == 100) ? (1) : (0)));
+  return (int)(((loop_sum == 23 && down == 0 && up == 5 && a == 100) ? (1) : (0)));
 }
 
-double run_program(void) {
+int run_program(void) {
   double failures = 0;
   __console__log("=== MaiaJS Comprehensive Runtime Baseline ===");
   if (!((int)(run_main_baseline_sections()))) {
-    __console__log("FAIL main baseline sections");
-    return (double)(1);
+    {
+      __console__log("FAIL main baseline sections");
+      return (int)(1);
+    }
   }
   __console__log("1. class/ctor/const:");
   if (run_class_tests()) {
-    __console__log("OK");
+    {
+      __console__log("OK");
+    }
   }
   else {
-    __console__log("FAIL");
-    failures = failures + 1;
+    {
+      __console__log("FAIL");
+      failures = failures + 1;
+    }
   }
   __console__log("2. template/operator[]:");
   if (run_template_tests()) {
-    __console__log("OK");
+    {
+      __console__log("OK");
+    }
   }
   else {
-    __console__log("FAIL");
-    failures = failures + 1;
+    {
+      __console__log("FAIL");
+      failures = failures + 1;
+    }
   }
   __console__log("3. function pointer dispatch:");
   if (run_function_pointer_tests()) {
-    __console__log("OK");
+    {
+      __console__log("OK");
+    }
   }
   else {
-    __console__log("FAIL");
-    failures = failures + 1;
+    {
+      __console__log("FAIL");
+      failures = failures + 1;
+    }
   }
   __console__log("4. casts (dynamic/static):");
   if (run_cast_tests()) {
-    __console__log("OK");
+    {
+      __console__log("OK");
+    }
   }
   else {
-    __console__log("FAIL");
-    failures = failures + 1;
+    {
+      __console__log("FAIL");
+      failures = failures + 1;
+    }
   }
   __console__log("5. new/delete/placement-new:");
   if (run_new_delete_tests()) {
-    __console__log("OK");
+    {
+      __console__log("OK");
+    }
   }
   else {
-    __console__log("FAIL");
-    failures = failures + 1;
+    {
+      __console__log("FAIL");
+      failures = failures + 1;
+    }
   }
   __console__log("6. cout stress (chain/loop/literals):");
   if (run_cout_stress_tests()) {
-    __console__log("OK");
+    {
+      __console__log("OK");
+    }
   }
   else {
-    __console__log("FAIL");
-    failures = failures + 1;
+    {
+      __console__log("FAIL");
+      failures = failures + 1;
+    }
   }
   __console__log("7. for-loop with cout and double local:");
   if (run_for_cout_test()) {
-    __console__log("OK");
+    {
+      __console__log("OK");
+    }
   }
   else {
-    __console__log("FAIL");
-    failures = failures + 1;
+    {
+      __console__log("FAIL");
+      failures = failures + 1;
+    }
   }
   if (failures == 0) {
-    __console__log("ALL TESTS PASSED");
-    return (double)(0);
+    {
+      __console__log("ALL TESTS PASSED");
+      return (int)(0);
+    }
   }
   __console__log("TESTS FAILED");
-  return (double)(1);
+  return (int)(1);
 }
 
 int main() {

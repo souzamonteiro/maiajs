@@ -152,11 +152,13 @@ test('golden: invocation bridge helpers validate call-shape and select function 
     'invocation bridge dispatch helper should reduce to call-shape gating and known-case invocation');
 });
 
-test('golden: capture-aware identifier call lowers through invocation function-id bridge', () => {
+test('golden: statically known capture-aware identifier call avoids invocation function-id bridge', () => {
   const cpp = runCompilerCpp('const y = 7; const f = x => x + y; f(1);');
 
-  assert.match(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)f, 1, 0\);/,
-    'capture-aware identifier call should lower to runtime invocation function-id bridge');
+  assert.match(cpp, /\b8;/,
+    'a statically known capture-aware call should materialize its result');
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)f, 1, 0\);/,
+    'a statically known capture-aware call should not use the placeholder invocation bridge');
 });
 
 test('golden: capture-aware async identifier call lowers through invocation function-id bridge with async flag', () => {

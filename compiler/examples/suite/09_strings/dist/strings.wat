@@ -246,7 +246,7 @@
   )
 
   ;; function c_strcpy__pvpv
-  (func $c_strcpy__pvpv (param $dst i32) (param $src i32) (result i32)
+  (func $c_strcpy__pvpv (param $dst i32) (param $src i32)
     (local $__frame i32)
     (local $__tmp_addr i32)
     (local $__tmp_i32 i32)
@@ -335,16 +335,10 @@
     local.get $__frame
     global.set $__stack_ptr
     return
-    i32.const 0
-    local.get $__parent_frame
-    global.set $__frame_ptr
-    local.get $__frame
-    global.set $__stack_ptr
-    return
   )
 
   ;; function c_strcat__pvpv
-  (func $c_strcat__pvpv (param $dst i32) (param $src i32) (result i32)
+  (func $c_strcat__pvpv (param $dst i32) (param $src i32)
     (local $__frame i32)
     (local $__tmp_addr i32)
     (local $__tmp_i32 i32)
@@ -454,12 +448,6 @@
     i32.store8
     local.get $__tmp_i8
     drop
-    i32.const 0
-    local.get $__parent_frame
-    global.set $__frame_ptr
-    local.get $__frame
-    global.set $__stack_ptr
-    return
     i32.const 0
     local.get $__parent_frame
     global.set $__frame_ptr
@@ -682,13 +670,11 @@
     i32.add
     i32.const 116
     call $c_strcpy__pvpv
-    drop
     local.get $__frame
     i32.const 0
     i32.add
     i32.const 120
     call $c_strcat__pvpv
-    drop
     local.get $__frame
     i32.const 0
     i32.add

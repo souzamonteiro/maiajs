@@ -20,7 +20,7 @@ extern int    sprintf(char* dest, const char* format, ...);
 #define EXC_Circle 3
 
 typedef struct Shape {
-  int area;
+  double area;
   void* __vptr;
 } Shape;
 

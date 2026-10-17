@@ -62,8 +62,50 @@ and many library APIs depend on real function values.
   captured arrows remain unsupported, except that a callback may capture
   immutable lexical bindings when the entire collection operation is folded at
   compile time; the WASM gate prints `captured 2,4,6` for that specialization.
+  An immediate call to an immutable captured arrow with static arguments is
+  likewise folded and prints `result 12`, avoiding the placeholder closure
+  invocation bridge. This is not general closure dispatch.
+  An immediate synchronous captured-arrow call with a concise expression body
+  and side-effect-free dynamic arguments is lowered at the call site; the
+  lexical environment remains visible to the C++ expression. Async arrows and
+  escaping callable values are rejected in strict lowering instead of
+  producing a synthetic result. Effectful expression arguments are
+  materialized into typed C++ temporaries before inlining, preserving their
+  single evaluation even when the parameter is read repeatedly; the WASM gate
+  prints `result 17` for `twiceWithOffset(readValue())`. Multiple effectful
+  arguments are materialized left to right; the WASM gate prints `first`,
+  `second`, and `result 19` in that order.
+  Missing trailing arguments use lowerable arrow default expressions; the WASM
+  gate prints `result 12` for `addOffset()` where `value = 5`. An explicit,
+  unshadowed `undefined` also selects the default and prints `result 12`;
+  `null` remains an explicit value. The
+  same missing-argument rule applies to direct no-`return` block arrows; its
+  WASM gate prints `total 5` after `add()`. Defaults can reference earlier
+  parameters, preserving left-to-right parameter binding; the WASM gate prints
+  `result 30` for `combine(2)` with `right = left + 1`. An effectful earlier
+  default is materialized once before later defaults read it; the WASM gate
+  prints `read` and then `result 30`.
+  An immediate captured-arrow block with no `return` is also lowered when it
+  is used as a standalone statement; the WASM gate prints `item 2`. The same
+  call used as an expression still needs a faithful `undefined` result and is
+  rejected in strict lowering. Repeated direct calls retain a mutable lexical
+  binding in the surrounding scope, with the WASM gate printing `total 6`.
+  Effectful direct-call arguments are materialized in typed temporaries, so
+  they retain JavaScript's single left-to-right evaluation; the WASM gate
+  prints `total 5` for `add(readValue())`.
+  A captured synchronous arrow passed to static `forEach` is likewise lowered
+  for each static element, with either a concise expression or a no-`return`
+  block body; the WASM gate prints `item 2` and `item 4`. Dynamic collections,
+  callback `return`, async callbacks, and escaping callback values still
+  require closure invocation runtime support.
+  A mutable capture is preserved across that same static unrolling, so
+  `total += value` over `[2, 4]` prints `total 6` in WASM. This is not yet a
+  shared closure cell for callbacks that escape their defining scope.
 - [ ] Capture lexical locals by value and by shared mutable cell where JavaScript
   semantics require subsequent writes to be visible.
+- [ ] Generalize single-evaluation expression planning, with owned C++ prelude
+  temporaries, to other duplicated analysis/lowering paths beyond direct
+  captured-arrow calls.
 - [ ] Preserve lexical `this` for arrow functions; preserve call-site receiver
   semantics for ordinary functions.
 - [ ] Support callback return values and exceptions/diagnostics across the
@@ -152,7 +194,7 @@ tests in every supported runtime host.
 - [x] Strict MaiaJS release subset is published and behavior-validated through
   C++98, C, and WASM.
 - [ ] Full ES8 runtime compatibility is not yet claimed.
-- [~] Phase 1 is in progress; direct non-capturing calls plus static
-  collection callbacks and immutable-capture specialization are
-  behavior-validated. General function values and runtime closure environments
-  remain open.
+- [~] Phase 1 is in progress; direct non-capturing calls, static collection
+  callbacks, and immutable-capture specialization for collections and direct
+  calls are behavior-validated. General function values and runtime closure
+  environments remain open.

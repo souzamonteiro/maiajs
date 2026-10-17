@@ -33,7 +33,7 @@
   (data (i32.const 100) "PASS length_sq\0a\00")
   (data (i32.const 116) "ALL PASS\0a\00")
 
-  (elem (table $fn_table) (i32.const 0) func $Vec2_init__dd $Vec2_init__pv $Vec2_destroy $Vec2_operator_assign__pv $Vec2_dot__pv $Vec2_lengthSq $main)
+  (elem (table $fn_table) (i32.const 0) func $Vec2_init__dd $Vec2_init__N4Vec2 $Vec2_destroy $Vec2_operator_assign__pv $Vec2_dot__pv $Vec2_lengthSq $main)
 
   ;; function Vec2_init__dd
   (func $Vec2_init__dd (param $self i32) (param $x_ f64) (param $y_ f64)
@@ -114,8 +114,8 @@
     drop
   )
 
-  ;; function Vec2_init__pv
-  (func $Vec2_init__pv (param $self i32) (param $o i32)
+  ;; function Vec2_init__N4Vec2
+  (func $Vec2_init__N4Vec2 (param $self i32) (param $o i32)
     (local $__frame i32)
     (local $__tmp_f64 f64)
     (local $__parent_frame i32)
@@ -138,6 +138,39 @@
     i32.const 16
     i32.add
     local.get $o
+    i32.const 0
+    i32.add
+    i32.load
+    i32.store
+    local.get $__frame
+    i32.const 16
+    i32.add
+    i32.const 4
+    i32.add
+    local.get $o
+    i32.const 4
+    i32.add
+    i32.load
+    i32.store
+    local.get $__frame
+    i32.const 16
+    i32.add
+    i32.const 8
+    i32.add
+    local.get $o
+    i32.const 8
+    i32.add
+    i32.load
+    i32.store
+    local.get $__frame
+    i32.const 16
+    i32.add
+    i32.const 12
+    i32.add
+    local.get $o
+    i32.const 12
+    i32.add
+    i32.load
     i32.store
     local.get $__frame
     i32.const 0
@@ -153,7 +186,6 @@
     local.get $__frame
     i32.const 16
     i32.add
-    i32.load
     i32.const 0
     i32.add
     f64.load
@@ -171,7 +203,6 @@
     local.get $__frame
     i32.const 16
     i32.add
-    i32.load
     i32.const 8
     i32.add
     f64.load
@@ -183,7 +214,6 @@
     local.get $__frame
     i32.const 16
     i32.add
-    i32.load
     drop
   )
 
@@ -480,7 +510,7 @@
     local.get $__frame
     i32.const 0
     i32.add
-    call $Vec2_init__pv
+    call $Vec2_init__N4Vec2
     local.get $__frame
     i32.const 32
     i32.add
@@ -731,7 +761,7 @@
   )
 
   (export "Vec2_init__dd" (func $Vec2_init__dd))
-  (export "Vec2_init__pv" (func $Vec2_init__pv))
+  (export "Vec2_init__N4Vec2" (func $Vec2_init__N4Vec2))
   (export "Vec2_destroy" (func $Vec2_destroy))
   (export "Vec2_operator_assign__pv" (func $Vec2_operator_assign__pv))
   (export "Vec2_dot__pv" (func $Vec2_dot__pv))

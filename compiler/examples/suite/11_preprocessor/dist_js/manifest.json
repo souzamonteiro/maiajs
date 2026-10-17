@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-09-16T20:45:18.169Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.w0D3meOhcb/preprocessor.port.c",
+  "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/11_preprocessor/dist_js",
+  "appName": "preprocessor.port",
+  "artifacts": {
+    "wasm": "preprocessor.port.wasm",
+    "wrapper": "preprocessor.port.js",
+    "wat": null,
+    "browserRunner": "browser-runner.html",
+    "browserMemoryFileStore": "browser-memory-file-store.js",
+    "nodeRunner": "node-runner.js",
+    "nodeRunnerShell": "node-runner.sh"
+  },
+  "linkedLibraries": [],
+  "copiedLibraries": [],
+  "runtimeProvidedHeaders": [],
+  "missingLibraries": [],
+  "sourceBytes": 6476,
+  "asyncRuntime": {
+    "resumeBridges": []
+  }
+}

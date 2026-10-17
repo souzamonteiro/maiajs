@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-09-16T20:44:50.521Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.muuohWHjtD/functions.port.c",
+  "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/03_functions/dist_js",
+  "appName": "functions.port",
+  "artifacts": {
+    "wasm": "functions.port.wasm",
+    "wrapper": "functions.port.js",
+    "wat": null,
+    "browserRunner": "browser-runner.html",
+    "browserMemoryFileStore": "browser-memory-file-store.js",
+    "nodeRunner": "node-runner.js",
+    "nodeRunnerShell": "node-runner.sh"
+  },
+  "linkedLibraries": [],
+  "copiedLibraries": [],
+  "runtimeProvidedHeaders": [],
+  "missingLibraries": [],
+  "sourceBytes": 7638,
+  "asyncRuntime": {
+    "resumeBridges": []
+  }
+}

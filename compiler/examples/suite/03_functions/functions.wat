@@ -111,18 +111,17 @@
   )
 
   ;; function square__d
-  (func $square__d (param $x f64) (result i32)
+  (func $square__d (param $x f64) (result f64)
     local.get $x
     local.get $x
     f64.mul
-    i32.trunc_f64_s
     return
-    i32.const 0
+    f64.const 0
     return
   )
 
   ;; function swap_ref__pvpv
-  (func $swap_ref__pvpv (param $a i32) (param $b i32) (result i32)
+  (func $swap_ref__pvpv (param $a i32) (param $b i32)
     (local $__frame i32)
     (local $tmp i32)
     (local $__tmp_i32 i32)
@@ -183,12 +182,6 @@
     i32.store
     local.get $__tmp_i32
     drop
-    i32.const 0
-    local.get $__parent_frame
-    global.set $__frame_ptr
-    local.get $__frame
-    global.set $__stack_ptr
-    return
     i32.const 0
     local.get $__parent_frame
     global.set $__frame_ptr
@@ -518,7 +511,6 @@
     end
     f64.const 5
     call $square__d
-    f64.convert_i32_s
     f64.const 25
     f64.eq
     i32.eqz
@@ -543,7 +535,6 @@
     i32.const 4
     i32.add
     call $swap_ref__pvpv
-    drop
     local.get $__frame
     i32.const 0
     i32.add

@@ -2036,6 +2036,12 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
   const flattenedExpression = flattenNodeText(expressionNode);
   if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(flattenedExpression)) {
     const identifierName = flattenedExpression;
+    const inlineStaticModel = compileContext
+      && compileContext.inlineIdentifierStaticModels
+      && compileContext.inlineIdentifierStaticModels.get(identifierName);
+    if (inlineStaticModel) {
+      return finish(inlineStaticModel);
+    }
     if (!seenBindings.has(identifierName)) {
       const visibleBindings = collectVisibleVariableBindingsAtNode(targetNode, compileContext);
       const bindingInfo = visibleBindings.get(identifierName) || null;
@@ -2276,6 +2282,22 @@ function resolveStaticModelFromExpression(expressionNode, targetNode, compileCon
       const mappedModel = tryResolveStaticMapResultModel(baseExpressionNode, argExprs, targetNode, compileContext, seenBindings);
       if (mappedModel) {
         staticCallModel = mappedModel;
+      }
+    }
+
+    if (!staticCallModel
+      && Array.isArray(pathSegments)
+      && pathSegments.length === 1
+      && !directPropertyName) {
+      const callableModel = applyStaticArrowCallModel(
+        resolveCallableNodeFromExpression(memberExprNode, compileContext),
+        argExprs,
+        targetNode,
+        compileContext,
+        seenBindings
+      );
+      if (callableModel) {
+        staticCallModel = callableModel;
       }
     }
 
@@ -2889,6 +2911,43 @@ function resolveStaticArrowCaptureModels(callbackNode, targetNode, compileContex
   return captureModels;
 }
 
+function applyStaticArrowCallModel(arrowNode, argExprs, targetNode, compileContext, seenBindings) {
+  if (!arrowNode || arrowNode.kind !== 'nonterminal' || arrowNode.name !== 'arrowFunction') {
+    return null;
+  }
+  if (collectLambdaCaptureNames(arrowNode, compileContext).length === 0) {
+    return null;
+  }
+  const parameterNames = extractCallableParameterNames(arrowNode);
+  const returnExpression = extractCallableReturnExpressionNode(arrowNode);
+  if (!returnExpression || parameterNames.length !== argExprs.length) {
+    return null;
+  }
+  const captureModels = resolveStaticArrowCaptureModels(
+    arrowNode,
+    targetNode,
+    compileContext,
+    seenBindings
+  );
+  if (!captureModels) {
+    return null;
+  }
+  const scopeModels = new Map(captureModels);
+  for (let index = 0; index < parameterNames.length; index += 1) {
+    const argumentModel = resolveStaticModelFromExpression(
+      argExprs[index],
+      targetNode,
+      compileContext,
+      seenBindings
+    );
+    if (!argumentModel) {
+      return null;
+    }
+    scopeModels.set(parameterNames[index], argumentModel);
+  }
+  return evaluateStaticExpressionModel(returnExpression, scopeModels, compileContext);
+}
+
 function resolveStaticModelFromCallChainSuffix(callExpressionNode, argsNode, initialModel, targetNode, compileContext, seenBindings) {
   if (!callExpressionNode || !initialModel) {
     return initialModel;
@@ -3029,7 +3088,15 @@ function resolveCallableNodeFromExpression(expressionNode, compileContext) {
       return boundCallable;
     }
   }
-
+  const lexicalInitializer = findBoundVariableInitializerExpressionAtNode(
+    bindingName,
+    expressionNode,
+    compileContext
+  );
+  const lexicalCallable = findCallableNodeFromExpression(lexicalInitializer);
+  if (lexicalCallable) {
+    return lexicalCallable;
+  }
   if (compileContext.topLevelArrowFunctionSymbols) {
     for (const [arrowNode, name] of compileContext.topLevelArrowFunctionSymbols.entries()) {
       if (name === bindingName) {
@@ -4836,6 +4903,13 @@ function lowerIdentifierValue(identifierValue, compileContext = null) {
       );
     }
     return '0';
+  }
+
+  const inlineReplacement = compileContext
+    && compileContext.inlineIdentifierExpressions
+    && compileContext.inlineIdentifierExpressions.get(identifierValue);
+  if (inlineReplacement) {
+    return inlineReplacement;
   }
 
   const asyncStateField = compileContext
@@ -7550,6 +7624,30 @@ function extractLambdaParameterNames(node) {
   return names;
 }
 
+function extractLambdaParameterDefaultExpressions(node) {
+  if (!node || node.kind !== 'nonterminal') {
+    return [];
+  }
+  const parameterContainer = node.name === 'arrowFunction'
+    ? (node.children || []).find((child) => child && child.kind === 'nonterminal' && child.name === 'arrowFunctionParameters')
+    : (node.name === 'asyncArrowFunction' ? node : null);
+  const formalList = parameterContainer
+    ? findFirstNonterminal(parameterContainer, 'formalParameterList')
+    : null;
+  if (!formalList) {
+    return [];
+  }
+  const defaults = [];
+  walk(formalList, (candidate) => {
+    if (!candidate || candidate.kind !== 'nonterminal' || candidate.name !== 'formalParameter') {
+      return;
+    }
+    const initializer = findFirstNonterminal(candidate, 'initializer');
+    defaults.push(initializer ? findFirstNonterminal(initializer, 'assignmentExpression') : null);
+  });
+  return defaults;
+}
+
 function extractLambdaBodyNode(node) {
   if (!node || node.kind !== 'nonterminal') {
     return null;
@@ -7975,13 +8073,23 @@ function lowerAssignmentExpressionValue(node, compileContext) {
     ? children[2]
     : null;
   if (!rhsChild) {
-    rhsChild = findFirstNonterminal(node, 'assignmentExpression');
+    for (let index = 2; index < children.length; index += 1) {
+      rhsChild = findFirstNonterminal(children[index], 'assignmentExpression');
+      if (rhsChild) {
+        break;
+      }
+    }
   }
   if (!rhsChild && children[2] && children[2].kind === 'nonterminal' && children[2].name === 'assignmentExpressionNoIn') {
     rhsChild = children[2];
   }
   if (!rhsChild) {
-    rhsChild = findFirstNonterminal(node, 'assignmentExpressionNoIn');
+    for (let index = 2; index < children.length; index += 1) {
+      rhsChild = findFirstNonterminal(children[index], 'assignmentExpressionNoIn');
+      if (rhsChild) {
+        break;
+      }
+    }
   }
 
   if (lhsChild && opChild && rhsChild) {
@@ -10338,6 +10446,309 @@ function emitLambdaRuntimeFallbackCpp(tree) {
   return lines.join('\n');
 }
 
+function isSideEffectFreeInlineArgument(node) {
+  if (!node || node.kind !== 'nonterminal') {
+    return false;
+  }
+  let hasSideEffect = Boolean(findFirstNonterminal(node, 'callExpression'));
+  walk(node, (candidate) => {
+    if (hasSideEffect || !candidate || candidate.kind !== 'terminal') {
+      return;
+    }
+    if (['=', '+=', '-=', '*=', '/=', '%=', '++', '--'].includes(candidate.value)) {
+      hasSideEffect = true;
+    }
+  });
+  return !hasSideEffect;
+}
+
+function isUnshadowedUndefinedExpression(node, compileContext) {
+  if (!node || flattenNodeText(node) !== 'undefined') {
+    return false;
+  }
+  if (!compileContext) {
+    return true;
+  }
+  const visibleBindings = collectVisibleVariableBindingsAtNode(node, compileContext);
+  return !visibleBindings.has('undefined');
+}
+
+function lowerImmediateCapturedArrowCall(arrowNode, argExprs, compileContext) {
+  if (!arrowNode || arrowNode.kind !== 'nonterminal' || arrowNode.name !== 'arrowFunction') {
+    return null;
+  }
+  if (collectLambdaCaptureNames(arrowNode, compileContext).length === 0) {
+    return null;
+  }
+  const bodyNode = extractLambdaBodyNode(arrowNode);
+  const hasBlockBody = bodyNode && (
+    findFirstNonterminal(bodyNode, 'functionBody')
+    || findFirstNonterminal(bodyNode, 'block')
+  );
+  if (!bodyNode || hasBlockBody) {
+    return null;
+  }
+  const parameterNames = extractLambdaParameterNames(arrowNode);
+  const parameterDefaults = extractLambdaParameterDefaultExpressions(arrowNode);
+  const returnExpression = extractCallableReturnExpressionNode(arrowNode);
+  if (!returnExpression
+    || argExprs.length > parameterNames.length
+    || parameterNames.slice(argExprs.length).some((name, index) => !parameterDefaults[argExprs.length + index])) {
+    return null;
+  }
+
+  const replacements = new Map(compileContext.inlineIdentifierExpressions || []);
+  if (!Array.isArray(compileContext._preludeStatements)) {
+    compileContext._preludeStatements = [];
+  }
+  const initialPreludeLength = compileContext._preludeStatements.length;
+  for (let index = 0; index < parameterNames.length; index += 1) {
+    const suppliedArgument = argExprs[index] || null;
+    const argumentNode = (!suppliedArgument
+      || (parameterDefaults[index] && isUnshadowedUndefinedExpression(suppliedArgument, compileContext)))
+      ? parameterDefaults[index]
+      : suppliedArgument;
+    const previousReplacements = compileContext.inlineIdentifierExpressions;
+    if (!argExprs[index]) {
+      compileContext.inlineIdentifierExpressions = replacements;
+    }
+    let loweredArgument = null;
+    try {
+      loweredArgument = lowerExpressionValue(argumentNode, compileContext);
+    } finally {
+      compileContext.inlineIdentifierExpressions = previousReplacements;
+    }
+    if (loweredArgument === null) {
+      compileContext._preludeStatements.splice(initialPreludeLength);
+      return null;
+    }
+    let replacement = `(${loweredArgument})`;
+    if (!isSideEffectFreeInlineArgument(argumentNode)) {
+      const argumentType = inferPreciseCppTypeFromExpression(argumentNode, compileContext);
+      if (!argumentType || argumentType === 'void') {
+        compileContext._preludeStatements.splice(initialPreludeLength);
+        return null;
+      }
+      const tempIndex = Number(compileContext._inlineCapturedArgumentCounter || 0);
+      compileContext._inlineCapturedArgumentCounter = tempIndex + 1;
+      const tempName = `__maia_inline_arg_${tempIndex}`;
+      compileContext._preludeStatements.push(`${argumentType} ${tempName} = ${loweredArgument};`);
+      replacement = tempName;
+    }
+    replacements.set(parameterNames[index], replacement);
+  }
+
+  const previousReplacements = compileContext.inlineIdentifierExpressions;
+  compileContext.inlineIdentifierExpressions = replacements;
+  try {
+    const loweredReturn = lowerExpressionValue(returnExpression, compileContext);
+    if (loweredReturn === null) {
+      compileContext._preludeStatements.splice(initialPreludeLength);
+    }
+    return loweredReturn;
+  } finally {
+    compileContext.inlineIdentifierExpressions = previousReplacements;
+  }
+}
+
+function isDirectExpressionStatementCall(callNode, compileContext) {
+  if (!callNode || !compileContext || !compileContext.tree) {
+    return false;
+  }
+  const path = findNodePath(compileContext.tree, callNode);
+  for (let index = path.length - 2; index >= 0; index -= 1) {
+    const ancestor = path[index];
+    if (!ancestor || ancestor.kind !== 'nonterminal') {
+      continue;
+    }
+    if (ancestor.name === 'expressionStatement') {
+      const expressionNode = (ancestor.children || []).find(
+        (child) => child && child.kind === 'nonterminal' && child.name === 'expression'
+      );
+      return extractDirectCallExpressionNode(expressionNode) === callNode;
+    }
+    if (ancestor.name === 'statement' || ancestor.name === 'sourceElement' || ancestor.name === 'functionBody') {
+      return false;
+    }
+  }
+  return false;
+}
+
+function lowerImmediateCapturedArrowBlockCall(arrowNode, argExprs, compileContext) {
+  if (!arrowNode || arrowNode.kind !== 'nonterminal' || arrowNode.name !== 'arrowFunction') {
+    return null;
+  }
+  if (collectLambdaCaptureNames(arrowNode, compileContext).length === 0) {
+    return null;
+  }
+  const bodyNode = extractLambdaBodyNode(arrowNode);
+  const bodyBlock = bodyNode && (
+    findFirstNonterminal(bodyNode, 'functionBody')
+    || findFirstNonterminal(bodyNode, 'block')
+  );
+  const parameterNames = extractLambdaParameterNames(arrowNode);
+  const parameterDefaults = extractLambdaParameterDefaultExpressions(arrowNode);
+  if (!bodyBlock
+    || findFirstNonterminal(bodyBlock, 'returnStatement')
+    || argExprs.length > parameterNames.length
+    || parameterNames.slice(argExprs.length).some((name, index) => !parameterDefaults[argExprs.length + index])) {
+    return null;
+  }
+
+  const replacements = new Map(compileContext.inlineIdentifierExpressions || []);
+  const parameterModels = [];
+  const argumentDeclarations = [];
+  for (let index = 0; index < parameterNames.length; index += 1) {
+    const suppliedArgument = argExprs[index] || null;
+    const argumentNode = (!suppliedArgument
+      || (parameterDefaults[index] && isUnshadowedUndefinedExpression(suppliedArgument, compileContext)))
+      ? parameterDefaults[index]
+      : suppliedArgument;
+    const previousReplacements = compileContext.inlineIdentifierExpressions;
+    if (!argExprs[index]) {
+      compileContext.inlineIdentifierExpressions = replacements;
+    }
+    let loweredArgument = null;
+    try {
+      loweredArgument = lowerExpressionValue(argumentNode, compileContext);
+    } finally {
+      compileContext.inlineIdentifierExpressions = previousReplacements;
+    }
+    if (loweredArgument === null) {
+      return null;
+    }
+    let replacement = `(${loweredArgument})`;
+    if (!isSideEffectFreeInlineArgument(argumentNode)) {
+      const argumentType = inferPreciseCppTypeFromExpression(argumentNode, compileContext);
+      if (!argumentType || argumentType === 'void') {
+        return null;
+      }
+      const tempIndex = Number(compileContext._inlineCapturedArgumentCounter || 0);
+      compileContext._inlineCapturedArgumentCounter = tempIndex + 1;
+      const tempName = `__maia_inline_arg_${tempIndex}`;
+      argumentDeclarations.push(`${argumentType} ${tempName} = ${loweredArgument};`);
+      replacement = tempName;
+    }
+    replacements.set(parameterNames[index], replacement);
+    parameterModels.push(resolveStaticModelFromExpression(argumentNode, argumentNode, compileContext));
+  }
+
+  const previousReplacements = compileContext.inlineIdentifierExpressions;
+  const previousStaticModels = compileContext.inlineIdentifierStaticModels;
+  const previousStaticModelCache = compileContext._staticModelCache;
+  const previousConsoleConcatExprCache = compileContext._consoleConcatExprCache;
+  const previousConsoleConcatPieceCache = compileContext._consoleConcatPieceCache;
+  const statements = ['{', ...argumentDeclarations.map((declaration) => `  ${declaration}`)];
+  compileContext.inlineIdentifierExpressions = replacements;
+  const staticModels = new Map(previousStaticModels || []);
+  for (let index = 0; index < parameterNames.length; index += 1) {
+    if (parameterModels[index]) {
+      staticModels.set(parameterNames[index], parameterModels[index]);
+    }
+  }
+  compileContext.inlineIdentifierStaticModels = staticModels;
+  compileContext._staticModelCache = new WeakMap();
+  compileContext._consoleConcatExprCache = new WeakMap();
+  compileContext._consoleConcatPieceCache = new WeakMap();
+  try {
+    for (const statementNode of extractStatementsFromScopeContainer(bodyBlock)) {
+      statements.push(...lowerStatementNode(statementNode, compileContext, 1));
+    }
+  } finally {
+    compileContext.inlineIdentifierExpressions = previousReplacements;
+    compileContext.inlineIdentifierStaticModels = previousStaticModels;
+    compileContext._staticModelCache = previousStaticModelCache;
+    compileContext._consoleConcatExprCache = previousConsoleConcatExprCache;
+    compileContext._consoleConcatPieceCache = previousConsoleConcatPieceCache;
+  }
+  statements.push('}');
+  return statements;
+}
+
+function lowerStaticCapturedForEachCallbacks(callbackNode, baseModel, loweredBase, compileContext) {
+  if (!callbackNode || callbackNode.kind !== 'nonterminal' || callbackNode.name !== 'arrowFunction') {
+    return null;
+  }
+  if (!baseModel || baseModel.kind !== 'array' || !Array.isArray(baseModel.values)
+    || collectLambdaCaptureNames(callbackNode, compileContext).length === 0) {
+    return null;
+  }
+  const bodyNode = extractLambdaBodyNode(callbackNode);
+  const bodyExpression = extractCallableReturnExpressionNode(callbackNode);
+  const blockNode = bodyNode && (
+    findFirstNonterminal(bodyNode, 'functionBody')
+    || findFirstNonterminal(bodyNode, 'block')
+  );
+  const blockStatements = blockNode ? extractStatementsFromScopeContainer(blockNode) : [];
+  const parameterNames = extractLambdaParameterNames(callbackNode);
+  if (!bodyNode
+    || (!bodyExpression && !blockNode)
+    || (blockNode && findFirstNonterminal(blockNode, 'returnStatement'))
+    || parameterNames.length > 3) {
+    return null;
+  }
+
+  const previousReplacements = compileContext.inlineIdentifierExpressions;
+  const previousStaticModels = compileContext.inlineIdentifierStaticModels;
+  const previousStaticModelCache = compileContext._staticModelCache;
+  const previousConsoleConcatExprCache = compileContext._consoleConcatExprCache;
+  const previousConsoleConcatPieceCache = compileContext._consoleConcatPieceCache;
+  const statements = [];
+  if (!Array.isArray(compileContext._preludeStatements)) {
+    compileContext._preludeStatements = [];
+  }
+  const initialPreludeLength = compileContext._preludeStatements.length;
+
+  try {
+    for (let index = 0; index < baseModel.values.length; index += 1) {
+      const valueExpr = lowerStaticModelToExpression(baseModel.values[index]);
+      if (valueExpr === null || (parameterNames.length >= 3 && loweredBase === null)) {
+        return null;
+      }
+      const replacements = new Map(previousReplacements || []);
+      if (parameterNames[0]) { replacements.set(parameterNames[0], `(${valueExpr})`); }
+      if (parameterNames[1]) { replacements.set(parameterNames[1], String(index)); }
+      if (parameterNames[2]) { replacements.set(parameterNames[2], `(${loweredBase})`); }
+      compileContext.inlineIdentifierExpressions = replacements;
+      const staticModels = new Map(previousStaticModels || []);
+      if (parameterNames[0]) { staticModels.set(parameterNames[0], baseModel.values[index]); }
+      if (parameterNames[1]) { staticModels.set(parameterNames[1], { kind: 'number', value: index }); }
+      if (parameterNames[2]) { staticModels.set(parameterNames[2], baseModel); }
+      compileContext.inlineIdentifierStaticModels = staticModels;
+      compileContext._staticModelCache = new WeakMap();
+      compileContext._consoleConcatExprCache = new WeakMap();
+      compileContext._consoleConcatPieceCache = new WeakMap();
+
+      const preludeLength = compileContext._preludeStatements.length;
+      if (bodyExpression && !blockNode) {
+        const loweredBody = lowerExpressionValue(bodyExpression, compileContext);
+        if (loweredBody === null) {
+          return null;
+        }
+        statements.push(...compileContext._preludeStatements.splice(preludeLength));
+        statements.push(`${loweredBody};`);
+      } else {
+        statements.push('{');
+        for (const statementNode of blockStatements) {
+          statements.push(...lowerStatementNode(statementNode, compileContext, 1));
+        }
+        statements.push('}');
+      }
+    }
+  } finally {
+    compileContext.inlineIdentifierExpressions = previousReplacements;
+    compileContext.inlineIdentifierStaticModels = previousStaticModels;
+    compileContext._staticModelCache = previousStaticModelCache;
+    compileContext._consoleConcatExprCache = previousConsoleConcatExprCache;
+    compileContext._consoleConcatPieceCache = previousConsoleConcatPieceCache;
+    if (compileContext._preludeStatements.length > initialPreludeLength) {
+      compileContext._preludeStatements.splice(initialPreludeLength);
+    }
+  }
+
+  return statements;
+}
+
 function lowerCallExpressionValue(node, compileContext) {
   if (!node || node.kind !== 'nonterminal' || node.name !== 'callExpression') {
     reportUnsupportedLowering(
@@ -10451,7 +10862,11 @@ function lowerCallExpressionValue(node, compileContext) {
     }
   }
 
-  const args = lowerArgumentsNode(argsNode, compileContext);
+  // console.log has a specialized lowering path below. Its arguments must not
+  // be lowered here as well: a captured-arrow argument can allocate prelude
+  // temporaries, and lowering it twice would evaluate it twice.
+  const isConsoleLogCall = Array.isArray(pathSegments) && pathSegments.join('.') === 'console.log';
+  const args = isConsoleLogCall ? [] : lowerArgumentsNode(argsNode, compileContext);
   const loweredStaticPromiseThenChain = tryLowerStaticPromiseThenChain(node, compileContext);
   if (loweredStaticPromiseThenChain !== null) {
     return loweredStaticPromiseThenChain;
@@ -10476,6 +10891,28 @@ function lowerCallExpressionValue(node, compileContext) {
   const lambdaBindingState = getLambdaBindingStateAtCallNode(node, pathSegments, compileContext);
   let droppedJsRuntimeMethodCall = false;
 
+  if (Array.isArray(pathSegments) && pathSegments.length === 1) {
+    loweredCall = lowerImmediateCapturedArrowCall(
+      resolveCallableNodeFromExpression(memberExprNode, compileContext),
+      argExprs,
+      compileContext
+    );
+    if (!loweredCall && isDirectExpressionStatementCall(node, compileContext)) {
+      const blockStatements = lowerImmediateCapturedArrowBlockCall(
+        resolveCallableNodeFromExpression(memberExprNode, compileContext),
+        argExprs,
+        compileContext
+      );
+      if (blockStatements !== null) {
+        if (!Array.isArray(compileContext._preludeStatements)) {
+          compileContext._preludeStatements = [];
+        }
+        compileContext._preludeStatements.push(...blockStatements);
+        loweredCall = '0';
+      }
+    }
+  }
+
   // Constructor-style function expressions are emitted as __new__Name() and
   // __Name__call(receiver, ...). A bare Name(...) would require a JavaScript
   // global `this` receiver, which this C++ runtime intentionally does not
@@ -10493,12 +10930,21 @@ function lowerCallExpressionValue(node, compileContext) {
     return '0';
   }
 
-  if (compileContext
+  if (!loweredCall
+    && compileContext
     && compileContext.hasLambdaCapturePayload
     && lambdaBindingState
     && lambdaBindingState.isCaptureAware
     && Array.isArray(pathSegments)
     && pathSegments.length === 1) {
+    reportUnsupportedLowering(
+      compileContext,
+      'captured-arrow-call-unlowerable',
+      'captured arrow calls require static folding or a closure invocation runtime'
+    );
+    if (compileContext.strictLowering) {
+      err('unsupported lowering: captured arrow call requires closure runtime');
+    }
     const asyncCallFlag = lambdaBindingState.isAsync ? 1 : 0;
     loweredCall = `__maia_runtime_lambda_invoke_function_id((void*)${pathSegments[0]}, ${argExprs.length}, ${asyncCallFlag})`;
   }
@@ -10751,12 +11197,34 @@ function lowerCallExpressionValue(node, compileContext) {
     const callbackSymbol = lowerExpressionValue(argExprs[0], compileContext);
     const callbackNode = resolveCallableNodeFromExpression(argExprs[0], compileContext);
     const callbackParams = extractCallableParameterNames(callbackNode);
+    const callbackHasLexicalCapture = Boolean(
+      callbackNode
+      && (callbackNode.name === 'arrowFunction' || callbackNode.name === 'asyncArrowFunction')
+      && collectLambdaCaptureNames(callbackNode, compileContext).length > 0
+    );
     const loweredBase = lowerExpressionValue(baseExpressionNode, compileContext);
-    if (baseModel
+    if (callbackHasLexicalCapture) {
+      const callbackStatements = lowerStaticCapturedForEachCallbacks(
+        callbackNode,
+        baseModel,
+        loweredBase,
+        compileContext
+      );
+      if (callbackStatements !== null) {
+        if (!Array.isArray(compileContext._preludeStatements)) {
+          compileContext._preludeStatements = [];
+        }
+        compileContext._preludeStatements.push(...callbackStatements);
+        loweredCall = '0';
+      }
+    }
+    if (!loweredCall
+      && baseModel
       && baseModel.kind === 'array'
       && Array.isArray(baseModel.values)
       && callbackSymbol
-      && callbackSymbol !== 'nullptr') {
+      && callbackSymbol !== 'nullptr'
+      && !callbackHasLexicalCapture) {
       const callbackCalls = [];
       for (let index = 0; index < baseModel.values.length; index += 1) {
         const valueExpr = lowerStaticModelToExpression(baseModel.values[index]);
@@ -10829,6 +11297,14 @@ function lowerCallExpressionValue(node, compileContext) {
     && compileContext.hasLambdaCapturePayload
     && lambdaBindingState
     && lambdaBindingState.isCaptureAware) {
+    reportUnsupportedLowering(
+      compileContext,
+      'captured-arrow-call-unlowerable',
+      'captured arrow calls require static folding or a closure invocation runtime'
+    );
+    if (compileContext.strictLowering) {
+      err('unsupported lowering: captured arrow call requires closure runtime');
+    }
     if (!Array.isArray(pathSegments) || pathSegments.length === 0) {
       reportUnsupportedLowering(
         compileContext,

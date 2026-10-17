@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-09-16T20:44:44.565Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.37YbsFVz33/operators.port.c",
+  "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/01_operators/dist_js",
+  "appName": "operators.port",
+  "artifacts": {
+    "wasm": "operators.port.wasm",
+    "wrapper": "operators.port.js",
+    "wat": null,
+    "browserRunner": "browser-runner.html",
+    "browserMemoryFileStore": "browser-memory-file-store.js",
+    "nodeRunner": "node-runner.js",
+    "nodeRunnerShell": "node-runner.sh"
+  },
+  "linkedLibraries": [],
+  "copiedLibraries": [],
+  "runtimeProvidedHeaders": [],
+  "missingLibraries": [],
+  "sourceBytes": 10252,
+  "asyncRuntime": {
+    "resumeBridges": []
+  }
+}

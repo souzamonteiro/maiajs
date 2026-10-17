@@ -31,6 +31,22 @@ function runCompilerCpp(sourceCode, options = {}) {
   return fs.readFileSync(cppOut, 'utf8');
 }
 
+function compileSource(sourceCode, options = {}) {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'maiajs-lambda-cpp-'));
+  const inputFile = path.join(tempDir, 'input.js');
+  const cppOut = path.join(tempDir, 'out.cpp');
+  fs.writeFileSync(inputFile, sourceCode, 'utf8');
+
+  const args = [COMPILER, '--file', inputFile, '--cpp-out', cppOut];
+  if (options.strictLowering) {
+    args.push('--strict-lowering');
+  }
+  return spawnSync(process.execPath, args, {
+    cwd: path.resolve(__dirname, '..', '..'),
+    encoding: 'utf8'
+  });
+}
+
 test('lambda lowering: emits a callable C++ function for a non-capturing top-level arrow', () => {
   const cpp = runCompilerCpp('const f = x => x;\nconsole.log(f(5));\n');
 
@@ -67,6 +83,37 @@ test('function values: inline non-capturing arrow receives static forEach callba
   assert.match(cpp, /__maia_fn_arrow_arg_0\(2\);[\s\S]*__maia_fn_arrow_arg_0\(4\);/, 'static forEach lowering must pass each array element to the inline arrow');
   assert.match(cpp, /__console__log\(/, 'the inline arrow body must preserve its side effect');
   assert.doesNotMatch(cpp, /__maia_lambda1\(\)\(2\)/, 'C++ must not call an opaque lambda payload as a function');
+});
+
+test('function values: static forEach lowers captured concise arrows over static arrays', () => {
+  const cpp = runCompilerCpp([
+    'const prefix = "item";',
+    '[2, 4].forEach(value => console.log(prefix, value));'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /__console__log\([^\n]*2[^\n]*\);[\s\S]*__console__log\([^\n]*4[^\n]*\);/, 'the captured callback body must run once for each static element');
+  assert.doesNotMatch(cpp, /__maia_lambda1_capture1\([^\n]*\)\(2\)/, 'C++ must not call an opaque captured payload as a function');
+});
+
+test('function values: static forEach lowers captured arrow blocks over static arrays', () => {
+  const cpp = runCompilerCpp([
+    'const prefix = "item";',
+    '[2, 4].forEach(value => { console.log(prefix, value); });'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /__console__log\([^\n]*2[^\n]*\);[\s\S]*__console__log\([^\n]*4[^\n]*\);/, 'the captured block body must run once for each static element');
+  assert.doesNotMatch(cpp, /__forEach\(\(void\*\)/, 'the static callback must not fall through to a host runtime method');
+});
+
+test('function values: static forEach preserves a mutable captured binding across iterations', () => {
+  const cpp = runCompilerCpp([
+    'let total = 0;',
+    '[2, 4].forEach(value => { total += value; });',
+    'console.log("total", total);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /total \+= 2;[\s\S]*total \+= 4;/, 'each static callback invocation must update the same captured binding');
+  assert.match(cpp, /__console__log\([^\n]*total[^\n]*\);/, 'the updated binding must remain observable after forEach');
 });
 
 test('function values: named callbacks drive direct static map, filter, and reduce evaluation', () => {
@@ -199,6 +246,182 @@ test('function values: static collection callbacks fold immutable lexical captur
   assert.doesNotMatch(cpp, /const void\* values = 0;/, 'the callback result must not fall back to an empty opaque value');
 });
 
+test('function values: direct calls fold arrows with immutable lexical captures', () => {
+  const cpp = runCompilerCpp([
+    'const offset = 7;',
+    'const addOffset = value => value + offset;',
+    'const result = addOffset(5);',
+    'console.log("result", result);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /const double result = 12;/, 'the direct call must evaluate its argument and lexical capture');
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)addOffset, 1, 0\)/, 'a statically evaluated call must not use the synthetic closure invocation bridge');
+});
+
+test('function values: immediate captured arrow calls inline side-effect-free dynamic arguments', () => {
+  const cpp = runCompilerCpp([
+    'function readValue() { return 5; }',
+    'const value = readValue();',
+    'const offset = 7;',
+    'const addOffset = input => input + offset;',
+    'console.log("result", addOffset(value));'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /\(value\) \+ (?:offset|7)/, 'the dynamic argument must flow through the inlined expression body');
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)addOffset, 1, 0\)/, 'the immediate call must not use the synthetic invocation bridge');
+});
+
+test('function values: immediate captured arrow expressions evaluate effectful arguments once', () => {
+  const cpp = runCompilerCpp([
+    'function readValue() { return 5; }',
+    'const offset = 7;',
+    'const twiceWithOffset = value => value + value + offset;',
+    'console.log("result", twiceWithOffset(readValue()));'
+  ].join('\n'), { strictLowering: true });
+
+  const temporaries = cpp.match(/(?:int|double) __maia_inline_arg_\d+ = readValue\(\);/g) || [];
+  assert.equal(temporaries.length, 1, 'the effectful argument must be evaluated exactly once');
+  assert.match(cpp, /__maia_inline_arg_\d+ \+ __maia_inline_arg_\d+ \+ 7/, 'repeated parameter reads must reuse the materialized argument');
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)twiceWithOffset, 1, 0\)/, 'the expression call must not use the synthetic invocation bridge');
+});
+
+test('function values: immediate captured arrow expressions preserve effectful argument order', () => {
+  const cpp = runCompilerCpp([
+    'function firstValue() { console.log("first"); return 1; }',
+    'function secondValue() { console.log("second"); return 2; }',
+    'const offset = 7;',
+    'const combine = (left, right) => left * 10 + right + offset;',
+    'console.log("result", combine(firstValue(), secondValue()));'
+  ].join('\n'), { strictLowering: true });
+
+  const firstTempIndex = cpp.indexOf('= firstValue();');
+  const secondTempIndex = cpp.indexOf('= secondValue();');
+  assert.ok(firstTempIndex >= 0, 'the first argument must be materialized');
+  assert.ok(secondTempIndex > firstTempIndex, 'argument temporaries must retain left-to-right evaluation');
+  assert.match(cpp, /__maia_inline_arg_\d+ \* 10 \+ __maia_inline_arg_\d+ \+ 7/, 'the expression must preserve both materialized arguments');
+});
+
+test('function values: immediate captured arrow expressions apply missing default parameters', () => {
+  const cpp = runCompilerCpp([
+    'const offset = 7;',
+    'const addOffset = (value = 5) => value + offset;',
+    'console.log("result", addOffset());'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /\(5\) \+ 7/, 'the omitted argument must lower to the parameter default expression');
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)addOffset, 0, 0\)/, 'the defaulted direct call must not use the synthetic invocation bridge');
+});
+
+test('function values: explicit unshadowed undefined applies a direct-call default parameter', () => {
+  const cpp = runCompilerCpp([
+    'const offset = 7;',
+    'const addOffset = (value = 5) => value + offset;',
+    'console.log("result", addOffset(undefined));'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /\(5\) \+ 7/, 'undefined must select the parameter default rather than lower as zero');
+  assert.doesNotMatch(cpp, /\(0\) \+ 7/, 'undefined must not be treated as null in a defaulted parameter');
+});
+
+test('function values: default parameters can reference earlier direct-call parameters', () => {
+  const cpp = runCompilerCpp([
+    'const offset = 7;',
+    'const combine = (left, right = left + 1) => left * 10 + right + offset;',
+    'console.log("result", combine(2));'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /\(2\) \* 10 \+ \(\(2\) \+ 1\) \+ 7/, 'the default expression must see the already materialized earlier parameter');
+  assert.doesNotMatch(cpp, /\(2\) \* 10 \+ \(left \+ 1\)/, 'the generated direct call must not leak an unresolved parameter name');
+});
+
+test('function values: effectful defaults evaluate once before later parameter defaults', () => {
+  const cpp = runCompilerCpp([
+    'function readValue() { return 2; }',
+    'const offset = 7;',
+    'const combine = (left = readValue(), right = left + 1) => left * 10 + right + offset;',
+    'console.log("result", combine());'
+  ].join('\n'), { strictLowering: true });
+
+  const temporaries = cpp.match(/(?:int|double) __maia_inline_arg_\d+ = readValue\(\);/g) || [];
+  assert.equal(temporaries.length, 1, 'the effectful default must be evaluated once');
+  assert.match(cpp, /__maia_inline_arg_\d+ \* 10 \+ \(__maia_inline_arg_\d+ \+ 1\) \+ 7/, 'the later default must reuse the earlier parameter temporary');
+});
+
+test('function values: strict lowering accepts captured arrow calls with effectful arguments', () => {
+  const cpp = runCompilerCpp([
+    'function readValue() { return 5; }',
+    'const offset = 7;',
+    'const addOffset = input => input + offset;',
+    'console.log(addOffset(readValue()));'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /(?:int|double) __maia_inline_arg_\d+ = readValue\(\);/, 'strict lowering must preserve a single argument evaluation');
+  assert.match(cpp, /__maia_inline_arg_\d+ \+ 7/, 'the materialized argument must flow through the captured expression');
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)addOffset, 1, 0\)/, 'strict lowering must not use the synthetic invocation bridge');
+});
+
+test('function values: immediate captured arrow block calls lower as side-effect statements', () => {
+  const cpp = runCompilerCpp([
+    'const prefix = "item";',
+    'const show = value => { console.log(prefix, value); };',
+    'show(2);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /__console__log\([^\n]*item[^\n]*2[^\n]*\);/, 'the block body must lower at the direct call site');
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)show, 1, 0\)/, 'the direct block call must not use the synthetic invocation bridge');
+});
+
+test('function values: direct captured arrow blocks preserve mutable lexical bindings', () => {
+  const cpp = runCompilerCpp([
+    'let total = 0;',
+    'const add = value => { total += value; };',
+    'add(2);',
+    'add(4);',
+    'console.log("total", total);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /total \+= 2;/, 'the first direct call must update the captured binding');
+  assert.match(cpp, /total \+= 4;/, 'the second direct call must update the same captured binding');
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)add, 1, 0\)/, 'the direct block calls must not use the synthetic invocation bridge');
+});
+
+test('function values: direct captured arrow blocks apply missing default parameters', () => {
+  const cpp = runCompilerCpp([
+    'let total = 0;',
+    'const add = (value = 5) => { total += value; };',
+    'add();',
+    'console.log("total", total);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /total \+= 5;/, 'the omitted argument must lower to the block parameter default expression');
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)add, 0, 0\)/, 'the defaulted direct block call must not use the synthetic invocation bridge');
+});
+
+test('function values: direct captured arrow blocks evaluate effectful arguments once', () => {
+  const cpp = runCompilerCpp([
+    'function readValue() { return 5; }',
+    'let total = 0;',
+    'const add = value => { total += value; };',
+    'add(readValue());',
+    'console.log("total", total);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.match(cpp, /(?:int|double) __maia_inline_arg_\d+ = readValue\(\);/, 'the effectful argument must be materialized once');
+  assert.match(cpp, /total \+= __maia_inline_arg_\d+;/, 'the block body must consume the materialized argument');
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)add, 1, 0\)/, 'the direct block call must not use the synthetic invocation bridge');
+});
+
+test('function values: strict lowering rejects captured arrow block calls used as expressions', () => {
+  const result = compileSource([
+    'const prefix = "item";',
+    'const show = value => { console.log(prefix, value); };',
+    'const result = show(2);'
+  ].join('\n'), { strictLowering: true });
+
+  assert.notEqual(result.status, 0, 'a captured block call used as an expression still requires an undefined-value runtime');
+  assert.match(result.stderr + result.stdout, /captured-arrow-call-unlowerable/, 'the rejection must identify the missing closure runtime');
+});
+
 test('function values: static predicate callbacks evaluate some, every, find, and findIndex', () => {
   const cpp = runCompilerCpp([
     'function isEven(value) { return value % 2 === 0; }',
@@ -291,17 +514,17 @@ test('lambda lowering: emits async lambda runtime hook by arity', () => {
   assert.match(cpp, /void\* f = __maia_async_lambda1\(\);/, 'C++ must lower async lambda expression into runtime helper');
 });
 
-test('lambda lowering: capture-aware identifier call routes through invocation function-id bridge', () => {
+test('lambda lowering: statically known capture-aware identifier calls avoid the synthetic invocation bridge', () => {
   const cpp = runCompilerCpp('const y = 7;\nconst f = x => x + y;\nf(1);\n');
 
-  assert.match(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)f, 1, 0\);/, 'C++ must route capture-aware identifier calls through invocation function-id bridge');
-  assert.doesNotMatch(cpp, /extern void __f\(/, 'selector-routed capture-aware lambda call must not emit host extern declarations for local binding names');
+  assert.match(cpp, /\b8;/, 'the call must materialize its lexical capture and literal argument');
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)f, 1, 0\);/, 'a statically known call must not use the synthetic invocation bridge');
 });
 
 test('lambda lowering: no-capture identifier calls are not misrouted through invocation selector bridge', () => {
   const cpp = runCompilerCpp('const y = 7;\nconst f = x => x + y;\nconst g = x => x;\nf(1);\ng(1);\n');
 
-  assert.match(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)f, 1, 0\);/, 'capture-aware binding should still route through invocation function-id bridge');
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)f, 1, 0\);/, 'a static capture-aware binding should not route through the synthetic invocation bridge');
   assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)g, 1, 0\);/, 'no-capture binding must not be routed through capture-aware invocation function-id bridge');
 });
 
@@ -311,10 +534,11 @@ test('lambda lowering: top-level assignment to capture-aware sync lambda partici
   assert.match(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)f, 1, 0\);/, 'C++ must route assignment-defined capture-aware sync lambda calls through invocation function-id bridge');
 });
 
-test('lambda lowering: function-local capture-aware sync lambda call routes through invocation selector', () => {
+test('lambda lowering: function-local immediate capture-aware sync lambda call avoids invocation selector', () => {
   const cpp = runCompilerCpp('function outer(y) {\n  const f = x => x + y;\n  f(1);\n  return 0;\n}\n');
 
-  assert.match(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)f, 1, 0\);/, 'C++ must route function-local capture-aware sync lambda calls through invocation function-id bridge');
+  assert.match(cpp, /\(1\) \+ y/, 'the local argument and lexical parameter must lower at the call site');
+  assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)f, 1, 0\);/, 'an immediate capture-aware call must not use the synthetic invocation bridge');
 });
 
 test('lambda lowering: emits capture-aware async lambda hook for simple top-level identifier capture', () => {

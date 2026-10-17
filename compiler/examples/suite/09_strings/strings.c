@@ -18,8 +18,8 @@ extern int    sprintf(char* dest, const char* format, ...);
 /* Global functions */
 int c_strlen__pv(char* s);
 int c_strcmp__pvpv(char* a, char* b);
-int c_strcpy__pvpv(char* dst, char* src);
-int c_strcat__pvpv(char* dst, char* src);
+void c_strcpy__pvpv(char* dst, char* src);
+void c_strcat__pvpv(char* dst, char* src);
 int char_count__pvc(char* s, char c);
 int main(void);
 
@@ -38,15 +38,15 @@ int c_strcmp__pvpv(char* a, char* b) {
   return (unsigned char)*a - (unsigned char)*b;
 }
 
-int c_strcpy__pvpv(char* dst, char* src) {
+void c_strcpy__pvpv(char* dst, char* src) {
   while (*src) {
     *dst++ = *src++;
   }
   *dst = '\0';
-  return (int)0;
+  return (void)0;
 }
 
-int c_strcat__pvpv(char* dst, char* src) {
+void c_strcat__pvpv(char* dst, char* src) {
   while (*dst) {
     ++dst;
   }
@@ -54,7 +54,7 @@ int c_strcat__pvpv(char* dst, char* src) {
     *dst++ = *src++;
   }
   *dst = '\0';
-  return (int)0;
+  return (void)0;
 }
 
 int char_count__pvc(char* s, char c) {

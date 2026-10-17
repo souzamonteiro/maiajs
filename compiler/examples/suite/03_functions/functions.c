@@ -21,8 +21,8 @@ typedef int (*IntOp)(int);
 int factorial__i(int n);
 int fib__i(int n);
 int square__i(int x);
-int square__d(double x);
-int swap_ref__pvpv(int* a, int* b);
+double square__d(double x);
+void swap_ref__pvpv(int* a, int* b);
 int sum_cref__ii(int x, int y);
 int clamp__iii(int x, int lo, int hi);
 int double_val__i(int x);
@@ -48,15 +48,15 @@ int square__i(int x) {
   return x * x;
 }
 
-int square__d(double x) {
+double square__d(double x) {
   return x * x;
 }
 
-int swap_ref__pvpv(int* a, int* b) {
+void swap_ref__pvpv(int* a, int* b) {
   int tmp = *a;
   *a = *b;
   *b = tmp;
-  return (int)0;
+  return (void)0;
 }
 
 int sum_cref__ii(int x, int y) {

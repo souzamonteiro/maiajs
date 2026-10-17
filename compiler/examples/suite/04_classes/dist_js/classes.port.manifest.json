@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-09-16T20:44:52.344Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.eaJSMm2L5y/classes.port.c",
+  "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/04_classes/dist_js",
+  "appName": "classes.port",
+  "artifacts": {
+    "wasm": "classes.port.wasm",
+    "wrapper": "classes.port.js",
+    "wat": null,
+    "browserRunner": "browser-runner.html",
+    "browserMemoryFileStore": "browser-memory-file-store.js",
+    "nodeRunner": "node-runner.js",
+    "nodeRunnerShell": "node-runner.sh"
+  },
+  "linkedLibraries": [],
+  "copiedLibraries": [],
+  "runtimeProvidedHeaders": [],
+  "missingLibraries": [],
+  "sourceBytes": 6574,
+  "asyncRuntime": {
+    "resumeBridges": []
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "kind": "placeholder-ir",
+  "source": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/06_inheritance/inheritance.port.js",
+  "hostInterop": {
+    "strategy": {
+      "mode": "dynamic-prefix",
+      "hostPrefix": "__",
+      "separator": "__",
+      "internalHostSymbols": []
+    },
+    "mappings": [],
+    "detectedCalls": [
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 0
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 1
+      },
+      {
+        "source": "rect.area",
+        "host": "__rect__area",
+        "callIndex": 2
+      },
+      {
+        "source": "console.log",
+        "host": "__console__log",
+        "callIndex": 3
+      }
+    ]
+  },
+  "asyncIR": {
+    "version": "0.1.0",
+    "asyncFunctions": []
+  },
+  "asyncRuntime": {
+    "resumeBridges": []
+  },
+  "notes": [
+    "Replace with semantic/lowering pipeline described in docs/ECMAScript_Compiler_Architecture.md"
+  ]
+}
