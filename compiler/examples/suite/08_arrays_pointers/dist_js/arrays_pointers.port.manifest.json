@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-16T20:45:07.985Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.zZSD05WTVi/arrays_pointers.port.c",
+  "generatedAt": "2026-10-21T23:46:36.333Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.hrx2HgJGSI/arrays_pointers.port.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/08_arrays_pointers/dist_js",
   "appName": "arrays_pointers.port",
   "artifacts": {
@@ -16,7 +16,7 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 23727,
+  "sourceBytes": 23111,
   "asyncRuntime": {
     "resumeBridges": []
   }

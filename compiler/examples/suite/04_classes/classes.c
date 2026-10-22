@@ -15,18 +15,20 @@ extern void*  __malloc(unsigned long size);
 extern void   __free(void* ptr);
 extern int    sprintf(char* dest, const char* format, ...);
 
+typedef struct Vec2 Vec2;
+
 #define EXC_Vec2 1
 
-typedef struct Vec2 {
+struct Vec2 {
   double x;
   double y;
-} Vec2;
+};
 
 void Vec2_init__dd(Vec2* self, double x_, double y_);
 void Vec2_init__N4Vec2(Vec2* self, Vec2 o);
 void Vec2_destroy(Vec2* self);
 Vec2* Vec2_operator_assign__pv(Vec2* self, Vec2* o);
-double Vec2_dot__pv(Vec2* self, Vec2* o);
+int Vec2_dot__N4Vec2(Vec2* self, Vec2 o);
 int Vec2_lengthSq(Vec2* self);
 
 void Vec2_init__dd(Vec2* self, double x_, double y_) {
@@ -56,9 +58,9 @@ Vec2* Vec2_operator_assign__pv(Vec2* self, Vec2* o) {
   (void)o;
 }
 
-double Vec2_dot__pv(Vec2* self, Vec2* o) {
+int Vec2_dot__N4Vec2(Vec2* self, Vec2 o) {
   (void)self;
-  return self->x * o->x + self->y * o->y;
+  return self->x * o.x + self->y * o.y;
   (void)o;
 }
 
@@ -93,7 +95,7 @@ int main(void) {
   if (c.x == 3.0 && c.y == 4.0) {
     printf("PASS assign_op\n");
   }
-  if (Vec2_dot__pv(&a, &unit) == 3.0) {
+  if (Vec2_dot__N4Vec2(&a, unit) == 3.0) {
     printf("PASS dot_x_axis\n");
   }
   if (Vec2_lengthSq(&a) == 25.0) {

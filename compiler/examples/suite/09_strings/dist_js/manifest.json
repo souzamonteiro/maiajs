@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-16T20:45:11.855Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.occB3lFRZ5/strings.port.c",
+  "generatedAt": "2026-10-21T23:46:40.641Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.rPEggd6Nto/strings.port.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/09_strings/dist_js",
   "appName": "strings.port",
   "artifacts": {
@@ -16,7 +16,7 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 6515,
+  "sourceBytes": 6314,
   "asyncRuntime": {
     "resumeBridges": []
   }

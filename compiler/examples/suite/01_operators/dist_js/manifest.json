@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-16T20:44:44.565Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.37YbsFVz33/operators.port.c",
+  "generatedAt": "2026-10-21T23:46:05.653Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.5unbAHvN97/operators.port.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/01_operators/dist_js",
   "appName": "operators.port",
   "artifacts": {
@@ -16,7 +16,7 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 10252,
+  "sourceBytes": 10038,
   "asyncRuntime": {
     "resumeBridges": []
   }

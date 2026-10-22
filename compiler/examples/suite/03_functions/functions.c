@@ -29,6 +29,7 @@ int double_val__i(int x);
 int negate__i(int x);
 int apply__N5IntOpi(IntOp f, int x);
 int main(void);
+void swap_ref__ii(int a, int b);
 
 int factorial__i(int n) {
   if (n <= 1) {
@@ -161,8 +162,15 @@ int main(void) {
   return 0;
 }
 
-/* Lowering diagnostics: 4 event(s) (structured-cstyle-body=4) */
+void swap_ref__ii(int a, int b) {
+  int tmp = a;
+  a = b;
+  b = tmp;
+}
+
+/* Lowering diagnostics: 5 event(s) (structured-cstyle-body=5) */
 /* - factorial: structured-cstyle-body (2 stmt(s)) */
 /* - fib: structured-cstyle-body (2 stmt(s)) */
 /* - swap_ref: structured-cstyle-body (3 stmt(s)) */
 /* - clamp: structured-cstyle-body (3 stmt(s)) */
+/* - swap_ref: structured-cstyle-body (3 stmt(s)) */

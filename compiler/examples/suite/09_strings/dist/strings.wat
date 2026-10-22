@@ -15,7 +15,7 @@
   (import "env" "__free" (func $imp___free (param i32)))
   (import "env" "printf" (func $imp_printf (param f64 f64 f64 f64 f64 f64 f64 f64) (result i32)))
 
-  (memory $mem 1)
+  (memory $mem 2)
 
   (table $fn_table 6 funcref)
 
@@ -226,11 +226,15 @@
     i32.add
     i32.load
     i32.load8_u
+    i32.const 255
+    i32.and
     local.get $__frame
     i32.const 4
     i32.add
     i32.load
     i32.load8_u
+    i32.const 255
+    i32.and
     i32.sub
     local.get $__parent_frame
     global.set $__frame_ptr
@@ -330,6 +334,11 @@
     local.get $__tmp_i8
     drop
     i32.const 0
+    local.get $__parent_frame
+    global.set $__frame_ptr
+    local.get $__frame
+    global.set $__stack_ptr
+    return
     local.get $__parent_frame
     global.set $__frame_ptr
     local.get $__frame
@@ -449,6 +458,11 @@
     local.get $__tmp_i8
     drop
     i32.const 0
+    local.get $__parent_frame
+    global.set $__frame_ptr
+    local.get $__frame
+    global.set $__stack_ptr
+    return
     local.get $__parent_frame
     global.set $__frame_ptr
     local.get $__frame

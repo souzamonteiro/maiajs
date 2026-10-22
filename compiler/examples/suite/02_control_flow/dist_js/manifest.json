@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-16T20:44:47.283Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.7aBgpFNgdf/control_flow.port.c",
+  "generatedAt": "2026-10-21T23:46:09.561Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.7sEOEfGHDj/control_flow.port.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/02_control_flow/dist_js",
   "appName": "control_flow.port",
   "artifacts": {
@@ -16,7 +16,7 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 6694,
+  "sourceBytes": 6478,
   "asyncRuntime": {
     "resumeBridges": []
   }

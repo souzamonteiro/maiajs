@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-16T20:44:52.344Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.eaJSMm2L5y/classes.port.c",
+  "generatedAt": "2026-10-21T23:46:15.880Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.aocjYgzTwz/classes.port.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/04_classes/dist_js",
   "appName": "classes.port",
   "artifacts": {
@@ -16,7 +16,7 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 6574,
+  "sourceBytes": 6381,
   "asyncRuntime": {
     "resumeBridges": []
   }
