@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-21T23:46:19.960Z",
+  "generatedAt": "2026-10-22T15:49:06.205Z",
   "input": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/07_memory/memory.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/07_memory/dist",
   "appName": "memory",
@@ -16,5 +16,5 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 1405
+  "sourceBytes": 1452
 }

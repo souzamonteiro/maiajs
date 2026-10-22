@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-21T23:46:47.776Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.XxGqmpnJX9/preprocessor.port.c",
+  "generatedAt": "2026-10-22T15:49:34.363Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.2fCQ3xTRjb/preprocessor.port.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/11_preprocessor/dist_js",
   "appName": "preprocessor.port",
   "artifacts": {
@@ -16,7 +16,7 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 6262,
+  "sourceBytes": 6325,
   "asyncRuntime": {
     "resumeBridges": []
   }

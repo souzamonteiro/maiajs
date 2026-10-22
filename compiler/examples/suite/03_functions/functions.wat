@@ -182,12 +182,6 @@
     i32.store
     local.get $__tmp_i32
     drop
-    i32.const 0
-    local.get $__parent_frame
-    global.set $__frame_ptr
-    local.get $__frame
-    global.set $__stack_ptr
-    return
     local.get $__parent_frame
     global.set $__frame_ptr
     local.get $__frame

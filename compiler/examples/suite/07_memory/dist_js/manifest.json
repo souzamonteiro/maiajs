@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-21T23:46:26.844Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.uOsPgKt021/memory.port.c",
+  "generatedAt": "2026-10-22T15:49:13.149Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.VWsFql3TAk/memory.port.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/07_memory/dist_js",
   "appName": "memory.port",
   "artifacts": {
@@ -16,7 +16,7 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 20279,
+  "sourceBytes": 20342,
   "asyncRuntime": {
     "resumeBridges": []
   }

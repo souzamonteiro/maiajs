@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-21T23:46:16.216Z",
+  "generatedAt": "2026-10-22T15:49:02.397Z",
   "input": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/05_templates/templates.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/05_templates/dist",
   "appName": "templates",
@@ -16,5 +16,5 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 886
+  "sourceBytes": 933
 }

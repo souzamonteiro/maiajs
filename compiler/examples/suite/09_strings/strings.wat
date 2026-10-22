@@ -333,12 +333,6 @@
     i32.store8
     local.get $__tmp_i8
     drop
-    i32.const 0
-    local.get $__parent_frame
-    global.set $__frame_ptr
-    local.get $__frame
-    global.set $__stack_ptr
-    return
     local.get $__parent_frame
     global.set $__frame_ptr
     local.get $__frame
@@ -457,12 +451,6 @@
     i32.store8
     local.get $__tmp_i8
     drop
-    i32.const 0
-    local.get $__parent_frame
-    global.set $__frame_ptr
-    local.get $__frame
-    global.set $__stack_ptr
-    return
     local.get $__parent_frame
     global.set $__frame_ptr
     local.get $__frame

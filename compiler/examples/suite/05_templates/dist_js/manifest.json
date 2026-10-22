@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-21T23:46:17.457Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.zrVgEGeKr7/templates.port.c",
+  "generatedAt": "2026-10-22T15:49:03.653Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.ywYVP4v5j9/templates.port.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/05_templates/dist_js",
   "appName": "templates.port",
   "artifacts": {
@@ -16,7 +16,7 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 4243,
+  "sourceBytes": 4306,
   "asyncRuntime": {
     "resumeBridges": []
   }

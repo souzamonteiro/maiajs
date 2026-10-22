@@ -14,6 +14,7 @@ extern int    __exc_matches(int thrown_type, int catch_type);
 extern void*  __malloc(unsigned long size);
 extern void   __free(void* ptr);
 extern int    sprintf(char* dest, const char* format, ...);
+extern int    printf(const char* format, ...);
 
 /* Global functions */
 int c_strlen__pv(char* s);
@@ -43,7 +44,6 @@ void c_strcpy__pvpv(char* dst, char* src) {
     *dst++ = *src++;
   }
   *dst = '\0';
-  return (void)0;
 }
 
 void c_strcat__pvpv(char* dst, char* src) {
@@ -54,7 +54,6 @@ void c_strcat__pvpv(char* dst, char* src) {
     *dst++ = *src++;
   }
   *dst = '\0';
-  return (void)0;
 }
 
 int char_count__pvc(char* s, char c) {

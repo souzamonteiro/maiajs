@@ -14,6 +14,7 @@ extern int    __exc_matches(int thrown_type, int catch_type);
 extern void*  __malloc(unsigned long size);
 extern void   __free(void* ptr);
 extern int    sprintf(char* dest, const char* format, ...);
+extern int    printf(const char* format, ...);
 
 typedef struct Vec2 Vec2;
 
@@ -75,32 +76,38 @@ int main(void);
 int main(void) {
   Vec2 a;
   Vec2_init__dd(&a, 3.0, 4.0);
-  Vec2 b;
-  Vec2_init__N4Vec2(&b, a);
-  Vec2 c;
-  Vec2_init__dd(&c, 0.0, 0.0);
-  Vec2 unit;
-  Vec2_init__dd(&unit, 1.0, 0.0);
+  {
+    Vec2 b;
+    Vec2_init__N4Vec2(&b, a);
+    {
+      Vec2 c;
+      Vec2_init__dd(&c, 0.0, 0.0);
+      {
+        Vec2 unit;
+        Vec2_init__dd(&unit, 1.0, 0.0);
 
-  if (a.x == 3.0) {
-    printf("PASS ctor_x\n");
+        if (a.x == 3.0) {
+          printf("PASS ctor_x\n");
+        }
+        if (a.y == 4.0) {
+          printf("PASS ctor_y\n");
+        }
+        if (b.x == 3.0 && b.y == 4.0) {
+          printf("PASS copy_ctor\n");
+        }
+        c = a;
+        if (c.x == 3.0 && c.y == 4.0) {
+          printf("PASS assign_op\n");
+        }
+        if (Vec2_dot__N4Vec2(&a, unit) == 3.0) {
+          printf("PASS dot_x_axis\n");
+        }
+        if (Vec2_lengthSq(&a) == 25.0) {
+          printf("PASS length_sq\n");
+        }
+        printf("ALL PASS\n");
+        return 0;
+      }
+    }
   }
-  if (a.y == 4.0) {
-    printf("PASS ctor_y\n");
-  }
-  if (b.x == 3.0 && b.y == 4.0) {
-    printf("PASS copy_ctor\n");
-  }
-  c = a;
-  if (c.x == 3.0 && c.y == 4.0) {
-    printf("PASS assign_op\n");
-  }
-  if (Vec2_dot__N4Vec2(&a, unit) == 3.0) {
-    printf("PASS dot_x_axis\n");
-  }
-  if (Vec2_lengthSq(&a) == 25.0) {
-    printf("PASS length_sq\n");
-  }
-  printf("ALL PASS\n");
-  return 0;
 }

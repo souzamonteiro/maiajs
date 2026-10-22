@@ -14,6 +14,7 @@ extern int    __exc_matches(int thrown_type, int catch_type);
 extern void*  __malloc(unsigned long size);
 extern void   __free(void* ptr);
 extern int    sprintf(char* dest, const char* format, ...);
+extern int    printf(const char* format, ...);
 
 typedef int (*IntOp)(int);
 
@@ -57,7 +58,6 @@ void swap_ref__pvpv(int* a, int* b) {
   int tmp = *a;
   *a = *b;
   *b = tmp;
-  return (void)0;
 }
 
 int sum_cref__ii(int x, int y) {
