@@ -138,7 +138,7 @@ int test_compound(void) {
   if (c == 6) {
     printf("PASS cdiv\n"); ++ok;
   }
-  c = ((int)(c) % (int)(4));
+  c %= 4;
   if (c == 2) {
     printf("PASS cmod\n"); ++ok;
   }

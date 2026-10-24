@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-23T18:14:19.859Z",
+  "generatedAt": "2026-10-24T14:37:09.531Z",
   "input": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/01_operators/operators.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/01_operators/dist",
   "appName": "operators",
@@ -16,5 +16,5 @@
   "copiedLibraries": [],
   "runtimeProvidedHeaders": [],
   "missingLibraries": [],
-  "sourceBytes": 4825
+  "sourceBytes": 4806
 }

@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-23T18:15:31.276Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.AcWqNBb9ja/test.c",
+  "generatedAt": "2026-10-24T14:38:21.512Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.gROlPs3mLa/test.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/dist",
   "appName": "test",
   "artifacts": {
