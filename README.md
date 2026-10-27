@@ -23,6 +23,9 @@ Mandatory cross-repository synchronization workflow:
 
 - [docs/Maia_Ecosystem_Synchronization_Protocol.md](docs/Maia_Ecosystem_Synchronization_Protocol.md)
 
+UTF-8 compiler propagation and separate legacy source/artifact limitations are
+recorded in [the synchronization report](docs/UTF8_TOOLCHAIN_SYNC.md).
+
 ## Transpiler Status and Diagnosis
 
 For a clear diagnosis of transpiler capabilities, limitations, and remediation roadmap:
