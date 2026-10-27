@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-24T17:46:00.050Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.T6kDGEFSyu/control_flow.port.c",
+  "generatedAt": "2026-10-27T10:09:58.595Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.8KMFocUhkc/control_flow.port.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/02_control_flow/dist_js",
   "appName": "control_flow.port",
   "artifacts": {
