@@ -26,6 +26,9 @@ Mandatory cross-repository synchronization workflow:
 UTF-8 compiler propagation and separate legacy source/artifact limitations are
 recorded in [the synchronization report](docs/UTF8_TOOLCHAIN_SYNC.md).
 
+Local struct compiler correction6aa8eac is consumed and validated through the
+own MaiaCpp submodule; see [validation and artifact scope](docs/LOCAL_STRUCT_TOOLCHAIN_SYNC.md).
+
 ## Transpiler Status and Diagnosis
 
 For a clear diagnosis of transpiler capabilities, limitations, and remediation roadmap:
