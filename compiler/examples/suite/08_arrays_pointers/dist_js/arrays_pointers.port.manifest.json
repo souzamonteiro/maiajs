@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-02T20:20:23.766Z",
-  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.KvfL7oXShx/arrays_pointers.port.c",
+  "generatedAt": "2026-11-02T20:59:36.780Z",
+  "input": "/var/folders/6p/871hys095mq5mm7078sqplx40000gn/T/tmp.VvG7dgrK6L/arrays_pointers.port.c",
   "outDir": "/Volumes/External_SSD/Documentos/Projects/maiajs/compiler/examples/suite/08_arrays_pointers/dist_js",
   "appName": "arrays_pointers.port",
   "artifacts": {
