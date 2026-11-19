@@ -6,9 +6,9 @@
     "double y = x;",
     "{",
     "double y = 3;",
-    "__console__log(y);",
+    "__console__log(__maia_console_to_cstr_number((double)(y)));",
     "return (void*)(y);",
-    "__console__log(shadow(1));"
+    "__console__log(__maia_console_to_cstr_number((double)(shadow(1))));"
   ],
   "cppExclude": [
     "[expression not yet lowered]",

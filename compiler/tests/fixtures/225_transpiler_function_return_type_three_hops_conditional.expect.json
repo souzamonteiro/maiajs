@@ -10,7 +10,7 @@
     "return (double)(1);",
     "return (double)(source(flag));",
     "return (double)(middle(flag));",
-    "__console__log(sink(1));"
+    "__console__log(__maia_console_to_cstr_number((double)(sink(1))));"
   ],
   "cppExclude": [
     "[expression not yet lowered]",

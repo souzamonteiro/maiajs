@@ -60,8 +60,8 @@ assignmentExpression ::= arrowFunction
            | leftHandSideExpression assignmentOperator assignmentExpression
            | conditionalExpression
 
-yieldExpression ::= 'yield' assignmentExpression?
-           | 'yield' '*' assignmentExpression
+yieldExpression ::= 'yield' '*' assignmentExpression
+           | 'yield' assignmentExpression?
 
 arrowFunction ::= arrowFunctionParameters '=>' arrowFunctionBody
 

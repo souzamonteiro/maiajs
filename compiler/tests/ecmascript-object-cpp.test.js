@@ -88,8 +88,12 @@ test('static Promise.then: preserves a computed object projection across multi-p
     'Promise.resolve(record).then(result => console.log("es8 promise object: " + result.id + " " + result.score + " " + result.state));'
   ].join('\n'));
 
-  assert.match(cpp, /__console__log\("es8 promise object: 7 22 ready"\);/,
-    'Promise callback must preserve every statically-known object property in the deferred marker');
+  assert.match(cpp, /__maia_promise_static_resolve\(\(int\)\(record\)\)/,
+    'Promise.resolve(record) must lower to runtime __maia_promise_static_resolve');
+  assert.match(cpp, /__maia_promise_then\(/,
+    '.then(...) must lower to runtime __maia_promise_then');
+  assert.match(cpp, /__maia_runtime_value_get_property\(\(void\*\)\(result\), \(void\*\)"score"\)/,
+    'Promise callback must preserve dynamic property access on resolved object');
   assert.doesNotMatch(cpp, /__Promise__resolve\(record\);/,
-    'a statically lowered Promise.then chain must not fall back to a truncated resolve call');
+    'a lowered Promise.then chain must not fall back to a truncated resolve call');
 });

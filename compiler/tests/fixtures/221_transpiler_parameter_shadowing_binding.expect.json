@@ -6,7 +6,7 @@
     "int useShadow(int add);",
     "int useShadow(int add) {",
     "return (int)(add);",
-    "__console__log(useShadow(3));"
+    "__console__log(__maia_console_to_cstr_number((double)(useShadow(3))));"
   ],
   "cppExclude": [
     "__useShadow(",

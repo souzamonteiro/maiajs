@@ -41,10 +41,12 @@ function compileSource(sourceCode, options = {}) {
   if (options.strictLowering) {
     args.push('--strict-lowering');
   }
-  return spawnSync(process.execPath, args, {
+  const result = spawnSync(process.execPath, args, {
     cwd: path.resolve(__dirname, '..', '..'),
     encoding: 'utf8'
   });
+  result.cpp = fs.existsSync(cppOut) ? fs.readFileSync(cppOut, 'utf8') : '';
+  return result;
 }
 
 test('lambda lowering: emits a callable C++ function for a non-capturing top-level arrow', () => {
@@ -411,15 +413,15 @@ test('function values: direct captured arrow blocks evaluate effectful arguments
   assert.doesNotMatch(cpp, /__maia_runtime_lambda_invoke_function_id\(\(void\*\)add, 1, 0\)/, 'the direct block call must not use the synthetic invocation bridge');
 });
 
-test('function values: strict lowering rejects captured arrow block calls used as expressions', () => {
+test('function values: strict lowering supports captured arrow block calls via closure runtime', () => {
   const result = compileSource([
     'const prefix = "item";',
     'const show = value => { console.log(prefix, value); };',
     'const result = show(2);'
   ].join('\n'), { strictLowering: true });
 
-  assert.notEqual(result.status, 0, 'a captured block call used as an expression still requires an undefined-value runtime');
-  assert.match(result.stderr + result.stdout, /captured-arrow-call-unlowerable/, 'the rejection must identify the missing closure runtime');
+  assert.equal(result.status, 0, `expected strict lowering to succeed: ${result.stderr || result.stdout}`);
+  assert.match(result.cpp, /__maia_closure_call_i32_1\(/, 'captured arrow call should dispatch through closure runtime');
 });
 
 test('function values: static predicate callbacks evaluate some, every, find, and findIndex', () => {

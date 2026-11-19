@@ -7,7 +7,7 @@
     "double sink(void);",
     "return (double)(source());",
     "return (double)(middle());",
-    "__console__log(sink());"
+    "__console__log(__maia_console_to_cstr_number((double)(sink())));"
   ],
   "cppExclude": [
     "[expression not yet lowered]",

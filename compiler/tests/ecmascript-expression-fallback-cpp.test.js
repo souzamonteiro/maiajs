@@ -47,7 +47,7 @@ test('return fallback: unresolved return expression no longer emits return place
   );
 
   assert.match(cpp, /void\* delay\(int ms, int value\)/, 'function must be emitted with its promise result type');
-  assert.match(cpp, /return \(void\*\)\(__new__Promise\(/, 'promise construction should remain a concrete runtime expression');
+  assert.match(cpp, /return \(void\*\)\(__maia_promise_new\(/, 'promise construction should lower to __maia_promise_new');
   assert.doesNotMatch(cpp, /\[return expression not yet lowered\]/, 'C++ output must not contain return placeholder markers');
 });
 
@@ -125,8 +125,8 @@ test('destructuring lowers to C++98-safe fallback without auto/member indexing t
     + 'const { x, y } = sourceObj;\n'
   );
 
-  assert.match(cpp, /\[unsupported array destructuring lowered to default values\]/, 'array destructuring should emit explicit unsupported diagnostic');
-  assert.match(cpp, /\[unsupported object destructuring lowered to default values\]/, 'object destructuring should emit explicit unsupported diagnostic');
+  assert.match(cpp, /__maia_runtime_value_get_index\(__maia_destr_arr_\d+, 0\)/, 'array destructuring should lower to runtime index lookup');
+  assert.match(cpp, /__maia_runtime_value_get_property\(__maia_destr_obj_\d+, \(void\*\)"x"\)/, 'object destructuring should lower to runtime property lookup');
   assert.doesNotMatch(cpp, /\bauto\s+__arr\d+\s*=\s*/, 'C++11 auto-deduction must not be emitted');
   assert.doesNotMatch(cpp, /\bauto\s+__obj\d+\s*=\s*/, 'C++11 auto-deduction must not be emitted');
   assert.doesNotMatch(cpp, /__arr\d+\s*\[/, 'array-index destructuring temps must not leak into output');

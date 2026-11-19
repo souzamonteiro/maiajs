@@ -71,6 +71,11 @@ class Lexer {
   }
   
   tokenize() {
+    if (this.position === 0 && this.input[0] === '#' && this.input[1] === '!') {
+      while (this.position < this.input.length && this.input[this.position] !== '\n' && this.input[this.position] !== '\r') {
+        this.position++;
+      }
+    }
     while (this.position < this.input.length) {
       let bestPattern = null;
       let bestMatch = null;
@@ -80,7 +85,19 @@ class Lexer {
         type === 'Name' || type === 'NameChar' || type === 'NameStartChar'
       );
 
-      for (const pattern of this.tokenPatterns) {
+      if (this.input[this.position] === '/' && this.input[this.position + 1] !== '/' && this.input[this.position + 1] !== '*') {
+        const prevTok = this.tokens.length > 0 ? this.tokens[this.tokens.length - 1].type : null;
+        const afterValue = prevTok && (prevTok === 'Identifier' || prevTok === 'DecimalLiteral' || prevTok === 'NumericLiteral' || prevTok === 'StringLiteral' || prevTok === 'RegularExpressionLiteral' || prevTok === 'TOKEN__29_' || prevTok === 'TOKEN__5D_' || prevTok === 'TOKEN_this' || prevTok === 'TOKEN_true' || prevTok === 'TOKEN_false' || prevTok === 'TOKEN_null');
+        if (!afterValue) {
+          const reSub = this.input.substring(this.position);
+          const reMatch = reSub.match(/^\/(?:[^\/\\\r\n\[]|\\.|\[(?:[^\]\\\r\n]|\\.)*\])+\/[a-zA-Z]*/);
+          if (reMatch) {
+            bestPattern = { type: 'RegularExpressionLiteral', skip: false };
+            bestMatch = reMatch;
+          }
+        }
+      }
+      if (!bestMatch) for (const pattern of this.tokenPatterns) {
         // Template spans are synthesized only when a closing brace ends the
         // active interpolation. Their raw patterns must not consume ordinary
         // braces from nested expressions.
@@ -1255,6 +1272,18 @@ class Parser {
       const _ruleMark = this.markEventState();
       try {
     this.consume('TOKEN_yield');
+    this.consume('TOKEN__2A_');
+    this.parseassignmentExpression();
+        _matched = true;
+      } catch (e) {
+        this.position = _ruleStart;
+        this.restoreEventState(_ruleMark);
+      }
+    }
+    if (!_matched) {
+      const _ruleMark = this.markEventState();
+      try {
+    this.consume('TOKEN_yield');
     // Optional: try parsing assignmentExpression
     {
       const savePos = this.position;
@@ -1266,18 +1295,6 @@ class Parser {
         this.restoreEventState(saveMark);
       }
     }
-        _matched = true;
-      } catch (e) {
-        this.position = _ruleStart;
-        this.restoreEventState(_ruleMark);
-      }
-    }
-    if (!_matched) {
-      const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_yield');
-    this.consume('TOKEN__2A_');
-    this.parseassignmentExpression();
         _matched = true;
       } catch (e) {
         this.position = _ruleStart;
@@ -4388,7 +4405,9 @@ class Parser {
     if (!_matched) {
       const _ruleMark = this.markEventState();
       try {
-    this.parsesingleNameBinding();
+    this.parsepropertyName();
+    this.consume('TOKEN__3A_');
+    this.parsebindingElement();
         _matched = true;
       } catch (e) {
         this.position = _ruleStart;
@@ -4398,9 +4417,7 @@ class Parser {
     if (!_matched) {
       const _ruleMark = this.markEventState();
       try {
-    this.parsepropertyName();
-    this.consume('TOKEN__3A_');
-    this.parsebindingElement();
+    this.parsesingleNameBinding();
         _matched = true;
       } catch (e) {
         this.position = _ruleStart;
