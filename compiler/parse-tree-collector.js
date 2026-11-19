@@ -2,6 +2,7 @@ class ParseTreeCollector {
   constructor() {
     this.stack = [];
     this.root = null;
+    this.lastClosedNode = null;
   }
 
   parse(parser, inputLabel = 'input') {
@@ -30,38 +31,26 @@ class ParseTreeCollector {
   }
 
   checkpoint() {
-    // Hot path: parser backtracking calls checkpoint/restore very frequently.
-    // A full structuredClone of the whole tree causes severe quadratic
-    // behavior on ambiguous inputs. We only need enough state to rollback
-    // mutations performed after this checkpoint.
+    const len = this.stack.length;
     return {
-      stackLength: this.stack.length,
-      root: this.root,
-      childLengths: this.stack.map((node) =>
-        Array.isArray(node && node.children) ? node.children.length : 0
-      )
+      stackLength: len,
+      topChildCount: len > 0 ? this.stack[len - 1].children.length : 0,
+      root: this.root
     };
   }
 
   restore(mark) {
     if (!mark) return;
-
-    const targetLen = Number.isInteger(mark.stackLength) ? mark.stackLength : 0;
-    const childLengths = Array.isArray(mark.childLengths) ? mark.childLengths : [];
-
-    const sharedLen = Math.min(this.stack.length, childLengths.length, targetLen);
-    for (let i = 0; i < sharedLen; i += 1) {
-      const node = this.stack[i];
-      if (node && Array.isArray(node.children)) {
-        node.children.length = childLengths[i];
+    while (this.stack.length > mark.stackLength) {
+      this.stack.pop();
+    }
+    if (mark.stackLength > 0) {
+      const top = this.stack[mark.stackLength - 1];
+      if (top && top.children.length > mark.topChildCount) {
+        top.children.length = mark.topChildCount;
       }
     }
-
-    if (this.stack.length > targetLen) {
-      this.stack.length = targetLen;
-    }
-
-    this.root = Object.prototype.hasOwnProperty.call(mark, 'root') ? mark.root : this.root;
+    this.root = mark.root || null;
   }
 
   startNonterminal(name) {
@@ -81,7 +70,18 @@ class ParseTreeCollector {
   endNonterminal() {
     const node = this.stack.pop();
     if (!node) return;
+    this.lastClosedNode = node;
 
+    if (this.stack.length === 0) {
+      this.root = node;
+    } else {
+      this.stack[this.stack.length - 1].children.push(node);
+    }
+  }
+
+  appendNode(node) {
+    if (!node) return;
+    this.lastClosedNode = node;
     if (this.stack.length === 0) {
       this.root = node;
     } else {

@@ -71,11 +71,6 @@ class Lexer {
   }
   
   tokenize() {
-    if (this.position === 0 && this.input[0] === '#' && this.input[1] === '!') {
-      while (this.position < this.input.length && this.input[this.position] !== '\n' && this.input[this.position] !== '\r') {
-        this.position++;
-      }
-    }
     while (this.position < this.input.length) {
       let bestPattern = null;
       let bestMatch = null;
@@ -85,19 +80,7 @@ class Lexer {
         type === 'Name' || type === 'NameChar' || type === 'NameStartChar'
       );
 
-      if (this.input[this.position] === '/' && this.input[this.position + 1] !== '/' && this.input[this.position + 1] !== '*') {
-        const prevTok = this.tokens.length > 0 ? this.tokens[this.tokens.length - 1].type : null;
-        const afterValue = prevTok && (prevTok === 'Identifier' || prevTok === 'DecimalLiteral' || prevTok === 'NumericLiteral' || prevTok === 'StringLiteral' || prevTok === 'RegularExpressionLiteral' || prevTok === 'TOKEN__29_' || prevTok === 'TOKEN__5D_' || prevTok === 'TOKEN_this' || prevTok === 'TOKEN_true' || prevTok === 'TOKEN_false' || prevTok === 'TOKEN_null');
-        if (!afterValue) {
-          const reSub = this.input.substring(this.position);
-          const reMatch = reSub.match(/^\/(?:[^\/\\\r\n\[]|\\.|\[(?:[^\]\\\r\n]|\\.)*\])+\/[a-zA-Z]*/);
-          if (reMatch) {
-            bestPattern = { type: 'RegularExpressionLiteral', skip: false };
-            bestMatch = reMatch;
-          }
-        }
-      }
-      if (!bestMatch) for (const pattern of this.tokenPatterns) {
+      for (const pattern of this.tokenPatterns) {
         // Template spans are synthesized only when a closing brace ends the
         // active interpolation. Their raw patterns must not consume ordinary
         // braces from nested expressions.
@@ -226,14 +209,19 @@ class Lexer {
   }
 }
 
+const __BACKTRACK_ERROR = new Error('Backtrack');
+
 class Parser {
   constructor(input, eventHandler = null) {
     this.lexer = new Lexer(input);
     this.tokens = this.lexer.tokenize();
     this.position = 0;
     this.errors = [];
+    this._lastError = null;
     this.eventHandler = eventHandler;
     this.failureMemo = new Set();
+    this.successMemo = new Map();
+    this._canMemoSuccess = !eventHandler || typeof eventHandler.appendNode === 'function';
   }
   
   peek(offset = 0) {
@@ -243,12 +231,17 @@ class Parser {
   consume(expectedType) {
     const token = this.peek();
     if (!token || token.type !== expectedType) {
-      this.errors.push({
+      const errObj = {
         expected: expectedType,
         found: token ? token.type : 'EOF',
         position: this.position
-      });
-      throw new Error(`Expected '${expectedType}', got '${token ? token.type : 'EOF'}'`);
+      };
+      this._lastError = errObj;
+      if (this.errors.length === 0 || this.position >= this.errors[this.errors.length - 1].position) {
+        this.errors.length = 0;
+        this.errors.push(errObj);
+      }
+      throw __BACKTRACK_ERROR;
     }
     if (this.eventHandler && typeof this.eventHandler.terminal === 'function') {
       this.eventHandler.terminal(expectedType, token.value, this.position);
@@ -278,12 +271,17 @@ class Parser {
     const pattern = this.lexer.tokenPatterns.find((candidate) => candidate.type === expectedType);
     const match = pattern && token ? token.value.match(pattern.regex) : null;
     if (!match || match.index !== 0 || match[0].length !== token.value.length) {
-      this.errors.push({
+      const errObj = {
         expected: expectedType,
         found: token ? token.type : 'EOF',
         position: this.position
-      });
-      throw new Error('Expected contextual ' + expectedType + ', got ' + (token ? token.type : 'EOF'));
+      };
+      this._lastError = errObj;
+      if (this.errors.length === 0 || this.position >= this.errors[this.errors.length - 1].position) {
+        this.errors.length = 0;
+        this.errors.push(errObj);
+      }
+      throw __BACKTRACK_ERROR;
     }
 
     if (this.eventHandler && typeof this.eventHandler.terminal === 'function') {
@@ -312,7 +310,24 @@ class Parser {
     return `Syntax error: expected ${err.expected}, got ${err.found}`;
   }
   parse() {
-    const result = this.parseprogram();
+    const prevStackTraceLimit = Error.stackTraceLimit;
+    Error.stackTraceLimit = 0;
+    let result;
+    let parseErr = null;
+    try {
+      result = this.parseprogram();
+    } catch (e) {
+      parseErr = e;
+    } finally {
+      Error.stackTraceLimit = prevStackTraceLimit;
+    }
+    if (parseErr !== null) {
+      if (parseErr === __BACKTRACK_ERROR) {
+        const err = this._lastError || this.errors[this.errors.length - 1];
+        throw new Error(err ? `Expected '${err.expected}', got '${err.found}'` : this.getErrorMessage());
+      }
+      throw parseErr;
+    }
     const next = this.peek();
     if (!next && this.position === this.tokens.length) {
       return result;
@@ -326,7 +341,17 @@ class Parser {
     const __memoStart = this.position;
     const __memoKey = 'program@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule program at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('program', this.position);
@@ -361,6 +386,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -371,13 +399,32 @@ class Parser {
           this.eventHandler.abortNonterminal('program', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsesourceElement() {
     const __memoStart = this.position;
     const __memoKey = 'sourceElement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule sourceElement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('sourceElement', this.position);
@@ -417,12 +464,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 3 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -433,13 +483,32 @@ class Parser {
           this.eventHandler.abortNonterminal('sourceElement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsestatement() {
     const __memoStart = this.position;
     const __memoKey = 'statement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule statement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('statement', this.position);
@@ -659,12 +728,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 21 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -675,13 +747,32 @@ class Parser {
           this.eventHandler.abortNonterminal('statement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseblock() {
     const __memoStart = this.position;
     const __memoKey = 'block@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule block at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('block', this.position);
@@ -706,6 +797,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -716,13 +810,32 @@ class Parser {
           this.eventHandler.abortNonterminal('block', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsevariableStatement() {
     const __memoStart = this.position;
     const __memoKey = 'variableStatement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule variableStatement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('variableStatement', this.position);
@@ -736,6 +849,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -746,13 +862,32 @@ class Parser {
           this.eventHandler.abortNonterminal('variableStatement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseletDeclaration() {
     const __memoStart = this.position;
     const __memoKey = 'letDeclaration@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule letDeclaration at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('letDeclaration', this.position);
@@ -766,6 +901,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -776,13 +914,32 @@ class Parser {
           this.eventHandler.abortNonterminal('letDeclaration', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseconstDeclaration() {
     const __memoStart = this.position;
     const __memoKey = 'constDeclaration@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule constDeclaration at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('constDeclaration', this.position);
@@ -796,6 +953,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -806,13 +966,32 @@ class Parser {
           this.eventHandler.abortNonterminal('constDeclaration', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parselexicalDeclaration() {
     const __memoStart = this.position;
     const __memoKey = 'lexicalDeclaration@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule lexicalDeclaration at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('lexicalDeclaration', this.position);
@@ -826,6 +1005,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -836,13 +1018,32 @@ class Parser {
           this.eventHandler.abortNonterminal('lexicalDeclaration', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseletOrConst() {
     const __memoStart = this.position;
     const __memoKey = 'letOrConst@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule letOrConst at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('letOrConst', this.position);
@@ -872,12 +1073,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -888,13 +1092,32 @@ class Parser {
           this.eventHandler.abortNonterminal('letOrConst', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebindingList() {
     const __memoStart = this.position;
     const __memoKey = 'bindingList@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bindingList at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bindingList', this.position);
@@ -920,6 +1143,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -930,13 +1156,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bindingList', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parselexicalBinding() {
     const __memoStart = this.position;
     const __memoKey = 'lexicalBinding@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule lexicalBinding at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('lexicalBinding', this.position);
@@ -978,12 +1223,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -994,13 +1242,32 @@ class Parser {
           this.eventHandler.abortNonterminal('lexicalBinding', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsevariableDeclarationList() {
     const __memoStart = this.position;
     const __memoKey = 'variableDeclarationList@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule variableDeclarationList at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('variableDeclarationList', this.position);
@@ -1026,6 +1293,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1036,13 +1306,32 @@ class Parser {
           this.eventHandler.abortNonterminal('variableDeclarationList', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsevariableDeclaration() {
     const __memoStart = this.position;
     const __memoKey = 'variableDeclaration@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule variableDeclaration at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('variableDeclaration', this.position);
@@ -1094,12 +1383,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1110,13 +1402,32 @@ class Parser {
           this.eventHandler.abortNonterminal('variableDeclaration', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseinitializer() {
     const __memoStart = this.position;
     const __memoKey = 'initializer@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule initializer at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('initializer', this.position);
@@ -1129,6 +1440,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1139,13 +1453,32 @@ class Parser {
           this.eventHandler.abortNonterminal('initializer', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseassignmentExpression() {
     const __memoStart = this.position;
     const __memoKey = 'assignmentExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule assignmentExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('assignmentExpression', this.position);
@@ -1237,12 +1570,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 8 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1253,13 +1589,32 @@ class Parser {
           this.eventHandler.abortNonterminal('assignmentExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseyieldExpression() {
     const __memoStart = this.position;
     const __memoKey = 'yieldExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule yieldExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('yieldExpression', this.position);
@@ -1302,12 +1657,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1318,13 +1676,32 @@ class Parser {
           this.eventHandler.abortNonterminal('yieldExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsearrowFunction() {
     const __memoStart = this.position;
     const __memoKey = 'arrowFunction@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule arrowFunction at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('arrowFunction', this.position);
@@ -1338,6 +1715,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1348,13 +1728,32 @@ class Parser {
           this.eventHandler.abortNonterminal('arrowFunction', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseasyncArrowFunction() {
     const __memoStart = this.position;
     const __memoKey = 'asyncArrowFunction@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule asyncArrowFunction at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('asyncArrowFunction', this.position);
@@ -1414,12 +1813,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 3 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1430,13 +1832,32 @@ class Parser {
           this.eventHandler.abortNonterminal('asyncArrowFunction', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseasyncArrowBindingIdentifier() {
     const __memoStart = this.position;
     const __memoKey = 'asyncArrowBindingIdentifier@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule asyncArrowBindingIdentifier at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('asyncArrowBindingIdentifier', this.position);
@@ -1448,6 +1869,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1458,13 +1882,32 @@ class Parser {
           this.eventHandler.abortNonterminal('asyncArrowBindingIdentifier', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsecoverCallExpressionAndAsyncArrowHead() {
     const __memoStart = this.position;
     const __memoKey = 'coverCallExpressionAndAsyncArrowHead@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule coverCallExpressionAndAsyncArrowHead at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('coverCallExpressionAndAsyncArrowHead', this.position);
@@ -1477,6 +1920,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1487,13 +1933,32 @@ class Parser {
           this.eventHandler.abortNonterminal('coverCallExpressionAndAsyncArrowHead', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseasyncConciseBody() {
     const __memoStart = this.position;
     const __memoKey = 'asyncConciseBody@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule asyncConciseBody at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('asyncConciseBody', this.position);
@@ -1525,12 +1990,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1541,13 +2009,32 @@ class Parser {
           this.eventHandler.abortNonterminal('asyncConciseBody', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsearrowFunctionParameters() {
     const __memoStart = this.position;
     const __memoKey = 'arrowFunctionParameters@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule arrowFunctionParameters at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('arrowFunctionParameters', this.position);
@@ -1589,12 +2076,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1605,13 +2095,32 @@ class Parser {
           this.eventHandler.abortNonterminal('arrowFunctionParameters', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsearrowFunctionBody() {
     const __memoStart = this.position;
     const __memoKey = 'arrowFunctionBody@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule arrowFunctionBody at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('arrowFunctionBody', this.position);
@@ -1643,12 +2152,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1659,13 +2171,32 @@ class Parser {
           this.eventHandler.abortNonterminal('arrowFunctionBody', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseconditionalExpression() {
     const __memoStart = this.position;
     const __memoKey = 'conditionalExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule conditionalExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('conditionalExpression', this.position);
@@ -1691,6 +2222,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1701,13 +2235,32 @@ class Parser {
           this.eventHandler.abortNonterminal('conditionalExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parselogicalORExpression() {
     const __memoStart = this.position;
     const __memoKey = 'logicalORExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule logicalORExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('logicalORExpression', this.position);
@@ -1733,6 +2286,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1743,13 +2299,32 @@ class Parser {
           this.eventHandler.abortNonterminal('logicalORExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parselogicalANDExpression() {
     const __memoStart = this.position;
     const __memoKey = 'logicalANDExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule logicalANDExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('logicalANDExpression', this.position);
@@ -1775,6 +2350,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1785,13 +2363,32 @@ class Parser {
           this.eventHandler.abortNonterminal('logicalANDExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebitwiseORExpression() {
     const __memoStart = this.position;
     const __memoKey = 'bitwiseORExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bitwiseORExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bitwiseORExpression', this.position);
@@ -1817,6 +2414,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1827,13 +2427,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bitwiseORExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebitwiseXORExpression() {
     const __memoStart = this.position;
     const __memoKey = 'bitwiseXORExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bitwiseXORExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bitwiseXORExpression', this.position);
@@ -1859,6 +2478,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1869,13 +2491,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bitwiseXORExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebitwiseANDExpression() {
     const __memoStart = this.position;
     const __memoKey = 'bitwiseANDExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bitwiseANDExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bitwiseANDExpression', this.position);
@@ -1901,6 +2542,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -1911,13 +2555,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bitwiseANDExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseequalityExpression() {
     const __memoStart = this.position;
     const __memoKey = 'equalityExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule equalityExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('equalityExpression', this.position);
@@ -1977,7 +2640,7 @@ class Parser {
           this.restoreEventState(_altMark);
         }
       }
-      if (!_matchedAlt) { throw new Error('No group alternative matched'); }
+      if (!_matchedAlt) { throw __BACKTRACK_ERROR; }
     }
     this.parserelationalExpression();
       } catch (e) {
@@ -1991,6 +2654,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -2001,13 +2667,32 @@ class Parser {
           this.eventHandler.abortNonterminal('equalityExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parserelationalExpression() {
     const __memoStart = this.position;
     const __memoKey = 'relationalExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule relationalExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('relationalExpression', this.position);
@@ -2089,7 +2774,7 @@ class Parser {
           this.restoreEventState(_altMark);
         }
       }
-      if (!_matchedAlt) { throw new Error('No group alternative matched'); }
+      if (!_matchedAlt) { throw __BACKTRACK_ERROR; }
     }
     this.parseshiftExpression();
       } catch (e) {
@@ -2103,6 +2788,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -2113,13 +2801,32 @@ class Parser {
           this.eventHandler.abortNonterminal('relationalExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseshiftExpression() {
     const __memoStart = this.position;
     const __memoKey = 'shiftExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule shiftExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('shiftExpression', this.position);
@@ -2168,7 +2875,7 @@ class Parser {
           this.restoreEventState(_altMark);
         }
       }
-      if (!_matchedAlt) { throw new Error('No group alternative matched'); }
+      if (!_matchedAlt) { throw __BACKTRACK_ERROR; }
     }
     this.parseadditiveExpression();
       } catch (e) {
@@ -2182,6 +2889,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -2192,13 +2902,32 @@ class Parser {
           this.eventHandler.abortNonterminal('shiftExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseadditiveExpression() {
     const __memoStart = this.position;
     const __memoKey = 'additiveExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule additiveExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('additiveExpression', this.position);
@@ -2236,7 +2965,7 @@ class Parser {
           this.restoreEventState(_altMark);
         }
       }
-      if (!_matchedAlt) { throw new Error('No group alternative matched'); }
+      if (!_matchedAlt) { throw __BACKTRACK_ERROR; }
     }
     this.parsemultiplicativeExpression();
       } catch (e) {
@@ -2250,6 +2979,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -2260,13 +2992,32 @@ class Parser {
           this.eventHandler.abortNonterminal('additiveExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsemultiplicativeExpression() {
     const __memoStart = this.position;
     const __memoKey = 'multiplicativeExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule multiplicativeExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('multiplicativeExpression', this.position);
@@ -2315,7 +3066,7 @@ class Parser {
           this.restoreEventState(_altMark);
         }
       }
-      if (!_matchedAlt) { throw new Error('No group alternative matched'); }
+      if (!_matchedAlt) { throw __BACKTRACK_ERROR; }
     }
     this.parseexponentiationExpression();
       } catch (e) {
@@ -2329,6 +3080,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -2339,13 +3093,32 @@ class Parser {
           this.eventHandler.abortNonterminal('multiplicativeExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseexponentiationExpression() {
     const __memoStart = this.position;
     const __memoKey = 'exponentiationExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule exponentiationExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('exponentiationExpression', this.position);
@@ -2377,12 +3150,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -2393,13 +3169,32 @@ class Parser {
           this.eventHandler.abortNonterminal('exponentiationExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseunaryExpression() {
     const __memoStart = this.position;
     const __memoKey = 'unaryExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule unaryExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('unaryExpression', this.position);
@@ -2528,12 +3323,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 11 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -2544,13 +3342,32 @@ class Parser {
           this.eventHandler.abortNonterminal('unaryExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseawaitExpression() {
     const __memoStart = this.position;
     const __memoKey = 'awaitExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule awaitExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('awaitExpression', this.position);
@@ -2563,6 +3380,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -2573,13 +3393,32 @@ class Parser {
           this.eventHandler.abortNonterminal('awaitExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsepostfixExpression() {
     const __memoStart = this.position;
     const __memoKey = 'postfixExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule postfixExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('postfixExpression', this.position);
@@ -2615,7 +3454,7 @@ class Parser {
           this.restoreEventState(_altMark);
         }
       }
-      if (!_matchedAlt) { throw new Error('No group alternative matched'); }
+      if (!_matchedAlt) { throw __BACKTRACK_ERROR; }
       } catch (e) {
         this.position = _optStart;
         this.restoreEventState(_optMark);
@@ -2625,6 +3464,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -2635,13 +3477,32 @@ class Parser {
           this.eventHandler.abortNonterminal('postfixExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseleftHandSideExpression() {
     const __memoStart = this.position;
     const __memoKey = 'leftHandSideExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule leftHandSideExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('leftHandSideExpression', this.position);
@@ -2671,12 +3532,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -2687,13 +3551,32 @@ class Parser {
           this.eventHandler.abortNonterminal('leftHandSideExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsenewExpression() {
     const __memoStart = this.position;
     const __memoKey = 'newExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule newExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('newExpression', this.position);
@@ -2724,12 +3607,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -2740,13 +3626,32 @@ class Parser {
           this.eventHandler.abortNonterminal('newExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsememberExpression() {
     const __memoStart = this.position;
     const __memoKey = 'memberExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule memberExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('memberExpression', this.position);
@@ -2846,7 +3751,7 @@ class Parser {
           this.restoreEventState(_altMark);
         }
       }
-      if (!_matchedAlt) { throw new Error('No group alternative matched'); }
+      if (!_matchedAlt) { throw __BACKTRACK_ERROR; }
     }
     // Group *
     while (true) {
@@ -2890,7 +3795,7 @@ class Parser {
           this.restoreEventState(_altMark);
         }
       }
-      if (!_matchedAlt) { throw new Error('No group alternative matched'); }
+      if (!_matchedAlt) { throw __BACKTRACK_ERROR; }
       } catch (e) {
         this.position = _loopStart;
         this.restoreEventState(_loopMark);
@@ -2902,6 +3807,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -2912,13 +3820,32 @@ class Parser {
           this.eventHandler.abortNonterminal('memberExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseprimaryExpression() {
     const __memoStart = this.position;
     const __memoKey = 'primaryExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule primaryExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('primaryExpression', this.position);
@@ -3000,12 +3927,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 7 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3016,13 +3946,32 @@ class Parser {
           this.eventHandler.abortNonterminal('primaryExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseliteral() {
     const __memoStart = this.position;
     const __memoKey = 'literal@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule literal at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('literal', this.position);
@@ -3082,12 +4031,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 5 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3098,13 +4050,32 @@ class Parser {
           this.eventHandler.abortNonterminal('literal', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsenumericLiteral() {
     const __memoStart = this.position;
     const __memoKey = 'numericLiteral@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule numericLiteral at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('numericLiteral', this.position);
@@ -3154,12 +4125,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 4 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3170,13 +4144,32 @@ class Parser {
           this.eventHandler.abortNonterminal('numericLiteral', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsestringLiteral() {
     const __memoStart = this.position;
     const __memoKey = 'stringLiteral@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule stringLiteral at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('stringLiteral', this.position);
@@ -3188,6 +4181,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3198,13 +4194,32 @@ class Parser {
           this.eventHandler.abortNonterminal('stringLiteral', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseregularExpressionLiteral() {
     const __memoStart = this.position;
     const __memoKey = 'regularExpressionLiteral@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule regularExpressionLiteral at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('regularExpressionLiteral', this.position);
@@ -3216,6 +4231,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3226,13 +4244,32 @@ class Parser {
           this.eventHandler.abortNonterminal('regularExpressionLiteral', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsearrayLiteral() {
     const __memoStart = this.position;
     const __memoKey = 'arrayLiteral@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule arrayLiteral at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('arrayLiteral', this.position);
@@ -3280,6 +4317,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3290,13 +4330,32 @@ class Parser {
           this.eventHandler.abortNonterminal('arrayLiteral', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsearrayElement() {
     const __memoStart = this.position;
     const __memoKey = 'arrayElement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule arrayElement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('arrayElement', this.position);
@@ -3326,12 +4385,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3342,13 +4404,32 @@ class Parser {
           this.eventHandler.abortNonterminal('arrayElement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseelementList() {
     const __memoStart = this.position;
     const __memoKey = 'elementList@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule elementList at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('elementList', this.position);
@@ -3374,6 +4455,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3384,13 +4468,32 @@ class Parser {
           this.eventHandler.abortNonterminal('elementList', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseelision() {
     const __memoStart = this.position;
     const __memoKey = 'elision@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule elision at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('elision', this.position);
@@ -3403,6 +4506,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3413,13 +4519,32 @@ class Parser {
           this.eventHandler.abortNonterminal('elision', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsespreadElement() {
     const __memoStart = this.position;
     const __memoKey = 'spreadElement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule spreadElement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('spreadElement', this.position);
@@ -3432,6 +4557,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3442,13 +4570,32 @@ class Parser {
           this.eventHandler.abortNonterminal('spreadElement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseobjectLiteral() {
     const __memoStart = this.position;
     const __memoKey = 'objectLiteral@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule objectLiteral at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('objectLiteral', this.position);
@@ -3487,6 +4634,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3497,13 +4647,32 @@ class Parser {
           this.eventHandler.abortNonterminal('objectLiteral', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsepropertyAssignment() {
     const __memoStart = this.position;
     const __memoKey = 'propertyAssignment@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule propertyAssignment at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('propertyAssignment', this.position);
@@ -3598,12 +4767,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 7 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3614,13 +4786,32 @@ class Parser {
           this.eventHandler.abortNonterminal('propertyAssignment', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsespreadProperty() {
     const __memoStart = this.position;
     const __memoKey = 'spreadProperty@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule spreadProperty at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('spreadProperty', this.position);
@@ -3633,6 +4824,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3643,13 +4837,32 @@ class Parser {
           this.eventHandler.abortNonterminal('spreadProperty', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsepropertyName() {
     const __memoStart = this.position;
     const __memoKey = 'propertyName@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule propertyName at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('propertyName', this.position);
@@ -3679,12 +4892,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3695,13 +4911,32 @@ class Parser {
           this.eventHandler.abortNonterminal('propertyName', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseliteralPropertyName() {
     const __memoStart = this.position;
     const __memoKey = 'literalPropertyName@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule literalPropertyName at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('literalPropertyName', this.position);
@@ -3741,12 +4976,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 3 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3757,13 +4995,32 @@ class Parser {
           this.eventHandler.abortNonterminal('literalPropertyName', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsecomputedPropertyName() {
     const __memoStart = this.position;
     const __memoKey = 'computedPropertyName@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule computedPropertyName at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('computedPropertyName', this.position);
@@ -3777,6 +5034,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3787,13 +5047,32 @@ class Parser {
           this.eventHandler.abortNonterminal('computedPropertyName', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseidentifierReference() {
     const __memoStart = this.position;
     const __memoKey = 'identifierReference@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule identifierReference at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('identifierReference', this.position);
@@ -3823,12 +5102,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3839,13 +5121,32 @@ class Parser {
           this.eventHandler.abortNonterminal('identifierReference', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsecoverInitializedName() {
     const __memoStart = this.position;
     const __memoKey = 'coverInitializedName@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule coverInitializedName at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('coverInitializedName', this.position);
@@ -3858,6 +5159,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3868,13 +5172,32 @@ class Parser {
           this.eventHandler.abortNonterminal('coverInitializedName', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebindingIdentifier() {
     const __memoStart = this.position;
     const __memoKey = 'bindingIdentifier@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bindingIdentifier at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bindingIdentifier', this.position);
@@ -3904,12 +5227,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -3920,13 +5246,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bindingIdentifier', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsecontextualIdentifier() {
     const __memoStart = this.position;
     const __memoKey = 'contextualIdentifier@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule contextualIdentifier at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('contextualIdentifier', this.position);
@@ -4016,12 +5361,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 8 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4032,13 +5380,32 @@ class Parser {
           this.eventHandler.abortNonterminal('contextualIdentifier', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebindingPattern() {
     const __memoStart = this.position;
     const __memoKey = 'bindingPattern@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bindingPattern at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bindingPattern', this.position);
@@ -4068,12 +5435,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4084,13 +5454,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bindingPattern', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseobjectBindingPattern() {
     const __memoStart = this.position;
     const __memoKey = 'objectBindingPattern@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule objectBindingPattern at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('objectBindingPattern', this.position);
@@ -4136,12 +5525,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 3 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4152,13 +5544,32 @@ class Parser {
           this.eventHandler.abortNonterminal('objectBindingPattern', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsearrayBindingPattern() {
     const __memoStart = this.position;
     const __memoKey = 'arrayBindingPattern@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule arrayBindingPattern at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('arrayBindingPattern', this.position);
@@ -4248,12 +5659,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 3 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4264,13 +5678,32 @@ class Parser {
           this.eventHandler.abortNonterminal('arrayBindingPattern', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebindingPropertyList() {
     const __memoStart = this.position;
     const __memoKey = 'bindingPropertyList@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bindingPropertyList at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bindingPropertyList', this.position);
@@ -4296,6 +5729,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4306,13 +5742,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bindingPropertyList', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebindingElementList() {
     const __memoStart = this.position;
     const __memoKey = 'bindingElementList@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bindingElementList at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bindingElementList', this.position);
@@ -4338,6 +5793,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4348,13 +5806,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bindingElementList', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebindingElisionElement() {
     const __memoStart = this.position;
     const __memoKey = 'bindingElisionElement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bindingElisionElement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bindingElisionElement', this.position);
@@ -4377,6 +5854,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4387,13 +5867,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bindingElisionElement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebindingProperty() {
     const __memoStart = this.position;
     const __memoKey = 'bindingProperty@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bindingProperty at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bindingProperty', this.position);
@@ -4402,6 +5901,16 @@ class Parser {
     try {
     const _ruleStart = this.position;
     let _matched = false;
+    if (!_matched) {
+      const _ruleMark = this.markEventState();
+      try {
+    this.parsesingleNameBinding();
+        _matched = true;
+      } catch (e) {
+        this.position = _ruleStart;
+        this.restoreEventState(_ruleMark);
+      }
+    }
     if (!_matched) {
       const _ruleMark = this.markEventState();
       try {
@@ -4415,22 +5924,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      const _ruleMark = this.markEventState();
-      try {
-    this.parsesingleNameBinding();
-        _matched = true;
-      } catch (e) {
-        this.position = _ruleStart;
-        this.restoreEventState(_ruleMark);
-      }
-    }
-    if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4441,13 +5943,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bindingProperty', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebindingElement() {
     const __memoStart = this.position;
     const __memoKey = 'bindingElement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bindingElement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bindingElement', this.position);
@@ -4488,12 +6009,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4504,13 +6028,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bindingElement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsesingleNameBinding() {
     const __memoStart = this.position;
     const __memoKey = 'singleNameBinding@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule singleNameBinding at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('singleNameBinding', this.position);
@@ -4533,6 +6076,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4543,13 +6089,32 @@ class Parser {
           this.eventHandler.abortNonterminal('singleNameBinding', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebindingRestElement() {
     const __memoStart = this.position;
     const __memoKey = 'bindingRestElement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bindingRestElement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bindingRestElement', this.position);
@@ -4562,6 +6127,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4572,13 +6140,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bindingRestElement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsefunctionBody() {
     const __memoStart = this.position;
     const __memoKey = 'functionBody@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule functionBody at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('functionBody', this.position);
@@ -4601,6 +6188,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4611,13 +6201,32 @@ class Parser {
           this.eventHandler.abortNonterminal('functionBody', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsepropertySetParameterList() {
     const __memoStart = this.position;
     const __memoKey = 'propertySetParameterList@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule propertySetParameterList at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('propertySetParameterList', this.position);
@@ -4629,6 +6238,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4639,13 +6251,32 @@ class Parser {
           this.eventHandler.abortNonterminal('propertySetParameterList', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseexpression() {
     const __memoStart = this.position;
     const __memoKey = 'expression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule expression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('expression', this.position);
@@ -4671,6 +6302,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4681,13 +6315,32 @@ class Parser {
           this.eventHandler.abortNonterminal('expression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsefunctionExpression() {
     const __memoStart = this.position;
     const __memoKey = 'functionExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule functionExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('functionExpression', this.position);
@@ -4726,6 +6379,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4736,13 +6392,32 @@ class Parser {
           this.eventHandler.abortNonterminal('functionExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseasyncFunctionExpression() {
     const __memoStart = this.position;
     const __memoKey = 'asyncFunctionExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule asyncFunctionExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('asyncFunctionExpression', this.position);
@@ -4782,6 +6457,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4792,13 +6470,32 @@ class Parser {
           this.eventHandler.abortNonterminal('asyncFunctionExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseclassExpression() {
     const __memoStart = this.position;
     const __memoKey = 'classExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule classExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('classExpression', this.position);
@@ -4822,6 +6519,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4832,13 +6532,32 @@ class Parser {
           this.eventHandler.abortNonterminal('classExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseformalParameterList() {
     const __memoStart = this.position;
     const __memoKey = 'formalParameterList@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule formalParameterList at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('formalParameterList', this.position);
@@ -4891,12 +6610,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 4 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4907,13 +6629,32 @@ class Parser {
           this.eventHandler.abortNonterminal('formalParameterList', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseformalsList() {
     const __memoStart = this.position;
     const __memoKey = 'formalsList@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule formalsList at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('formalsList', this.position);
@@ -4939,6 +6680,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4949,13 +6693,32 @@ class Parser {
           this.eventHandler.abortNonterminal('formalsList', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseformalParameter() {
     const __memoStart = this.position;
     const __memoKey = 'formalParameter@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule formalParameter at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('formalParameter', this.position);
@@ -4967,6 +6730,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -4977,13 +6743,32 @@ class Parser {
           this.eventHandler.abortNonterminal('formalParameter', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsefunctionRestParameter() {
     const __memoStart = this.position;
     const __memoKey = 'functionRestParameter@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule functionRestParameter at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('functionRestParameter', this.position);
@@ -4995,6 +6780,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -5005,13 +6793,32 @@ class Parser {
           this.eventHandler.abortNonterminal('functionRestParameter', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsearguments() {
     const __memoStart = this.position;
     const __memoKey = 'arguments@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule arguments at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('arguments', this.position);
@@ -5057,12 +6864,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 3 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -5073,13 +6883,32 @@ class Parser {
           this.eventHandler.abortNonterminal('arguments', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseargumentList() {
     const __memoStart = this.position;
     const __memoKey = 'argumentList@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule argumentList at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('argumentList', this.position);
@@ -5105,6 +6934,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -5115,13 +6947,32 @@ class Parser {
           this.eventHandler.abortNonterminal('argumentList', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseargumentItem() {
     const __memoStart = this.position;
     const __memoKey = 'argumentItem@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule argumentItem at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('argumentItem', this.position);
@@ -5152,12 +7003,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -5168,13 +7022,32 @@ class Parser {
           this.eventHandler.abortNonterminal('argumentItem', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsecallExpression() {
     const __memoStart = this.position;
     const __memoKey = 'callExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule callExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('callExpression', this.position);
@@ -5241,7 +7114,7 @@ class Parser {
           this.restoreEventState(_altMark);
         }
       }
-      if (!_matchedAlt) { throw new Error('No group alternative matched'); }
+      if (!_matchedAlt) { throw __BACKTRACK_ERROR; }
       } catch (e) {
         this.position = _loopStart;
         this.restoreEventState(_loopMark);
@@ -5266,12 +7139,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -5282,13 +7158,32 @@ class Parser {
           this.eventHandler.abortNonterminal('callExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseemptyStatement() {
     const __memoStart = this.position;
     const __memoKey = 'emptyStatement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule emptyStatement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('emptyStatement', this.position);
@@ -5300,6 +7195,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -5310,13 +7208,32 @@ class Parser {
           this.eventHandler.abortNonterminal('emptyStatement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseassignmentOperator() {
     const __memoStart = this.position;
     const __memoKey = 'assignmentOperator@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule assignmentOperator at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('assignmentOperator', this.position);
@@ -5456,12 +7373,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 13 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -5472,13 +7392,32 @@ class Parser {
           this.eventHandler.abortNonterminal('assignmentOperator', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseexpressionStatement() {
     const __memoStart = this.position;
     const __memoKey = 'expressionStatement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule expressionStatement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('expressionStatement', this.position);
@@ -5491,6 +7430,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -5501,13 +7443,32 @@ class Parser {
           this.eventHandler.abortNonterminal('expressionStatement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseifStatement() {
     const __memoStart = this.position;
     const __memoKey = 'ifStatement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule ifStatement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('ifStatement', this.position);
@@ -5535,6 +7496,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -5545,13 +7509,32 @@ class Parser {
           this.eventHandler.abortNonterminal('ifStatement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseiterationStatement() {
     const __memoStart = this.position;
     const __memoKey = 'iterationStatement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule iterationStatement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('iterationStatement', this.position);
@@ -5798,12 +7781,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 10 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -5814,13 +7800,32 @@ class Parser {
           this.eventHandler.abortNonterminal('iterationStatement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseexpressionNoIn() {
     const __memoStart = this.position;
     const __memoKey = 'expressionNoIn@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule expressionNoIn at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('expressionNoIn', this.position);
@@ -5846,6 +7851,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -5856,13 +7864,32 @@ class Parser {
           this.eventHandler.abortNonterminal('expressionNoIn', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseassignmentExpressionNoIn() {
     const __memoStart = this.position;
     const __memoKey = 'assignmentExpressionNoIn@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule assignmentExpressionNoIn at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('assignmentExpressionNoIn', this.position);
@@ -5894,12 +7921,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -5910,13 +7940,32 @@ class Parser {
           this.eventHandler.abortNonterminal('assignmentExpressionNoIn', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseconditionalExpressionNoIn() {
     const __memoStart = this.position;
     const __memoKey = 'conditionalExpressionNoIn@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule conditionalExpressionNoIn at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('conditionalExpressionNoIn', this.position);
@@ -5944,6 +7993,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -5954,13 +8006,32 @@ class Parser {
           this.eventHandler.abortNonterminal('conditionalExpressionNoIn', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parselogicalORExpressionNoIn() {
     const __memoStart = this.position;
     const __memoKey = 'logicalORExpressionNoIn@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule logicalORExpressionNoIn at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('logicalORExpressionNoIn', this.position);
@@ -5986,6 +8057,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -5996,13 +8070,32 @@ class Parser {
           this.eventHandler.abortNonterminal('logicalORExpressionNoIn', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parselogicalANDExpressionNoIn() {
     const __memoStart = this.position;
     const __memoKey = 'logicalANDExpressionNoIn@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule logicalANDExpressionNoIn at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('logicalANDExpressionNoIn', this.position);
@@ -6028,6 +8121,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6038,13 +8134,32 @@ class Parser {
           this.eventHandler.abortNonterminal('logicalANDExpressionNoIn', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebitwiseORExpressionNoIn() {
     const __memoStart = this.position;
     const __memoKey = 'bitwiseORExpressionNoIn@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bitwiseORExpressionNoIn at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bitwiseORExpressionNoIn', this.position);
@@ -6070,6 +8185,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6080,13 +8198,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bitwiseORExpressionNoIn', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebitwiseXORExpressionNoIn() {
     const __memoStart = this.position;
     const __memoKey = 'bitwiseXORExpressionNoIn@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bitwiseXORExpressionNoIn at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bitwiseXORExpressionNoIn', this.position);
@@ -6112,6 +8249,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6122,13 +8262,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bitwiseXORExpressionNoIn', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebitwiseANDExpressionNoIn() {
     const __memoStart = this.position;
     const __memoKey = 'bitwiseANDExpressionNoIn@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule bitwiseANDExpressionNoIn at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('bitwiseANDExpressionNoIn', this.position);
@@ -6154,6 +8313,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6164,13 +8326,32 @@ class Parser {
           this.eventHandler.abortNonterminal('bitwiseANDExpressionNoIn', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseequalityExpressionNoIn() {
     const __memoStart = this.position;
     const __memoKey = 'equalityExpressionNoIn@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule equalityExpressionNoIn at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('equalityExpressionNoIn', this.position);
@@ -6230,7 +8411,7 @@ class Parser {
           this.restoreEventState(_altMark);
         }
       }
-      if (!_matchedAlt) { throw new Error('No group alternative matched'); }
+      if (!_matchedAlt) { throw __BACKTRACK_ERROR; }
     }
     this.parserelationalExpressionNoIn();
       } catch (e) {
@@ -6244,6 +8425,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6254,13 +8438,32 @@ class Parser {
           this.eventHandler.abortNonterminal('equalityExpressionNoIn', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parserelationalExpressionNoIn() {
     const __memoStart = this.position;
     const __memoKey = 'relationalExpressionNoIn@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule relationalExpressionNoIn at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('relationalExpressionNoIn', this.position);
@@ -6331,7 +8534,7 @@ class Parser {
           this.restoreEventState(_altMark);
         }
       }
-      if (!_matchedAlt) { throw new Error('No group alternative matched'); }
+      if (!_matchedAlt) { throw __BACKTRACK_ERROR; }
     }
     this.parseshiftExpression();
       } catch (e) {
@@ -6345,6 +8548,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6355,13 +8561,32 @@ class Parser {
           this.eventHandler.abortNonterminal('relationalExpressionNoIn', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsevariableDeclarationListNoIn() {
     const __memoStart = this.position;
     const __memoKey = 'variableDeclarationListNoIn@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule variableDeclarationListNoIn at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('variableDeclarationListNoIn', this.position);
@@ -6387,6 +8612,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6397,13 +8625,32 @@ class Parser {
           this.eventHandler.abortNonterminal('variableDeclarationListNoIn', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsevariableDeclarationNoIn() {
     const __memoStart = this.position;
     const __memoKey = 'variableDeclarationNoIn@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule variableDeclarationNoIn at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('variableDeclarationNoIn', this.position);
@@ -6455,12 +8702,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6471,13 +8721,32 @@ class Parser {
           this.eventHandler.abortNonterminal('variableDeclarationNoIn', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseinitializerNoIn() {
     const __memoStart = this.position;
     const __memoKey = 'initializerNoIn@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule initializerNoIn at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('initializerNoIn', this.position);
@@ -6490,6 +8759,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6500,13 +8772,32 @@ class Parser {
           this.eventHandler.abortNonterminal('initializerNoIn', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsecontinueStatement() {
     const __memoStart = this.position;
     const __memoKey = 'continueStatement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule continueStatement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('continueStatement', this.position);
@@ -6530,6 +8821,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6540,13 +8834,32 @@ class Parser {
           this.eventHandler.abortNonterminal('continueStatement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsebreakStatement() {
     const __memoStart = this.position;
     const __memoKey = 'breakStatement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule breakStatement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('breakStatement', this.position);
@@ -6570,6 +8883,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6580,13 +8896,32 @@ class Parser {
           this.eventHandler.abortNonterminal('breakStatement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsereturnStatement() {
     const __memoStart = this.position;
     const __memoKey = 'returnStatement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule returnStatement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('returnStatement', this.position);
@@ -6610,6 +8945,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6620,13 +8958,32 @@ class Parser {
           this.eventHandler.abortNonterminal('returnStatement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsewithStatement() {
     const __memoStart = this.position;
     const __memoKey = 'withStatement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule withStatement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('withStatement', this.position);
@@ -6642,6 +8999,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6652,13 +9012,32 @@ class Parser {
           this.eventHandler.abortNonterminal('withStatement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parselabelledStatement() {
     const __memoStart = this.position;
     const __memoKey = 'labelledStatement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule labelledStatement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('labelledStatement', this.position);
@@ -6672,6 +9051,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6682,13 +9064,32 @@ class Parser {
           this.eventHandler.abortNonterminal('labelledStatement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseswitchStatement() {
     const __memoStart = this.position;
     const __memoKey = 'switchStatement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule switchStatement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('switchStatement', this.position);
@@ -6704,6 +9105,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6714,13 +9118,32 @@ class Parser {
           this.eventHandler.abortNonterminal('switchStatement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsecaseBlock() {
     const __memoStart = this.position;
     const __memoKey = 'caseBlock@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule caseBlock at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('caseBlock', this.position);
@@ -6768,6 +9191,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6778,13 +9204,32 @@ class Parser {
           this.eventHandler.abortNonterminal('caseBlock', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsecaseClause() {
     const __memoStart = this.position;
     const __memoKey = 'caseClause@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule caseClause at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('caseClause', this.position);
@@ -6810,6 +9255,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6820,13 +9268,32 @@ class Parser {
           this.eventHandler.abortNonterminal('caseClause', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsedefaultClause() {
     const __memoStart = this.position;
     const __memoKey = 'defaultClause@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule defaultClause at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('defaultClause', this.position);
@@ -6851,6 +9318,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6861,13 +9331,32 @@ class Parser {
           this.eventHandler.abortNonterminal('defaultClause', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsethrowStatement() {
     const __memoStart = this.position;
     const __memoKey = 'throwStatement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule throwStatement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('throwStatement', this.position);
@@ -6881,6 +9370,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6891,13 +9383,32 @@ class Parser {
           this.eventHandler.abortNonterminal('throwStatement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsetryStatement() {
     const __memoStart = this.position;
     const __memoKey = 'tryStatement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule tryStatement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('tryStatement', this.position);
@@ -6942,12 +9453,15 @@ class Parser {
           this.restoreEventState(_altMark);
         }
       }
-      if (!_matchedAlt) { throw new Error('No group alternative matched'); }
+      if (!_matchedAlt) { throw __BACKTRACK_ERROR; }
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6958,13 +9472,32 @@ class Parser {
           this.eventHandler.abortNonterminal('tryStatement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsecatch() {
     const __memoStart = this.position;
     const __memoKey = 'catch@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule catch at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('catch', this.position);
@@ -6980,6 +9513,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -6990,13 +9526,32 @@ class Parser {
           this.eventHandler.abortNonterminal('catch', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsefinally() {
     const __memoStart = this.position;
     const __memoKey = 'finally@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule finally at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('finally', this.position);
@@ -7009,6 +9564,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7019,13 +9577,32 @@ class Parser {
           this.eventHandler.abortNonterminal('finally', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsedebuggerStatement() {
     const __memoStart = this.position;
     const __memoKey = 'debuggerStatement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule debuggerStatement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('debuggerStatement', this.position);
@@ -7038,6 +9615,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7048,13 +9628,32 @@ class Parser {
           this.eventHandler.abortNonterminal('debuggerStatement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsefunctionDeclaration() {
     const __memoStart = this.position;
     const __memoKey = 'functionDeclaration@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule functionDeclaration at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('functionDeclaration', this.position);
@@ -7083,6 +9682,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7093,13 +9695,32 @@ class Parser {
           this.eventHandler.abortNonterminal('functionDeclaration', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseasyncFunctionDeclaration() {
     const __memoStart = this.position;
     const __memoKey = 'asyncFunctionDeclaration@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule asyncFunctionDeclaration at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('asyncFunctionDeclaration', this.position);
@@ -7129,6 +9750,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7139,13 +9763,32 @@ class Parser {
           this.eventHandler.abortNonterminal('asyncFunctionDeclaration', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsegeneratorDeclaration() {
     const __memoStart = this.position;
     const __memoKey = 'generatorDeclaration@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule generatorDeclaration at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('generatorDeclaration', this.position);
@@ -7175,6 +9818,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7185,13 +9831,32 @@ class Parser {
           this.eventHandler.abortNonterminal('generatorDeclaration', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsegeneratorExpression() {
     const __memoStart = this.position;
     const __memoKey = 'generatorExpression@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule generatorExpression at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('generatorExpression', this.position);
@@ -7231,6 +9896,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7241,13 +9909,32 @@ class Parser {
           this.eventHandler.abortNonterminal('generatorExpression', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsegeneratorBody() {
     const __memoStart = this.position;
     const __memoKey = 'generatorBody@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule generatorBody at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('generatorBody', this.position);
@@ -7259,6 +9946,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7269,13 +9959,32 @@ class Parser {
           this.eventHandler.abortNonterminal('generatorBody', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseasyncFunctionBody() {
     const __memoStart = this.position;
     const __memoKey = 'asyncFunctionBody@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule asyncFunctionBody at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('asyncFunctionBody', this.position);
@@ -7287,6 +9996,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7297,13 +10009,32 @@ class Parser {
           this.eventHandler.abortNonterminal('asyncFunctionBody', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseclassDeclaration() {
     const __memoStart = this.position;
     const __memoKey = 'classDeclaration@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule classDeclaration at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('classDeclaration', this.position);
@@ -7317,6 +10048,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7327,13 +10061,32 @@ class Parser {
           this.eventHandler.abortNonterminal('classDeclaration', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseclassTail() {
     const __memoStart = this.position;
     const __memoKey = 'classTail@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule classTail at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('classTail', this.position);
@@ -7368,6 +10121,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7378,13 +10134,32 @@ class Parser {
           this.eventHandler.abortNonterminal('classTail', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseclassHeritage() {
     const __memoStart = this.position;
     const __memoKey = 'classHeritage@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule classHeritage at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('classHeritage', this.position);
@@ -7397,6 +10172,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7407,13 +10185,32 @@ class Parser {
           this.eventHandler.abortNonterminal('classHeritage', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseclassBody() {
     const __memoStart = this.position;
     const __memoKey = 'classBody@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule classBody at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('classBody', this.position);
@@ -7435,12 +10232,15 @@ class Parser {
       }
     }
     if (count === 0) {
-      throw new Error('Expected at least one classElement');
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7451,13 +10251,32 @@ class Parser {
           this.eventHandler.abortNonterminal('classBody', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseclassElement() {
     const __memoStart = this.position;
     const __memoKey = 'classElement@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule classElement at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('classElement', this.position);
@@ -7498,12 +10317,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 3 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7514,13 +10336,32 @@ class Parser {
           this.eventHandler.abortNonterminal('classElement', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsemethodDefinition() {
     const __memoStart = this.position;
     const __memoKey = 'methodDefinition@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule methodDefinition at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('methodDefinition', this.position);
@@ -7695,12 +10536,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 7 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7711,13 +10555,32 @@ class Parser {
           this.eventHandler.abortNonterminal('methodDefinition', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsepropertyDefinition() {
     const __memoStart = this.position;
     const __memoKey = 'propertyDefinition@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule propertyDefinition at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('propertyDefinition', this.position);
@@ -7732,6 +10595,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7742,13 +10608,32 @@ class Parser {
           this.eventHandler.abortNonterminal('propertyDefinition', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsesuperProperty() {
     const __memoStart = this.position;
     const __memoKey = 'superProperty@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule superProperty at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('superProperty', this.position);
@@ -7783,12 +10668,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7799,13 +10687,32 @@ class Parser {
           this.eventHandler.abortNonterminal('superProperty', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsesuperCall() {
     const __memoStart = this.position;
     const __memoKey = 'superCall@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule superCall at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('superCall', this.position);
@@ -7818,6 +10725,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7828,13 +10738,32 @@ class Parser {
           this.eventHandler.abortNonterminal('superCall', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsemetaProperty() {
     const __memoStart = this.position;
     const __memoKey = 'metaProperty@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule metaProperty at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('metaProperty', this.position);
@@ -7848,6 +10777,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7858,13 +10790,32 @@ class Parser {
           this.eventHandler.abortNonterminal('metaProperty', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsetemplateLiteral() {
     const __memoStart = this.position;
     const __memoKey = 'templateLiteral@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule templateLiteral at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('templateLiteral', this.position);
@@ -7896,12 +10847,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7912,13 +10866,32 @@ class Parser {
           this.eventHandler.abortNonterminal('templateLiteral', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsetemplateSpans() {
     const __memoStart = this.position;
     const __memoKey = 'templateSpans@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule templateSpans at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('templateSpans', this.position);
@@ -7950,12 +10923,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -7966,13 +10942,32 @@ class Parser {
           this.eventHandler.abortNonterminal('templateSpans', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseimportDeclaration() {
     const __memoStart = this.position;
     const __memoKey = 'importDeclaration@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule importDeclaration at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('importDeclaration', this.position);
@@ -8007,12 +11002,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8023,13 +11021,32 @@ class Parser {
           this.eventHandler.abortNonterminal('importDeclaration', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseimportClause() {
     const __memoStart = this.position;
     const __memoKey = 'importClause@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule importClause at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('importClause', this.position);
@@ -8093,12 +11110,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 5 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8109,13 +11129,32 @@ class Parser {
           this.eventHandler.abortNonterminal('importClause', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseimportedDefaultBinding() {
     const __memoStart = this.position;
     const __memoKey = 'importedDefaultBinding@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule importedDefaultBinding at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('importedDefaultBinding', this.position);
@@ -8127,6 +11166,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8137,13 +11179,32 @@ class Parser {
           this.eventHandler.abortNonterminal('importedDefaultBinding', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsenameSpaceImport() {
     const __memoStart = this.position;
     const __memoKey = 'nameSpaceImport@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule nameSpaceImport at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('nameSpaceImport', this.position);
@@ -8157,6 +11218,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8167,13 +11231,32 @@ class Parser {
           this.eventHandler.abortNonterminal('nameSpaceImport', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsenamedImports() {
     const __memoStart = this.position;
     const __memoKey = 'namedImports@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule namedImports at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('namedImports', this.position);
@@ -8219,12 +11302,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 3 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8235,13 +11321,32 @@ class Parser {
           this.eventHandler.abortNonterminal('namedImports', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsefromClause() {
     const __memoStart = this.position;
     const __memoKey = 'fromClause@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule fromClause at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('fromClause', this.position);
@@ -8254,6 +11359,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8264,13 +11372,32 @@ class Parser {
           this.eventHandler.abortNonterminal('fromClause', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseimportsList() {
     const __memoStart = this.position;
     const __memoKey = 'importsList@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule importsList at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('importsList', this.position);
@@ -8296,6 +11423,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8306,13 +11436,32 @@ class Parser {
           this.eventHandler.abortNonterminal('importsList', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseimportSpecifier() {
     const __memoStart = this.position;
     const __memoKey = 'importSpecifier@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule importSpecifier at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('importSpecifier', this.position);
@@ -8344,12 +11493,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8360,13 +11512,32 @@ class Parser {
           this.eventHandler.abortNonterminal('importSpecifier', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsemoduleSpecifier() {
     const __memoStart = this.position;
     const __memoKey = 'moduleSpecifier@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule moduleSpecifier at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('moduleSpecifier', this.position);
@@ -8378,6 +11549,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8388,13 +11562,32 @@ class Parser {
           this.eventHandler.abortNonterminal('moduleSpecifier', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseimportedBinding() {
     const __memoStart = this.position;
     const __memoKey = 'importedBinding@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule importedBinding at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('importedBinding', this.position);
@@ -8406,6 +11599,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8416,13 +11612,32 @@ class Parser {
           this.eventHandler.abortNonterminal('importedBinding', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseexportDeclaration() {
     const __memoStart = this.position;
     const __memoKey = 'exportDeclaration@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule exportDeclaration at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('exportDeclaration', this.position);
@@ -8597,12 +11812,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 14 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8613,13 +11831,32 @@ class Parser {
           this.eventHandler.abortNonterminal('exportDeclaration', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseexportClause() {
     const __memoStart = this.position;
     const __memoKey = 'exportClause@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule exportClause at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('exportClause', this.position);
@@ -8665,12 +11902,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 3 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8681,13 +11921,32 @@ class Parser {
           this.eventHandler.abortNonterminal('exportClause', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseexportsList() {
     const __memoStart = this.position;
     const __memoKey = 'exportsList@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule exportsList at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('exportsList', this.position);
@@ -8713,6 +11972,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8723,13 +11985,32 @@ class Parser {
           this.eventHandler.abortNonterminal('exportsList', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseexportSpecifier() {
     const __memoStart = this.position;
     const __memoKey = 'exportSpecifier@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule exportSpecifier at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('exportSpecifier', this.position);
@@ -8761,12 +12042,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8777,13 +12061,32 @@ class Parser {
           this.eventHandler.abortNonterminal('exportSpecifier', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsescript() {
     const __memoStart = this.position;
     const __memoKey = 'script@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule script at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('script', this.position);
@@ -8805,6 +12108,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8815,13 +12121,32 @@ class Parser {
           this.eventHandler.abortNonterminal('script', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsescriptBody() {
     const __memoStart = this.position;
     const __memoKey = 'scriptBody@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule scriptBody at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('scriptBody', this.position);
@@ -8843,12 +12168,15 @@ class Parser {
       }
     }
     if (count === 0) {
-      throw new Error('Expected at least one sourceElement');
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8859,13 +12187,32 @@ class Parser {
           this.eventHandler.abortNonterminal('scriptBody', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsemodule() {
     const __memoStart = this.position;
     const __memoKey = 'module@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule module at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('module', this.position);
@@ -8887,6 +12234,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8897,13 +12247,32 @@ class Parser {
           this.eventHandler.abortNonterminal('module', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsemoduleBody() {
     const __memoStart = this.position;
     const __memoKey = 'moduleBody@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule moduleBody at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('moduleBody', this.position);
@@ -8925,12 +12294,15 @@ class Parser {
       }
     }
     if (count === 0) {
-      throw new Error('Expected at least one moduleItem');
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -8941,13 +12313,32 @@ class Parser {
           this.eventHandler.abortNonterminal('moduleBody', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsemoduleItem() {
     const __memoStart = this.position;
     const __memoKey = 'moduleItem@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule moduleItem at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('moduleItem', this.position);
@@ -8987,12 +12378,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 3 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -9003,13 +12397,32 @@ class Parser {
           this.eventHandler.abortNonterminal('moduleItem', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsesemicolon() {
     const __memoStart = this.position;
     const __memoKey = 'semicolon@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule semicolon at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('semicolon', this.position);
@@ -9021,6 +12434,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -9031,13 +12447,32 @@ class Parser {
           this.eventHandler.abortNonterminal('semicolon', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parsepropertyIdentifierName() {
     const __memoStart = this.position;
     const __memoKey = 'propertyIdentifierName@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule propertyIdentifierName at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('propertyIdentifierName', this.position);
@@ -9087,12 +12522,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 4 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -9103,13 +12541,32 @@ class Parser {
           this.eventHandler.abortNonterminal('propertyIdentifierName', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseidentifier() {
     const __memoStart = this.position;
     const __memoKey = 'identifier@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule identifier at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('identifier', this.position);
@@ -9121,6 +12578,9 @@ class Parser {
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -9131,13 +12591,32 @@ class Parser {
           this.eventHandler.abortNonterminal('identifier', this.position);
         }
       }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
+      }
     }
   }
   parseIgnore() {
     const __memoStart = this.position;
     const __memoKey = 'Ignore@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw new Error('Previously failed rule Ignore at position ' + __memoStart);
+      throw __BACKTRACK_ERROR;
+    }
+    if (this._canMemoSuccess) {
+      const __memoHit = this.successMemo.get(__memoKey);
+      if (__memoHit !== undefined) {
+        this.position = __memoHit.endPos;
+        if (this.eventHandler && __memoHit.node) {
+          this.eventHandler.appendNode(__memoHit.node);
+        }
+        return;
+      }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('Ignore', this.position);
@@ -9167,12 +12646,15 @@ class Parser {
       }
     }
     if (!_matched) {
-      throw new Error(`Expected one of: 2 alternatives`);
+      throw __BACKTRACK_ERROR;
     }
 
       __ok = true;
     } finally {
       if (!__ok) {
+        if (this.failureMemo.size > 200000) {
+          this.failureMemo.clear();
+        }
         this.failureMemo.add(__memoKey);
       }
       if (this.eventHandler) {
@@ -9182,6 +12664,15 @@ class Parser {
         if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
           this.eventHandler.abortNonterminal('Ignore', this.position);
         }
+      }
+      if (__ok && this._canMemoSuccess) {
+        if (this.successMemo.size > 200000) {
+          this.successMemo.clear();
+        }
+        this.successMemo.set(__memoKey, {
+          endPos: this.position,
+          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+        });
       }
     }
   }
